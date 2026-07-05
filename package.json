@@ -15,13 +15,13 @@
     "pull-jobs": "tsx scripts/pull-jobs.ts"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.57.0",
+    "@anthropic-ai/sdk": "^0.110.0",
     "better-sqlite3": "^11.10.0",
     "drizzle-orm": "^0.44.2",
     "next": "^15.3.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
-    "zod": "^3.25.0"
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.1.8",

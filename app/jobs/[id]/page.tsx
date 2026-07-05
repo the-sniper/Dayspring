@@ -6,6 +6,7 @@ import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
 import ScoreButton from "@/components/score-button";
 import StatusSelect from "@/components/status-select";
+import TailorSection from "@/components/tailor-section";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
 import {
@@ -122,6 +123,13 @@ export default async function JobDetailPage({
           </ul>
         )}
       </section>
+
+      <TailorSection
+        jobId={job.id}
+        bullets={job.tailoredBullets}
+        coverLetter={job.coverLetter}
+        tailoredAt={job.tailoredAt}
+      />
 
       {application && (
         <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4">

@@ -6,6 +6,9 @@ import Anthropic from "@anthropic-ai/sdk";
 // cheap tier is plenty. Opus 4.8 is reserved for the future tailoring pass.
 export const MODEL_SCORE = "claude-sonnet-5";
 export const MODEL_CHEAP = "claude-haiku-4-5";
+// Tailored bullets, cover letters, outreach drafts — the words that reach
+// humans. Low volume, always user-triggered, worth the premium tier.
+export const MODEL_PREMIUM = "claude-opus-4-8";
 
 export function hasApiKey(): boolean {
   return !!process.env.ANTHROPIC_API_KEY;

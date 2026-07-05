@@ -62,6 +62,10 @@ export const jobs = sqliteTable(
     gapNotes: text("gap_notes", { mode: "json" }).$type<string[]>(),
     fitSummary: text("fit_summary"),
     scoredAt: text("scored_at"),
+    // Opus-drafted application materials (user-triggered, per job).
+    tailoredBullets: text("tailored_bullets", { mode: "json" }).$type<string[]>(),
+    coverLetter: text("cover_letter"),
+    tailoredAt: text("tailored_at"),
     createdAt: text("created_at").notNull(), // = date_found
     updatedAt: text("updated_at").notNull(),
   },

@@ -141,11 +141,16 @@ export const outreach = sqliteTable("outreach", {
     .references(() => contacts.id),
   jobId: integer("job_id").references(() => jobs.id),
   channel: text("channel").$type<"email" | "linkedin">(),
+  subject: text("subject"),
   draft: text("draft"),
   sentAt: text("sent_at"),
   repliedAt: text("replied_at"),
-  // The future follow-up engine's cursor.
+  // The follow-up engine's cursor (YYYY-MM-DD).
   followUpDue: text("follow_up_due"),
+  // Set on Gmail send; getThread(gmailThreadId) powers reply detection, and
+  // nudges send into the same thread.
+  gmailThreadId: text("gmail_thread_id"),
+  gmailMessageId: text("gmail_message_id"),
   createdAt: text("created_at").notNull(),
 });
 

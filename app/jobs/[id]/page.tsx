@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
 import ApplicationForm from "@/components/application-form";
+import DraftOutreachButton from "@/components/draft-outreach-button";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
 import ScoreButton from "@/components/score-button";
@@ -171,8 +172,9 @@ export default async function JobDetailPage({
                     linkedin ↗
                   </a>
                 )}
-                <span className="ml-auto text-xs text-stone-400">
+                <span className="ml-auto flex items-center gap-2 text-xs text-stone-400">
                   {c.outreachStatus !== "none" && c.outreachStatus}
+                  <DraftOutreachButton contactId={c.id} jobId={job.id} />
                 </span>
               </li>
             ))}

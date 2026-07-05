@@ -4,6 +4,8 @@ import ProfileForm from "@/components/profile-form";
 import { MODEL_CHEAP, MODEL_SCORE } from "@/lib/claude/client";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
+import { hasApolloKey } from "@/lib/integrations/apollo/client";
+import { getGmailConfig, hasGmailEnv } from "@/lib/integrations/gmail/client";
 
 export const dynamic = "force-dynamic";
 
@@ -14,6 +16,7 @@ export default async function SettingsPage() {
     .where(eq(settings.key, "profile"))
     .get();
   const hasKey = !!process.env.ANTHROPIC_API_KEY;
+  const gmail = getGmailConfig();
   const dbPath =
     process.env.DAYSPRING_DB_PATH ??
     path.join(process.cwd(), "data", "dayspring.db");
@@ -51,6 +54,35 @@ export default async function SettingsPage() {
               <span className="text-red-600">
                 missing — add ANTHROPIC_API_KEY to .env.local (scoring,
                 paste-parse, and role classification stay off until then)
+              </span>
+            )}
+          </dd>
+          <dt className="font-medium">Apollo API key</dt>
+          <dd>
+            {hasApolloKey() ? (
+              <span className="text-emerald-700">set ✓</span>
+            ) : (
+              <span className="text-red-600">
+                missing — add APOLLO_API_KEY to .env.local (contact finder
+                stays off until then)
+              </span>
+            )}
+          </dd>
+          <dt className="font-medium">Gmail</dt>
+          <dd>
+            {gmail ? (
+              <span className="text-emerald-700">
+                connected as {gmail.email || "unknown"} ✓
+              </span>
+            ) : hasGmailEnv() ? (
+              <span className="text-amber-700">
+                credentials set — run <code>npm run gmail:auth</code> to connect
+              </span>
+            ) : (
+              <span className="text-red-600">
+                missing — add GOOGLE_CLIENT_ID + GOOGLE_CLIENT_SECRET to
+                .env.local, then run <code>npm run gmail:auth</code> (outreach
+                send, reply detection, and the emailed digest stay off)
               </span>
             )}
           </dd>

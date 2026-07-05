@@ -12,7 +12,8 @@
     "db:push": "mkdir -p data && drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
-    "pull-jobs": "tsx scripts/pull-jobs.ts"
+    "pull-jobs": "tsx scripts/pull-jobs.ts",
+    "gmail:auth": "tsx scripts/gmail-auth.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

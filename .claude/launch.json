@@ -1,0 +1,15 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dayspring",
+      "runtimeExecutable": "sh",
+      "runtimeArgs": [
+        "-c",
+        "export PATH=\"$HOME/.nvm/versions/node/v20.20.1/bin:$PATH\" && npm run dev"
+      ],
+      "port": 3000,
+      "autoPort": true
+    }
+  ]
+}

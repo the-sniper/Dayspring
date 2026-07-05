@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { desc, eq } from "drizzle-orm";
+import CheckRepliesButton from "@/components/check-replies-button";
 import OutreachEditor from "@/components/outreach-editor";
 import { markRepliedAction } from "@/lib/actions/outreach";
 import NudgeButton from "@/components/nudge-button";
@@ -51,11 +52,16 @@ export default async function OutreachPage() {
 
   return (
     <div className="max-w-3xl">
-      <h1 className="text-xl font-semibold">Outreach</h1>
-      <p className="mt-1 text-sm text-stone-500">
-        Claude drafts, you approve, nothing sends itself.
-        {!gmail && " Gmail isn't connected — see Settings; mailto fallback active."}
-      </p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-xl font-semibold">Outreach</h1>
+          <p className="mt-1 text-sm text-stone-500">
+            Claude drafts, you approve, nothing sends itself.
+            {!gmail && " Gmail isn't connected — see Settings; mailto fallback active."}
+          </p>
+        </div>
+        <CheckRepliesButton enabled={gmail} />
+      </div>
 
       <section className="mt-6">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">

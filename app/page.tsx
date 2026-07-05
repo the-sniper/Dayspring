@@ -5,6 +5,7 @@ import ScoreBadge from "@/components/score-badge";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
 import { applications, companies, jobs, stageEvents } from "@/lib/db/schema";
+import { outreachDue, staleApplications } from "@/lib/outreach/due";
 import { KANBAN_STATUSES, type JobStatus } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -72,6 +73,8 @@ export default async function DashboardPage() {
     .all();
 
   const today = new Date().toISOString().slice(0, 10);
+  const dueOutreach = outreachDue();
+  const staleApps = staleApplications();
 
   return (
     <div className="max-w-4xl">
@@ -142,6 +145,43 @@ export default async function DashboardPage() {
           )}
         </div>
       </section>
+
+      {(dueOutreach.length > 0 || staleApps.length > 0) && (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-stone-500">
+            Follow-ups due
+          </h2>
+          <div className="mt-2 space-y-1.5">
+            {dueOutreach.map((o) => (
+              <p key={`o${o.id}`} className="text-sm">
+                <span className="mr-1 rounded bg-amber-100 px-1.5 py-0.5 text-xs font-medium text-amber-800">
+                  outreach
+                </span>
+                <span className="font-medium">{o.contactName}</span>
+                {o.companyName && ` at ${o.companyName}`} — no reply since{" "}
+                {o.sentAt?.slice(0, 10)}.{" "}
+                <Link href="/outreach" className="text-amber-700 hover:underline">
+                  nudge →
+                </Link>
+              </p>
+            ))}
+            {staleApps.map((a) => (
+              <p key={`a${a.jobId}`} className="text-sm">
+                <span className="mr-1 rounded bg-stone-200 px-1.5 py-0.5 text-xs font-medium text-stone-600">
+                  application
+                </span>
+                <Link
+                  href={`/jobs/${a.jobId}`}
+                  className="font-medium hover:text-amber-700"
+                >
+                  {a.title}
+                </Link>{" "}
+                at {a.companyName} — quiet since {a.updatedAt.slice(0, 10)}.
+              </p>
+            ))}
+          </div>
+        </section>
+      )}
 
       <div className="mt-8 grid grid-cols-2 gap-8">
         <section>

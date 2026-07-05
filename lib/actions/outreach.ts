@@ -60,3 +60,10 @@ export async function deleteDraftAction(id: number) {
   revalidatePath("/outreach");
   return res;
 }
+
+export async function checkRepliesAction() {
+  const { checkReplies } = await import("@/lib/outreach/replies");
+  const res = await checkReplies();
+  revalidatePath("/", "layout");
+  return res;
+}

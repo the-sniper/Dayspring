@@ -1,5 +1,7 @@
 // Idempotent seed: watched companies (one per ATS, small boards verified
 // live 2026-07-05) + a placeholder profile row. Safe to re-run any time.
+export {}; // module scope — dynamic-import-only files are otherwise global scripts
+
 async function main() {
   // Dynamic imports so loadLocalEnv runs before lib/db reads DAYSPRING_DB_PATH.
   const { loadLocalEnv } = await import("../lib/env");

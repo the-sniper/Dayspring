@@ -8,7 +8,13 @@ import ScoreButton from "@/components/score-button";
 import StatusSelect from "@/components/status-select";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
-import { applications, companies, jobs, stageEvents } from "@/lib/db/schema";
+import {
+  applications,
+  companies,
+  contacts,
+  jobs,
+  stageEvents,
+} from "@/lib/db/schema";
 import { JOB_STATUSES, ROLE_TYPES } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -43,6 +49,13 @@ export default async function JobDetailPage({
     .from(stageEvents)
     .where(eq(stageEvents.jobId, id))
     .orderBy(desc(stageEvents.at))
+    .all();
+
+  const companyContacts = db
+    .select()
+    .from(contacts)
+    .where(eq(contacts.companyId, job.companyId))
+    .orderBy(contacts.name)
     .all();
 
   return (
@@ -116,6 +129,48 @@ export default async function JobDetailPage({
           <ApplicationForm jobId={job.id} values={application} />
         </section>
       )}
+
+      <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4">
+        <div className="flex items-baseline justify-between">
+          <h2 className="text-sm font-semibold">Contacts at {companyName}</h2>
+          <Link
+            href={`/companies/${job.companyId}`}
+            className="text-xs text-amber-700 hover:underline"
+          >
+            find more →
+          </Link>
+        </div>
+        {companyContacts.length === 0 ? (
+          <p className="mt-2 text-sm text-stone-400">
+            None saved yet — a referral-backed application beats ten cold ones.
+          </p>
+        ) : (
+          <ul className="mt-2 space-y-1.5">
+            {companyContacts.map((c) => (
+              <li key={c.id} className="flex items-center gap-2 text-sm">
+                <span className="font-medium">{c.name}</span>
+                <span className="truncate text-stone-500">{c.title ?? ""}</span>
+                {c.email && (
+                  <span className="font-mono text-xs text-stone-600">{c.email}</span>
+                )}
+                {c.linkedin && (
+                  <a
+                    href={c.linkedin}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs text-amber-700 hover:underline"
+                  >
+                    linkedin ↗
+                  </a>
+                )}
+                <span className="ml-auto text-xs text-stone-400">
+                  {c.outreachStatus !== "none" && c.outreachStatus}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       {job.description && (
         <section className="mt-4 rounded-lg border border-stone-200 bg-white p-4">

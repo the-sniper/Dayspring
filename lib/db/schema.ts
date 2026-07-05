@@ -107,22 +107,28 @@ export const stageEvents = sqliteTable(
   (t) => [index("stage_events_job_id_idx").on(t.jobId), index("stage_events_at_idx").on(t.at)],
 );
 
-// Tables only this pass — the Apollo contact finder and outreach queue land
-// in a later phase and write here.
-export const contacts = sqliteTable("contacts", {
-  id: integer("id").primaryKey({ autoIncrement: true }),
-  companyId: integer("company_id").references(() => companies.id),
-  name: text("name").notNull(),
-  title: text("title"),
-  email: text("email"),
-  linkedin: text("linkedin"),
-  source: text("source"),
-  outreachStatus: text("outreach_status")
-    .$type<OutreachStatus>()
-    .notNull()
-    .default("none"),
-  createdAt: text("created_at").notNull(),
-});
+export const contacts = sqliteTable(
+  "contacts",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    companyId: integer("company_id").references(() => companies.id),
+    name: text("name").notNull(),
+    title: text("title"),
+    email: text("email"),
+    linkedin: text("linkedin"),
+    source: text("source"),
+    // Apollo person id — dedupes repeat saves; NULL for manual contacts.
+    apolloId: text("apollo_id"),
+    // verified / guessed / unavailable etc. (Apollo's email_status)
+    emailStatus: text("email_status"),
+    outreachStatus: text("outreach_status")
+      .$type<OutreachStatus>()
+      .notNull()
+      .default("none"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("contacts_apollo_id_unique").on(t.apolloId)],
+);
 
 export const outreach = sqliteTable("outreach", {
   id: integer("id").primaryKey({ autoIncrement: true }),

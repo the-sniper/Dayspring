@@ -1,12 +1,14 @@
 import Link from "next/link";
-import { and, desc, eq, isNull, sql } from "drizzle-orm";
+import { and, desc, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import ErrorBanner from "@/components/error-banner";
 import PullButton from "@/components/pull-button";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
+import ScoreButton from "@/components/score-button";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
-import { companies, jobs } from "@/lib/db/schema";
+import { companies, jobs, settings } from "@/lib/db/schema";
+import { MIN_JD_CHARS } from "@/lib/jobs/score";
 import { ROLE_TYPES, type RoleType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -59,6 +61,35 @@ export default async function FeedPage({
 
   const unscored = rows.filter((r) => r.matchScore === null).length;
 
+  // Batch-scoring eligibility is global (new + wishlist, JD long enough),
+  // not limited to the current filter view.
+  const scorable =
+    db
+      .select({ n: sql<number>`count(*)` })
+      .from(jobs)
+      .where(
+        and(
+          isNull(jobs.matchScore),
+          sql`${jobs.status} in ('new','wishlist')`,
+          sql`length(${jobs.description}) >= ${MIN_JD_CHARS}`,
+        ),
+      )
+      .get()?.n ?? 0;
+
+  // "N scores predate your last profile edit — rescore?"
+  const profileUpdatedAt =
+    db.select().from(settings).where(eq(settings.key, "profile")).get()
+      ?.updatedAt ?? null;
+  const staleScores = profileUpdatedAt
+    ? (db
+        .select({ n: sql<number>`count(*)` })
+        .from(jobs)
+        .where(
+          and(isNotNull(jobs.scoredAt), sql`${jobs.scoredAt} < ${profileUpdatedAt}`),
+        )
+        .get()?.n ?? 0)
+    : 0;
+
   const filterHref = (r: string | null) => {
     const params = new URLSearchParams();
     if (showIgnored) params.set("ignored", "1");
@@ -93,11 +124,21 @@ export default async function FeedPage({
             </Link>
           </p>
         </div>
-        <PullButton />
+        <div className="flex items-start gap-2">
+          <ScoreButton unscoredCount={scorable} />
+          <PullButton />
+        </div>
       </div>
       <div className="mt-4">
         <ErrorBanner message={error} />
       </div>
+      {staleScores > 0 && (
+        <p className="mt-1 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          {staleScores} score{staleScores === 1 ? "" : "s"} predate your last
+          profile edit — Rescore from each job&apos;s detail page, or just
+          re-run scoring as new roles come in.
+        </p>
+      )}
 
       <div className="mt-2 flex flex-wrap gap-1.5">
         <Link href={filterHref(null)} className={chip(roleFilter === null)}>

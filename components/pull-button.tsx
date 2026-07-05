@@ -27,6 +27,7 @@ export default function PullButton() {
           {result.perCompany
             .map((c) => `${c.name}: +${c.added} of ${c.fetched}`)
             .join(" · ") || "no watched companies"}
+          {result.classified > 0 && ` · ${result.classified} titles classified`}
           {result.errors.map((e) => (
             <span key={e.name} className="block text-red-600">
               {e.name}: {e.message}

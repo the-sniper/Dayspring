@@ -1,6 +1,7 @@
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import ProfileForm from "@/components/profile-form";
+import { MODEL_CHEAP, MODEL_SCORE } from "@/lib/claude/client";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 
@@ -55,6 +56,14 @@ export default async function SettingsPage() {
           </dd>
           <dt className="font-medium">Database</dt>
           <dd className="font-mono text-xs leading-5">{dbPath}</dd>
+          <dt className="font-medium">Scoring model</dt>
+          <dd className="font-mono text-xs leading-5">
+            {MODEL_SCORE} <span className="font-sans text-stone-400">(~$0.02–0.03/job)</span>
+          </dd>
+          <dt className="font-medium">Parse/classify model</dt>
+          <dd className="font-mono text-xs leading-5">
+            {MODEL_CHEAP} <span className="font-sans text-stone-400">(sub-cent per call)</span>
+          </dd>
         </dl>
       </section>
     </div>

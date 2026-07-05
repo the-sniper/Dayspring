@@ -4,6 +4,7 @@ import { desc, eq } from "drizzle-orm";
 import ApplicationForm from "@/components/application-form";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
+import ScoreButton from "@/components/score-button";
 import StatusSelect from "@/components/status-select";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
@@ -77,7 +78,6 @@ export default async function JobDetailPage({
         <span>found {job.createdAt.slice(0, 10)}</span>
       </div>
 
-      {/* Match section — the Score button lands with the scoring milestone */}
       <section className="mt-6 rounded-lg border border-stone-200 bg-white p-4">
         <div className="flex items-center gap-2">
           <h2 className="text-sm font-semibold">Match</h2>
@@ -87,6 +87,9 @@ export default async function JobDetailPage({
               scored {job.scoredAt.slice(0, 10)}
             </span>
           )}
+          <span className="ml-auto">
+            <ScoreButton jobId={job.id} force={job.matchScore !== null} />
+          </span>
         </div>
         {job.fitSummary ? (
           <p className="mt-2 text-sm text-stone-700">{job.fitSummary}</p>

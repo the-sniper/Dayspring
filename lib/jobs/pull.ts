@@ -1,7 +1,9 @@
 // Next-free pull core — shared by the UI server action and the CLI script
 // (scripts/pull-jobs.ts, the future cron entry). Nothing in this import
 // chain may touch next/* APIs.
-import { and, isNotNull } from "drizzle-orm";
+import { and, inArray, isNotNull, isNull } from "drizzle-orm";
+import { hasApiKey } from "@/lib/claude/client";
+import { classifyRoles, CLASSIFY_BATCH_LIMIT } from "@/lib/claude/classify-roles";
 import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
 import { adapters } from "@/lib/integrations/ats";
@@ -12,6 +14,7 @@ export type PullResult = {
   perCompany: { name: string; fetched: number; added: number }[];
   errors: { name: string; message: string }[];
   newJobIds: number[];
+  classified: number;
 };
 
 export async function pullAllJobs(): Promise<PullResult> {
@@ -21,7 +24,12 @@ export async function pullAllJobs(): Promise<PullResult> {
     .where(and(isNotNull(companies.atsType), isNotNull(companies.atsSlug)))
     .all();
 
-  const result: PullResult = { perCompany: [], errors: [], newJobIds: [] };
+  const result: PullResult = {
+    perCompany: [],
+    errors: [],
+    newJobIds: [],
+    classified: 0,
+  };
 
   // One bad slug (404, empty board, timeout) never kills the run.
   const settled = await Promise.allSettled(
@@ -69,6 +77,34 @@ export async function pullAllJobs(): Promise<PullResult> {
     }
     result.perCompany.push({ name: company.name, fetched: fetched.length, added });
   });
+
+  // Cheap batched classify for this run's titles the regexes missed.
+  // Non-fatal: no key or a failed call just leaves roleType null (settable
+  // manually on the job detail page).
+  if (hasApiKey() && result.newJobIds.length > 0) {
+    try {
+      const untagged = db
+        .select({ id: jobs.id, title: jobs.title })
+        .from(jobs)
+        .where(and(inArray(jobs.id, result.newJobIds), isNull(jobs.roleType)))
+        .limit(CLASSIFY_BATCH_LIMIT)
+        .all();
+      if (untagged.length > 0) {
+        const roles = await classifyRoles(untagged.map((j) => j.title));
+        untagged.forEach((j, i) => {
+          if (roles[i]) {
+            db.update(jobs)
+              .set({ roleType: roles[i] })
+              .where(inArray(jobs.id, [j.id]))
+              .run();
+            result.classified++;
+          }
+        });
+      }
+    } catch {
+      // leave nulls
+    }
+  }
 
   return result;
 }

@@ -4,7 +4,13 @@ import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
-import { applications, companies, jobs, stageEvents } from "@/lib/db/schema";
+import {
+  applications,
+  companies,
+  jobs,
+  settings,
+  stageEvents,
+} from "@/lib/db/schema";
 import { outreachDue, staleApplications } from "@/lib/outreach/due";
 import { KANBAN_STATUSES, type JobStatus } from "@/lib/types";
 
@@ -76,9 +82,22 @@ export default async function DashboardPage() {
   const dueOutreach = outreachDue();
   const staleApps = staleApplications();
 
+  const lastDailyRun = db
+    .select()
+    .from(settings)
+    .where(eq(settings.key, "lastDailyRun"))
+    .get()?.value;
+
   return (
     <div className="max-w-4xl">
-      <h1 className="text-xl font-semibold">Dashboard</h1>
+      <div className="flex items-baseline justify-between">
+        <h1 className="text-xl font-semibold">Dashboard</h1>
+        {lastDailyRun && (
+          <p className="text-xs text-stone-400">
+            last daily run {lastDailyRun.slice(0, 16).replace("T", " ")}
+          </p>
+        )}
+      </div>
 
       <div className="mt-4 grid grid-cols-6 gap-2">
         {KANBAN_STATUSES.map((s) => (

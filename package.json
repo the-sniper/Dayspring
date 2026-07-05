@@ -13,7 +13,10 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
     "pull-jobs": "tsx scripts/pull-jobs.ts",
-    "gmail:auth": "tsx scripts/gmail-auth.ts"
+    "gmail:auth": "tsx scripts/gmail-auth.ts",
+    "daily": "tsx scripts/daily.ts",
+    "cron:install": "sh scripts/cron-install.sh",
+    "cron:uninstall": "sh scripts/cron-uninstall.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

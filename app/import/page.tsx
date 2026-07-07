@@ -1,17 +1,25 @@
 import ImportPanel from "@/components/import-panel";
+import { Download, FileDown, ClipboardPaste } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default function ImportPage() {
   return (
-    <div className="max-w-4xl">
-      <h1 className="text-xl font-semibold">Import</h1>
-      <p className="mt-1 text-sm text-stone-500">
-        Bridges for the closed products — bring jobs in from anywhere, review
-        the parse, then confirm. Nothing touches the tracker until you click
-        Import.
-      </p>
-      <div className="mt-5">
+    <div className="mx-auto max-w-5xl stagger-load">
+      <header className="mb-10">
+        <div className="flex items-center gap-2 text-muted-foreground mb-1">
+          <Download size={14} />
+          <span className="text-xs font-bold uppercase tracking-widest">Data Bridge</span>
+        </div>
+        <h1 className="text-4xl font-black tracking-tight text-foreground">
+          Import
+        </h1>
+        <p className="mt-2 text-sm font-medium text-muted-foreground max-w-2xl">
+          Bring your job search data from other platforms. Review the extracted records before confirming the import to your command center.
+        </p>
+      </header>
+
+      <div className="mt-8">
         <ImportPanel hasKey={!!process.env.ANTHROPIC_API_KEY} />
       </div>
     </div>

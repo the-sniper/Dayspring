@@ -3,6 +3,8 @@
 import { useTransition } from "react";
 import { setJobStatusAction } from "@/lib/actions/jobs";
 import { KANBAN_STATUSES, type JobStatus } from "@/lib/types";
+import { cn } from "@/lib/utils";
+import { ChevronDown, Loader2 } from "lucide-react";
 
 export default function StatusSelect({
   jobId,
@@ -14,27 +16,34 @@ export default function StatusSelect({
   statuses?: readonly JobStatus[];
 }) {
   const [pending, startTransition] = useTransition();
-  // Always render the current status even when it isn't in the offered list
-  // (e.g. a `new` job shown with kanban-only options).
   const options = statuses.includes(status) ? statuses : [status, ...statuses];
+  
   return (
-    <select
-      value={status}
-      disabled={pending}
-      onChange={(e) => {
-        const to = e.target.value as JobStatus;
-        startTransition(() => {
-          void setJobStatusAction(jobId, to);
-        });
-      }}
-      className="rounded border border-stone-300 bg-white px-1.5 py-0.5 text-xs text-stone-700 disabled:opacity-50"
-      aria-label="Job status"
-    >
-      {options.map((s) => (
-        <option key={s} value={s}>
-          {s}
-        </option>
-      ))}
-    </select>
+    <div className="relative inline-block">
+      <select
+        value={status}
+        disabled={pending}
+        onChange={(e) => {
+          const to = e.target.value as JobStatus;
+          startTransition(() => {
+            void setJobStatusAction(jobId, to);
+          });
+        }}
+        className={cn(
+          "appearance-none rounded-lg border border-border bg-card px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-muted-foreground transition-all focus:border-brand-500 focus:ring-1 focus:ring-brand-500 disabled:opacity-50 pr-6 cursor-pointer",
+          pending && "animate-pulse"
+        )}
+        aria-label="Job status"
+      >
+        {options.map((s) => (
+          <option key={s} value={s}>
+            {s}
+          </option>
+        ))}
+      </select>
+      <div className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-muted-foreground/50">
+        {pending ? <Loader2 size={10} className="animate-spin" /> : <ChevronDown size={10} />}
+      </div>
+    </div>
   );
 }

@@ -1,71 +1,78 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { scoreJobAction, scoreUnscoredAction } from "@/lib/actions/score";
+import { Sparkles, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { scoreUnscoredAction } from "@/lib/actions/score";
+import { cn } from "@/lib/utils";
+import { motion, AnimatePresence } from "framer-motion";
 
-// Two modes: batch (no jobId — "Score unscored (N)") and single job
-// (jobId set — "Score" / "Rescore" on the detail page).
-export default function ScoreButton({
-  jobId,
-  force = false,
-  unscoredCount,
-  label,
-}: {
-  jobId?: number;
-  force?: boolean;
-  unscoredCount?: number;
-  label?: string;
-}) {
-  const [message, setMessage] = useState<string | null>(null);
-  const [isError, setIsError] = useState(false);
+export default function ScoreButton({ unscoredCount }: { unscoredCount: number }) {
+  const [result, setResult] = useState<{
+    scored: number;
+    errors: number;
+  } | null>(null);
   const [pending, startTransition] = useTransition();
 
-  const batchLabel =
-    unscoredCount !== undefined ? `Score unscored (${unscoredCount})` : "Score unscored";
-  const text = label ?? (jobId ? (force ? "Rescore" : "Score") : batchLabel);
+  if (unscoredCount === 0 && !result) return null;
 
   return (
-    <div className="flex flex-col items-end gap-1">
+    <div className="flex flex-col items-end gap-2">
       <button
         type="button"
-        disabled={pending || (jobId === undefined && unscoredCount === 0)}
+        disabled={pending || (unscoredCount === 0 && !pending)}
         onClick={() =>
           startTransition(async () => {
-            setMessage(null);
-            if (jobId !== undefined) {
-              const res = await scoreJobAction(jobId, force);
-              setIsError(!res.ok);
-              setMessage(res.ok ? `Scored: ${res.score}` : res.error);
+            const res = await scoreUnscoredAction();
+            if (res.ok) {
+              setResult({ scored: res.scored, errors: res.errors });
             } else {
-              const res = await scoreUnscoredAction();
-              if (!res.ok) {
-                setIsError(true);
-                setMessage(res.error);
-              } else {
-                setIsError(res.failed > 0);
-                setMessage(
-                  `${res.scored} scored` +
-                    (res.failed ? `, ${res.failed} failed` : "") +
-                    (res.skippedThinJd ? `, ${res.skippedThinJd} thin-JD skipped` : "") +
-                    (res.remaining ? `, ${res.remaining} still unscored` : "") +
-                    ` · ${(res.tokens.input / 1000).toFixed(1)}k in / ${(res.tokens.output / 1000).toFixed(1)}k out tokens` +
-                    (res.errors.length ? ` · ${res.errors[0]}` : ""),
-                );
-              }
+              alert(res.error);
             }
           })
         }
-        className="rounded border border-amber-600 bg-amber-50 px-3 py-1.5 text-sm font-medium text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+        className={cn(
+          "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all shadow-sm active:scale-95",
+          pending
+            ? "bg-secondary text-muted-foreground cursor-not-allowed"
+            : "bg-brand-500 text-white hover:bg-brand-600 shadow-brand-500/20"
+        )}
       >
-        {pending ? "Scoring…" : text}
+        {pending ? (
+          <>
+            <Loader2 size={16} className="animate-spin" />
+            Scoring…
+          </>
+        ) : (
+          <>
+            <Sparkles size={16} />
+            Score unscored ({unscoredCount})
+          </>
+        )}
       </button>
-      {message && !pending && (
-        <p
-          className={`max-w-sm text-right text-xs ${isError ? "text-red-600" : "text-stone-500"}`}
-        >
-          {message}
-        </p>
-      )}
+
+      <AnimatePresence>
+        {result && !pending && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 10 }}
+            className="max-w-md space-y-1 rounded-xl border border-border bg-card p-3 text-right text-xs shadow-xl"
+          >
+            <div className="flex items-center justify-end gap-1.5 font-bold text-brand-600 dark:text-brand-400">
+              <CheckCircle2 size={14} />
+              <span>Scoring Complete</span>
+            </div>
+            <p className="text-muted-foreground font-medium">
+              {result.scored} jobs scored
+              {result.errors > 0 && (
+                <span className="text-destructive ml-1">
+                  · {result.errors} errors
+                </span>
+              )}
+            </p>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }

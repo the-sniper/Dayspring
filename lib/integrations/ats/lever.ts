@@ -11,18 +11,44 @@ type LeverPosting = {
   description?: string | null;
 };
 
+// Lever's unpaginated endpoint can take minutes for large boards (4MB+
+// payloads generated server-side), so we page through with limit/skip.
+// The API is also intermittently slow/flaky, so each page gets one retry.
+const PAGE_SIZE = 100;
+const MAX_PAGES = 30;
+const PAGE_ATTEMPTS = 2;
+
+async function fetchPage(slug: string, page: number): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < PAGE_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(
+        `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json&limit=${PAGE_SIZE}&skip=${page * PAGE_SIZE}`,
+        {
+          signal: AbortSignal.timeout(30_000),
+          headers: { accept: "application/json" },
+          cache: "no-store",
+        },
+      );
+    } catch (err) {
+      lastError = err;
+    }
+  }
+  throw lastError;
+}
+
 export const fetchLever: AtsAdapter = async (slug) => {
-  const res = await fetch(
-    `https://api.lever.co/v0/postings/${encodeURIComponent(slug)}?mode=json`,
-    {
-      signal: AbortSignal.timeout(15_000),
-      headers: { accept: "application/json" },
-      cache: "no-store",
-    },
-  );
-  if (!res.ok) throw new Error(`lever/${slug}: HTTP ${res.status}`);
-  const data = (await res.json()) as LeverPosting[];
-  if (!Array.isArray(data)) throw new Error(`lever/${slug}: unexpected response shape`);
+  const data: LeverPosting[] = [];
+  for (let page = 0; page < MAX_PAGES; page++) {
+    const res = await fetchPage(slug, page);
+    if (!res.ok) throw new Error(`lever/${slug}: HTTP ${res.status}`);
+    const batch = (await res.json()) as LeverPosting[];
+    if (!Array.isArray(batch)) {
+      throw new Error(`lever/${slug}: unexpected response shape`);
+    }
+    data.push(...batch);
+    if (batch.length < PAGE_SIZE) break;
+  }
   return data.map((j) => {
     const created = Number(j.createdAt);
     return {

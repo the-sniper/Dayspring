@@ -6,6 +6,7 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import { applications, jobs, outreach, stageEvents } from "@/lib/db/schema";
 import { createJobCore } from "@/lib/jobs/create";
+import { deriveJobMeta } from "@/lib/jobs/derive";
 import { setJobStatusCore } from "@/lib/jobs/transition";
 import {
   JOB_STATUSES,
@@ -62,14 +63,34 @@ export async function ignoreJobAction(jobId: number) {
 
 export async function updateJobAction(jobId: number, formData: FormData) {
   const roleTypeRaw = String(formData.get("roleType") ?? "");
+  const title = String(formData.get("title") ?? "").trim();
+  const location = String(formData.get("location") ?? "").trim() || null;
+  const description = String(formData.get("description") ?? "");
+  // Re-derive filterable metadata whenever location/description change.
+  const existing = db
+    .select({ title: jobs.title })
+    .from(jobs)
+    .where(eq(jobs.id, jobId))
+    .get();
+  const meta = deriveJobMeta({
+    title: title || existing?.title || "",
+    location,
+    description,
+  });
   db.update(jobs)
     .set({
       roleType: (ROLE_TYPES as readonly string[]).includes(roleTypeRaw)
         ? (roleTypeRaw as RoleType)
         : null,
       url: String(formData.get("url") ?? "").trim() || null,
-      location: String(formData.get("location") ?? "").trim() || null,
-      description: String(formData.get("description") ?? ""),
+      location,
+      isUs: meta.isUs,
+      workplaceType: meta.workplaceType,
+      employmentType: meta.employmentType,
+      salaryMin: meta.salaryMin,
+      salaryMax: meta.salaryMax,
+      salaryCurrency: meta.salaryCurrency,
+      description,
       updatedAt: new Date().toISOString(),
     })
     .where(eq(jobs.id, jobId))

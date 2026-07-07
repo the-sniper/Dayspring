@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { count, eq } from "drizzle-orm";
+import { Building2, Plus, ArrowUpRight, ShieldCheck, Briefcase } from "lucide-react";
 import CompanyForm from "@/components/company-form";
 import ErrorBanner from "@/components/error-banner";
 import RoleChip from "@/components/role-chip";
+import CompanyLogo from "@/components/company-logo";
 import { createCompanyAction } from "@/lib/actions/companies";
 import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
+import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
@@ -24,65 +27,131 @@ export default async function CompaniesPage({
     .all();
 
   return (
-    <div>
-      <h1 className="text-xl font-semibold">Companies</h1>
-      <p className="mt-1 text-sm text-stone-500">
-        Rows with an ATS + slug are watched — the feed pulls their boards.
-      </p>
-      <div className="mt-4">
-        <ErrorBanner message={error} />
-      </div>
+    <div className="mx-auto max-w-6xl">
+      <header className="mb-8 flex items-end justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2 text-muted-foreground mb-1">
+            <Building2 size={14} />
+            <span className="text-xs font-bold uppercase tracking-widest">Directory</span>
+          </div>
+          <h1 className="text-4xl font-black tracking-tight text-foreground">
+            Companies
+          </h1>
+          <p className="mt-2 text-sm font-medium text-muted-foreground">
+            Managing <span className="text-foreground">{rows.length}</span> tracked organizations
+          </p>
+        </div>
+        
+        <details className="group relative">
+          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/10 transition-all hover:scale-105 active:scale-95">
+            <Plus size={18} strokeWidth={3} />
+            Add Company
+          </summary>
+          <div className="absolute right-0 top-full z-50 mt-2 w-[450px] rounded-2xl border border-border bg-popover p-6 shadow-2xl shadow-black/20">
+            <h3 className="mb-4 text-lg font-bold text-foreground">Track New Company</h3>
+            <CompanyForm action={createCompanyAction} submitLabel="Add Company" />
+          </div>
+        </details>
+      </header>
 
-      <table className="mt-2 w-full max-w-4xl border-collapse text-sm">
-        <thead>
-          <tr className="border-b border-stone-300 text-left text-xs uppercase tracking-wide text-stone-500">
-            <th className="py-2 pr-4">Name</th>
-            <th className="py-2 pr-4">ATS</th>
-            <th className="py-2 pr-4">Roles</th>
-            <th className="py-2 pr-4">Visa</th>
-            <th className="py-2 pr-4">Jobs</th>
-            <th className="py-2" />
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map(({ company: c, jobCount }) => (
-            <tr key={c.id} className="border-b border-stone-200">
-              <td className="py-2 pr-4 font-medium">{c.name}</td>
-              <td className="py-2 pr-4 text-stone-600">
-                {c.atsType && c.atsSlug ? `${c.atsType}/${c.atsSlug}` : "—"}
-              </td>
-              <td className="py-2 pr-4">
-                <span className="flex gap-1">
-                  {(c.roleTypes ?? []).map((r) => (
-                    <RoleChip key={r} role={r} />
-                  ))}
-                </span>
-              </td>
-              <td className="py-2 pr-4">{c.visaSponsor ? "✓" : "—"}</td>
-              <td className="py-2 pr-4 tabular-nums">{jobCount}</td>
-              <td className="py-2">
-                <Link
-                  href={`/companies/${c.id}`}
-                  className="text-amber-700 hover:underline"
-                >
-                  edit
-                </Link>
-              </td>
-            </tr>
-          ))}
-          {rows.length === 0 && (
-            <tr>
-              <td colSpan={6} className="py-6 text-center text-stone-400">
-                No companies yet — add one below or run <code>npm run seed</code>.
-              </td>
-            </tr>
-          )}
-        </tbody>
-      </table>
+      {error && (
+        <div className="mb-6">
+          <ErrorBanner message={error} />
+        </div>
+      )}
 
-      <h2 className="mt-10 text-base font-semibold">Add company</h2>
-      <div className="mt-3">
-        <CompanyForm action={createCompanyAction} submitLabel="Add company" />
+      <div className="overflow-hidden rounded-2xl border border-border bg-card shadow-sm">
+        <table className="w-full border-collapse text-left text-sm">
+          <thead>
+            <tr className="border-b border-border bg-secondary/30 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <th className="px-6 py-4">Company</th>
+              <th className="px-4 py-4">ATS / Tracking</th>
+              <th className="px-4 py-4">Hiring Roles</th>
+              <th className="px-4 py-4 text-center">Visa</th>
+              <th className="px-4 py-4 text-center">Jobs</th>
+              <th className="px-6 py-4 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {rows.map(({ company: c, jobCount }) => (
+              <tr key={c.id} className="group transition-colors hover:bg-secondary/20">
+                <td className="px-6 py-5">
+                  <div className="flex items-center gap-3">
+                    <CompanyLogo name={c.name} className="h-10 w-10 text-xs" />
+                    <div>
+                      <Link
+                        href={`/companies/${c.id}`}
+                        className="font-bold text-foreground hover:text-brand-600 transition-colors cursor-pointer"
+                      >
+                        {c.name}
+                      </Link>
+                      {c.domain && (
+                        <p className="text-xs font-medium text-muted-foreground">{c.domain}</p>
+                      )}
+                    </div>
+                  </div>
+                </td>
+                <td className="px-4 py-5">
+                  {c.atsType && c.atsSlug ? (
+                    <div className="flex flex-col gap-1">
+                      <span className="w-fit rounded-md bg-stone-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-stone-500 dark:bg-stone-800 dark:text-stone-400">
+                        {c.atsType}
+                      </span>
+                      <span className="font-mono text-[11px] text-muted-foreground">{c.atsSlug}</span>
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground/30">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-5">
+                  <div className="flex flex-wrap gap-1">
+                    {(c.roleTypes ?? []).map((r) => (
+                      <RoleChip key={r} role={r} />
+                    ))}
+                    {(c.roleTypes ?? []).length === 0 && (
+                      <span className="text-muted-foreground/30">—</span>
+                    )}
+                  </div>
+                </td>
+                <td className="px-4 py-5 text-center">
+                  {c.visaSponsor ? (
+                    <div className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-emerald-50 text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">
+                      <ShieldCheck size={14} strokeWidth={3} />
+                    </div>
+                  ) : (
+                    <span className="text-muted-foreground/30">—</span>
+                  )}
+                </td>
+                <td className="px-4 py-5 text-center">
+                  <div className="inline-flex items-center gap-1 font-bold tabular-nums text-foreground">
+                    <Briefcase size={12} className="text-muted-foreground/50" />
+                    {jobCount}
+                  </div>
+                </td>
+                <td className="px-6 py-5 text-right">
+                  <Link
+                    href={`/companies/${c.id}`}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-bold text-muted-foreground transition-all hover:border-brand-500 hover:text-brand-600 active:scale-95 cursor-pointer"
+                  >
+                    Edit
+                    <ArrowUpRight size={12} />
+                  </Link>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {rows.length === 0 && (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-secondary text-muted-foreground">
+              <Building2 size={24} />
+            </div>
+            <h3 className="text-lg font-bold text-foreground">No companies yet</h3>
+            <p className="mt-1 max-w-xs text-sm text-muted-foreground">
+              Add your first company manually above or run the seed script.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

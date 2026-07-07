@@ -15,7 +15,7 @@ export const fetchGreenhouse: AtsAdapter = async (slug) => {
   const res = await fetch(
     `https://boards-api.greenhouse.io/v1/boards/${encodeURIComponent(slug)}/jobs?content=true`,
     {
-      signal: AbortSignal.timeout(15_000),
+      signal: AbortSignal.timeout(30_000),
       headers: { accept: "application/json" },
       cache: "no-store",
     },

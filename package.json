@@ -13,6 +13,7 @@
     "db:studio": "drizzle-kit studio",
     "seed": "tsx scripts/seed.ts",
     "pull-jobs": "tsx scripts/pull-jobs.ts",
+    "backfill": "tsx scripts/backfill-jobs.ts",
     "gmail:auth": "tsx scripts/gmail-auth.ts",
     "daily": "tsx scripts/daily.ts",
     "cron:install": "sh scripts/cron-install.sh",
@@ -22,10 +23,14 @@
     "@anthropic-ai/sdk": "^0.110.0",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "better-sqlite3": "^11.10.0",
+    "clsx": "^2.1.1",
     "drizzle-orm": "^0.44.2",
+    "framer-motion": "^12.42.2",
+    "lucide-react": "^1.23.0",
     "next": "^15.3.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "tailwind-merge": "^3.6.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {

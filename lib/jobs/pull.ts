@@ -8,10 +8,11 @@ import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
 import { adapters } from "@/lib/integrations/ats";
 import { dedupeKey } from "@/lib/jobs/dedupe";
+import { deriveJobMeta } from "@/lib/jobs/derive";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
 
 export type PullResult = {
-  perCompany: { name: string; fetched: number; added: number }[];
+  perCompany: { name: string; fetched: number; added: number; skipped: number }[];
   errors: { name: string; message: string }[];
   newJobIds: number[];
   classified: number;
@@ -50,7 +51,19 @@ export async function pullAllJobs(): Promise<PullResult> {
     }
     const { company, fetched } = s.value;
     let added = 0;
+    let skipped = 0;
     for (const nj of fetched) {
+      const meta = deriveJobMeta({
+        title: nj.title,
+        location: nj.location,
+        description: nj.descriptionText,
+      });
+      // Strict US-only ingestion: drop roles whose location is confirmed
+      // non-US. Unknown/remote-no-country (isUs === null) are kept.
+      if (meta.isUs === false) {
+        skipped++;
+        continue;
+      }
       const res = db
         .insert(jobs)
         .values({
@@ -63,6 +76,12 @@ export async function pullAllJobs(): Promise<PullResult> {
           dedupeKey: dedupeKey(company.id, nj.title, nj.url),
           status: "new",
           location: nj.location,
+          isUs: meta.isUs,
+          workplaceType: meta.workplaceType,
+          employmentType: meta.employmentType,
+          salaryMin: meta.salaryMin,
+          salaryMax: meta.salaryMax,
+          salaryCurrency: meta.salaryCurrency,
           description: nj.descriptionText,
           postedAt: nj.postedAt,
           createdAt: now,
@@ -75,7 +94,12 @@ export async function pullAllJobs(): Promise<PullResult> {
         result.newJobIds.push(Number(res.lastInsertRowid));
       }
     }
-    result.perCompany.push({ name: company.name, fetched: fetched.length, added });
+    result.perCompany.push({
+      name: company.name,
+      fetched: fetched.length,
+      added,
+      skipped,
+    });
   });
 
   // Cheap batched classify for this run's titles the regexes missed.

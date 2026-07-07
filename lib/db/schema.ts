@@ -12,10 +12,12 @@ import {
 } from "drizzle-orm/sqlite-core";
 import type {
   AtsType,
+  EmploymentType,
   JobSource,
   JobStatus,
   OutreachStatus,
   RoleType,
+  WorkplaceType,
 } from "@/lib/types";
 
 export const companies = sqliteTable(
@@ -56,6 +58,15 @@ export const jobs = sqliteTable(
     dedupeKey: text("dedupe_key").notNull(),
     status: text("status").$type<JobStatus>().notNull().default("new"),
     location: text("location"),
+    // Derived, filterable location metadata (see lib/jobs/derive.ts). isUs is
+    // nullable: 1 = US, 0 = confirmed non-US, NULL = unknown/remote-no-country.
+    isUs: integer("is_us", { mode: "boolean" }),
+    workplaceType: text("workplace_type").$type<WorkplaceType>(),
+    employmentType: text("employment_type").$type<EmploymentType>(),
+    // Annualized USD comp mined from the description; NULL when not stated.
+    salaryMin: integer("salary_min"),
+    salaryMax: integer("salary_max"),
+    salaryCurrency: text("salary_currency"),
     description: text("description").notNull().default(""),
     postedAt: text("posted_at"),
     matchScore: integer("match_score"),
@@ -76,6 +87,7 @@ export const jobs = sqliteTable(
     uniqueIndex("jobs_dedupe_key_unique").on(t.dedupeKey),
     index("jobs_status_idx").on(t.status),
     index("jobs_company_id_idx").on(t.companyId),
+    index("jobs_is_us_idx").on(t.isUs),
   ],
 );
 

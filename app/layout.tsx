@@ -7,15 +7,20 @@ export const metadata: Metadata = {
   description: "Job search command center",
 };
 
+const themeInitScript = `(function(){try{var t=localStorage.getItem('theme');var d=t?t==='dark':window.matchMedia('(prefers-color-scheme: dark)').matches;if(d)document.documentElement.classList.add('dark');}catch(e){}})();`;
+
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className="min-h-screen bg-stone-50 text-stone-900 antialiased">
+    <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-screen bg-background text-foreground antialiased">
         <div className="flex min-h-screen">
           <Nav />
-          <main className="min-w-0 flex-1 px-8 py-6">{children}</main>
+          <main className="min-w-0 flex-1 px-10 py-12">{children}</main>
         </div>
       </body>
     </html>

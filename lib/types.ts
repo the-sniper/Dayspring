@@ -46,6 +46,34 @@ export type JobSource = (typeof JOB_SOURCES)[number];
 export const ATS_TYPES = ["greenhouse", "lever", "ashby"] as const;
 export type AtsType = (typeof ATS_TYPES)[number];
 
+// Where the work happens, parsed from the free-text ATS location string.
+export const WORKPLACE_TYPES = ["remote", "hybrid", "onsite"] as const;
+export type WorkplaceType = (typeof WORKPLACE_TYPES)[number];
+
+export const WORKPLACE_TYPE_LABELS: Record<WorkplaceType, string> = {
+  remote: "Remote",
+  hybrid: "Hybrid",
+  onsite: "On-site",
+};
+
+// Engagement type, inferred from title + description keywords.
+export const EMPLOYMENT_TYPES = [
+  "full-time",
+  "part-time",
+  "contract",
+  "internship",
+  "temporary",
+] as const;
+export type EmploymentType = (typeof EMPLOYMENT_TYPES)[number];
+
+export const EMPLOYMENT_TYPE_LABELS: Record<EmploymentType, string> = {
+  "full-time": "Full-time",
+  "part-time": "Part-time",
+  contract: "Contract",
+  internship: "Internship",
+  temporary: "Temporary",
+};
+
 export type OutreachStatus = "none" | "queued" | "sent" | "replied";
 
 // Shared shape both import bridges (CSV + paste-parse) produce. Also the

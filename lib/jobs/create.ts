@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { applications, companies, jobs, stageEvents } from "@/lib/db/schema";
 import { dedupeKey } from "@/lib/jobs/dedupe";
+import { deriveJobMeta } from "@/lib/jobs/derive";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
 import type { JobSource, JobStatus, RoleType } from "@/lib/types";
 
@@ -44,7 +45,13 @@ export function createJobCore(
   const title = input.title.trim();
   const url = input.url?.trim() || null;
   const status = input.status ?? "new";
+  const location = input.location?.trim() || null;
+  const description = input.description ?? "";
   const now = new Date().toISOString();
+
+  // Manual/imported rows are trusted (user chose to add them), so we derive
+  // and store the filterable metadata but never drop non-US here.
+  const meta = deriveJobMeta({ title, location, description });
 
   const res = db
     .insert(jobs)
@@ -57,8 +64,14 @@ export function createJobCore(
       externalId: input.externalId ?? null,
       dedupeKey: dedupeKey(companyId, title, url),
       status,
-      location: input.location?.trim() || null,
-      description: input.description ?? "",
+      location,
+      isUs: meta.isUs,
+      workplaceType: meta.workplaceType,
+      employmentType: meta.employmentType,
+      salaryMin: meta.salaryMin,
+      salaryMax: meta.salaryMax,
+      salaryCurrency: meta.salaryCurrency,
+      description,
       postedAt: input.postedAt ?? null,
       createdAt: now,
       updatedAt: now,

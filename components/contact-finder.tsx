@@ -13,7 +13,6 @@ import {
   Search, 
   UserPlus, 
   Mail, 
-  Linkedin, 
   Trash2, 
   Loader2, 
   Check,
@@ -135,9 +134,10 @@ export default function ContactFinder({
                         href={p.linkedinUrl}
                         target="_blank"
                         rel="noreferrer"
+                        title="View LinkedIn"
                         className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-brand-600 transition-colors cursor-pointer"
                       >
-                        <Linkedin size={14} />
+                        <ExternalLink size={14} />
                       </a>
                     )}
                     {p.saved ? (
@@ -209,9 +209,10 @@ export default function ContactFinder({
                         href={c.linkedin}
                         target="_blank"
                         rel="noreferrer"
+                        title="View LinkedIn"
                         className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-brand-600 transition-colors cursor-pointer"
                       >
-                        <Linkedin size={14} />
+                        <ExternalLink size={14} />
                       </a>
                     )}
                     {c.outreachStatus !== "none" && (

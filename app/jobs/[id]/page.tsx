@@ -4,22 +4,21 @@ import { desc, eq } from "drizzle-orm";
 import { 
   ArrowLeft, 
   ExternalLink, 
-  Trash2, 
   History, 
   Users, 
   FileText, 
   Sparkles,
   MapPin,
-  Calendar,
   Building2,
   Check,
   Settings
 } from "lucide-react";
 import ApplicationForm from "@/components/application-form";
+import DeleteForm from "@/components/delete-form";
 import DraftOutreachButton from "@/components/draft-outreach-button";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
-import ScoreButton from "@/components/score-button";
+import ScoreJobButton from "@/components/score-job-button";
 import StatusSelect from "@/components/status-select";
 import TailorSection from "@/components/tailor-section";
 import CompanyLogo from "@/components/company-logo";
@@ -147,7 +146,7 @@ export default async function JobDetailPage({
                   </span>
                 )}
                 <ScoreBadge score={job.matchScore} />
-                <ScoreButton jobId={job.id} force={job.matchScore !== null} />
+                <ScoreJobButton jobId={job.id} force={job.matchScore !== null} />
               </div>
             </div>
             
@@ -341,17 +340,11 @@ export default async function JobDetailPage({
           </section>
 
           <div className="pt-4">
-            <form action={deleteJobAction.bind(null, job.id)} onSubmit={(e) => {
-              if (!confirm("Are you sure you want to delete this job?")) e.preventDefault();
-            }}>
-              <button
-                type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-destructive/20 bg-destructive/5 py-2.5 text-xs font-bold text-destructive transition-all hover:bg-destructive hover:text-white active:scale-95 cursor-pointer"
-              >
-                <Trash2 size={14} />
-                Delete Opportunity
-              </button>
-            </form>
+            <DeleteForm
+              action={deleteJobAction.bind(null, job.id)}
+              confirmMessage="Are you sure you want to delete this job?"
+              label="Delete Opportunity"
+            />
           </div>
         </div>
       </div>

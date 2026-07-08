@@ -24,7 +24,7 @@ export default function ScoreButton({ unscoredCount }: { unscoredCount: number }
           startTransition(async () => {
             const res = await scoreUnscoredAction();
             if (res.ok) {
-              setResult({ scored: res.scored, errors: res.errors });
+              setResult({ scored: res.scored, errors: res.failed });
             } else {
               alert(res.error);
             }

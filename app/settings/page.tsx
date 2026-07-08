@@ -15,6 +15,7 @@ import { MODEL_CHEAP, MODEL_SCORE } from "@/lib/claude/client";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
+import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 import { getGmailConfig, hasGmailEnv } from "@/lib/integrations/gmail/client";
 import { cn } from "@/lib/utils";
 
@@ -109,6 +110,22 @@ export default async function SettingsPage() {
                 {!hasApolloKey() && (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
                     Add <code className="text-rose-500">APOLLO_API_KEY</code> to enable contact discovery.
+                  </p>
+                )}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Happenstance</span>
+                  {hasHappenstanceKey() ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">Active</span>
+                  ) : (
+                    <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">Missing</span>
+                  )}
+                </div>
+                {!hasHappenstanceKey() && (
+                  <p className="text-[10px] font-medium text-muted-foreground leading-normal">
+                    Add <code className="text-rose-500">HAPPENSTANCE_API_KEY</code> to search your warm network.
                   </p>
                 )}
               </div>

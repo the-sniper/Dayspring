@@ -2,14 +2,15 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Rss, 
-  KanbanSquare, 
-  Send, 
-  Download, 
-  Building2, 
+import {
+  LayoutDashboard,
+  Rss,
+  KanbanSquare,
+  Send,
+  Download,
+  Building2,
   Settings,
+  Users2,
   Sunrise
 } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
@@ -20,6 +21,7 @@ const links = [
   { href: "/feed", label: "Feed", icon: Rss },
   { href: "/board", label: "Board", icon: KanbanSquare },
   { href: "/outreach", label: "Outreach", icon: Send },
+  { href: "/network", label: "Network", icon: Users2 },
   { href: "/import", label: "Import", icon: Download },
   { href: "/companies", label: "Companies", icon: Building2 },
   { href: "/settings", label: "Settings", icon: Settings },

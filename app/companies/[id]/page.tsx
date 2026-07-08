@@ -5,12 +5,13 @@ import {
   ArrowLeft, 
   Building2, 
   Users, 
-  Trash2, 
   Globe,
   LayoutDashboard
 } from "lucide-react";
 import CompanyForm from "@/components/company-form";
 import ContactFinder from "@/components/contact-finder";
+import NetworkFinder from "@/components/network-finder";
+import DeleteForm from "@/components/delete-form";
 import ErrorBanner from "@/components/error-banner";
 import CompanyLogo from "@/components/company-logo";
 import {
@@ -20,6 +21,7 @@ import {
 import { db } from "@/lib/db";
 import { companies, contacts, jobs } from "@/lib/db/schema";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
+import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 import type { RoleType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -133,23 +135,12 @@ export default async function CompanyEditPage({
           </section>
 
           <div className="pt-4">
-            <form 
-              action={deleteCompanyAction.bind(null, id)} 
-              onSubmit={(e) => {
-                if (!confirm("Are you sure you want to delete this company?")) e.preventDefault();
-              }}
-            >
-              <button
-                type="submit"
-                className="flex w-full items-center justify-center gap-2 rounded-xl border border-destructive/20 bg-destructive/5 py-3 text-sm font-bold text-destructive transition-all hover:bg-destructive hover:text-white active:scale-95 cursor-pointer"
-              >
-                <Trash2 size={16} />
-                Delete Company
-              </button>
-              <p className="mt-2 text-center text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
-                Blocked while jobs reference it
-              </p>
-            </form>
+            <DeleteForm
+              action={deleteCompanyAction.bind(null, id)}
+              confirmMessage="Are you sure you want to delete this company?"
+              label="Delete Company"
+              helperText="Blocked while jobs reference it"
+            />
           </div>
         </div>
 
@@ -172,6 +163,14 @@ export default async function CompanyEditPage({
               hasApolloKey={hasApolloKey()}
               domainSet={!!company.domain}
             />
+
+            <div className="mt-6 border-t border-border pt-6">
+              <NetworkFinder
+                companyId={id}
+                hasKey={hasHappenstanceKey()}
+                seedQuery={`who do I know at ${company.name}?`}
+              />
+            </div>
           </section>
         </div>
       </div>

@@ -132,18 +132,31 @@ export const contacts = sqliteTable(
     title: text("title"),
     email: text("email"),
     linkedin: text("linkedin"),
+    // "apollo" | "manual" | "happenstance" | "linkedin"
     source: text("source"),
     // Apollo person id — dedupes repeat saves; NULL for manual contacts.
     apolloId: text("apollo_id"),
     // verified / guessed / unavailable etc. (Apollo's email_status)
     emailStatus: text("email_status"),
+    // Happenstance person id — dedupes warm-network saves; NULL otherwise.
+    happenstanceId: text("happenstance_id"),
+    twitter: text("twitter"),
+    // Happenstance "why you know them" summary.
+    summary: text("summary"),
+    // Mutual-connection names (Happenstance).
+    mutuals: text("mutuals", { mode: "json" }).$type<string[]>(),
+    // Free text; also holds the LinkedIn "Position @ Company / Connected on" line.
+    notes: text("notes"),
     outreachStatus: text("outreach_status")
       .$type<OutreachStatus>()
       .notNull()
       .default("none"),
     createdAt: text("created_at").notNull(),
   },
-  (t) => [uniqueIndex("contacts_apollo_id_unique").on(t.apolloId)],
+  (t) => [
+    uniqueIndex("contacts_apollo_id_unique").on(t.apolloId),
+    uniqueIndex("contacts_happenstance_id_unique").on(t.happenstanceId),
+  ],
 );
 
 export const outreach = sqliteTable("outreach", {

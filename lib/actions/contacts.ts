@@ -62,8 +62,24 @@ export async function searchApolloAction(
       totalPages: res.totalPages,
     };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Search failed" };
+    return { ok: false, error: apolloError(err, "Search failed") };
   }
+}
+
+// Apollo gates People Search + enrichment behind paid plans and returns a
+// verbose JSON blob on 403. Surface something a human can act on.
+function apolloError(err: unknown, fallback: string): string {
+  const raw = err instanceof Error ? err.message : "";
+  if (raw.includes("API_INACCESSIBLE") || raw.includes("not accessible")) {
+    return "Apollo's contact search requires a paid plan — your current API key is on the free tier, which no longer allows this endpoint. Upgrade at app.apollo.io or add contacts manually.";
+  }
+  if (raw.includes("HTTP 401")) {
+    return "Apollo rejected the API key. Double-check APOLLO_API_KEY in .env.local.";
+  }
+  if (raw.includes("HTTP 429")) {
+    return "Apollo rate limit hit. Wait a moment and try again.";
+  }
+  return raw || fallback;
 }
 
 export async function saveContactAction(
@@ -122,7 +138,7 @@ export async function enrichContactAction(
     revalidatePath("/", "layout");
     return { ok: true, email: res.email };
   } catch (err) {
-    return { ok: false, error: err instanceof Error ? err.message : "Enrichment failed" };
+    return { ok: false, error: apolloError(err, "Enrichment failed") };
   }
 }
 

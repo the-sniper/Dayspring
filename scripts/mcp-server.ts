@@ -249,6 +249,47 @@ async function main() {
     },
   );
 
+  // Warm-network search — the ONE deliberate exception to "MCP spends nothing":
+  // Happenstance has no free preview tier, so search itself costs credits.
+  // Loudly labeled so the human opts in per call.
+  server.registerTool(
+    "happenstance_search",
+    {
+      description:
+        "Search your OWN network (Happenstance) in natural language for warm intros. COSTS 2 HAPPENSTANCE CREDITS per call. Returns people you already know; saving to contacts happens in the UI.",
+      inputSchema: { text: z.string() },
+    },
+    async ({ text: query }) => {
+      const { hasHappenstanceKey } = await import(
+        "../lib/integrations/happenstance/client"
+      );
+      if (!hasHappenstanceKey()) return text({ error: "HAPPENSTANCE_API_KEY not set" });
+      const { searchNetwork } = await import(
+        "../lib/integrations/happenstance/search"
+      );
+      return text(await searchNetwork({ text: query }));
+    },
+  );
+
+  server.registerTool(
+    "happenstance_research",
+    {
+      description:
+        "Compile a deep profile for one person via Happenstance. COSTS 1 HAPPENSTANCE CREDIT. Pass a description (name + company/title/location to disambiguate).",
+      inputSchema: { description: z.string() },
+    },
+    async ({ description }) => {
+      const { hasHappenstanceKey } = await import(
+        "../lib/integrations/happenstance/client"
+      );
+      if (!hasHappenstanceKey()) return text({ error: "HAPPENSTANCE_API_KEY not set" });
+      const { researchPerson } = await import(
+        "../lib/integrations/happenstance/research"
+      );
+      return text(await researchPerson({ description }));
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dayspring mcp server ready (stdio)");

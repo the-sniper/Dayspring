@@ -30,7 +30,9 @@ import {
   ROLE_TYPES,
   WORKPLACE_TYPE_LABELS,
   WORKPLACE_TYPES,
+  type EmploymentType,
   type RoleType,
+  type WorkplaceType,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -73,15 +75,15 @@ export default async function FeedPage({
       : (ROLE_TYPES as readonly string[]).includes(sp.role ?? "")
         ? (sp.role as RoleType)
         : null;
-  const workplace = (WORKPLACE_TYPES as readonly string[]).includes(
-    sp.workplace ?? "",
-  )
-    ? sp.workplace!
+  const workplace: WorkplaceType | "" = (
+    WORKPLACE_TYPES as readonly string[]
+  ).includes(sp.workplace ?? "")
+    ? (sp.workplace as WorkplaceType)
     : "";
-  const employment = (EMPLOYMENT_TYPES as readonly string[]).includes(
-    sp.employment ?? "",
-  )
-    ? sp.employment!
+  const employment: EmploymentType | "" = (
+    EMPLOYMENT_TYPES as readonly string[]
+  ).includes(sp.employment ?? "")
+    ? (sp.employment as EmploymentType)
     : "";
   const q = (sp.q ?? "").trim();
   const loc = (sp.loc ?? "").trim();

@@ -26,7 +26,11 @@ export async function draftOutreach(
   profile: string,
   job: JobForScoring,
   contact: { name: string; title: string | null },
+  brief?: string | null,
 ): Promise<OutreachDraft> {
+  const briefBlock = brief
+    ? `\n\nCOMPANY RESEARCH (real facts you may reference for a specific hook; do not invent beyond them):\n${brief.slice(0, 3000)}`
+    : "";
   const response = await getClient().messages.parse({
     model: MODEL_PREMIUM,
     max_tokens: 8000,
@@ -42,7 +46,7 @@ export async function draftOutreach(
     messages: [
       {
         role: "user",
-        content: `CONTACT: ${contact.name}${contact.title ? ` — ${contact.title}` : ""}\n\nJOB\nTitle: ${job.title}\nCompany: ${job.companyName}\n\nDESCRIPTION:\n${job.description.slice(0, 8000)}`,
+        content: `CONTACT: ${contact.name}${contact.title ? ` — ${contact.title}` : ""}\n\nJOB\nTitle: ${job.title}\nCompany: ${job.companyName}\n\nDESCRIPTION:\n${job.description.slice(0, 8000)}${briefBlock}`,
       },
     ],
     output_config: { format: zodOutputFormat(DraftResult) },

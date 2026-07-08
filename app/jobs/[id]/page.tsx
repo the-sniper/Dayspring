@@ -11,17 +11,20 @@ import {
   MapPin,
   Building2,
   Check,
-  Settings
+  Settings,
+  Telescope
 } from "lucide-react";
 import ApplicationForm from "@/components/application-form";
 import DeleteForm from "@/components/delete-form";
 import DraftOutreachButton from "@/components/draft-outreach-button";
+import ResearchButton from "@/components/research-button";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
 import ScoreJobButton from "@/components/score-job-button";
 import StatusSelect from "@/components/status-select";
 import TailorSection from "@/components/tailor-section";
 import CompanyLogo from "@/components/company-logo";
+import { latestJobBrief } from "@/lib/research/core";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
 import {
@@ -54,6 +57,11 @@ export default async function JobDetailPage({
     .get();
   if (!row) notFound();
   const { job, companyName } = row;
+
+  const briefRow = latestJobBrief(job.id);
+  const jobBrief = briefRow
+    ? { brief: briefRow.brief, sources: briefRow.sources ?? [] }
+    : null;
 
   const application = db
     .select()
@@ -173,6 +181,19 @@ export default async function JobDetailPage({
                 ))}
               </div>
             )}
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Telescope size={20} className="text-brand-500" />
+              <h2 className="text-lg font-bold text-foreground">Research</h2>
+            </div>
+            <p className="mb-4 text-xs font-medium text-muted-foreground">
+              Current facts about the role & company (web search) — cited, and
+              fed into tailoring + outreach so your materials reference real
+              specifics.
+            </p>
+            <ResearchButton subjectType="job" id={job.id} existing={jobBrief} />
           </section>
 
           <TailorSection

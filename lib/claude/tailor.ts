@@ -25,7 +25,14 @@ export type TailorOutcome = {
 export async function tailorJob(
   profile: string,
   job: JobForScoring,
+  brief?: string | null,
 ): Promise<TailorOutcome> {
+  // Research brief (if any) rides in the user turn — real, current company
+  // facts to reference — NOT the cached profile prefix. Never override the
+  // never-fabricate rule: the brief bounds what's true about the company.
+  const briefBlock = brief
+    ? `\n\nCOMPANY RESEARCH (accurate facts about the employer — you may reference these; do not invent beyond them):\n${brief.slice(0, 4000)}`
+    : "";
   const response = await getClient().messages.parse({
     model: MODEL_PREMIUM,
     max_tokens: 12_000,
@@ -42,7 +49,7 @@ export async function tailorJob(
     messages: [
       {
         role: "user",
-        content: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${job.description.slice(0, 12_000)}`,
+        content: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${job.description.slice(0, 12_000)}${briefBlock}`,
       },
     ],
     output_config: { format: zodOutputFormat(TailorResult) },

@@ -6,6 +6,7 @@ import { db } from "@/lib/db";
 import { companies, contacts, jobs, outreach } from "@/lib/db/schema";
 import { sendEmail } from "@/lib/integrations/gmail/client";
 import { getProfile } from "@/lib/jobs/score";
+import { latestCompanyBrief } from "@/lib/research/core";
 
 export const FOLLOW_UP_DAYS = 5;
 
@@ -33,6 +34,8 @@ export async function createDraft(
     .get();
   if (!row) return { ok: false, error: "Job not found" };
 
+  const brief = latestCompanyBrief(row.job.companyId)?.brief ?? null;
+
   try {
     const draft = await draftOutreach(
       profile,
@@ -43,6 +46,7 @@ export async function createDraft(
         description: row.job.description,
       },
       { name: contact.name, title: contact.title },
+      brief,
     );
     const res = db
       .insert(outreach)

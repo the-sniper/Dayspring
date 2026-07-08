@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { count, eq } from "drizzle-orm";
-import { 
-  ArrowLeft, 
-  Building2, 
-  Users, 
+import {
+  ArrowLeft,
+  Building2,
+  Users,
   Globe,
-  LayoutDashboard
+  LayoutDashboard,
+  Telescope
 } from "lucide-react";
 import CompanyForm from "@/components/company-form";
 import ContactFinder from "@/components/contact-finder";
 import NetworkFinder from "@/components/network-finder";
+import ResearchButton from "@/components/research-button";
 import DeleteForm from "@/components/delete-form";
 import ErrorBanner from "@/components/error-banner";
 import CompanyLogo from "@/components/company-logo";
@@ -22,6 +24,7 @@ import { db } from "@/lib/db";
 import { companies, contacts, jobs } from "@/lib/db/schema";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
+import { latestCompanyBrief } from "@/lib/research/core";
 import type { RoleType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
@@ -52,6 +55,11 @@ export default async function CompanyEditPage({
   const id = Number(idRaw);
   const company = db.select().from(companies).where(eq(companies.id, id)).get();
   if (!company) notFound();
+
+  const cBriefRow = latestCompanyBrief(id);
+  const companyBrief = cBriefRow
+    ? { brief: cBriefRow.brief, sources: cBriefRow.sources ?? [] }
+    : null;
 
   const jobCount =
     db
@@ -122,6 +130,22 @@ export default async function CompanyEditPage({
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-7 space-y-8">
+          <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <div className="mb-4 flex items-center gap-2">
+              <Telescope size={20} className="text-brand-500" />
+              <h2 className="text-lg font-bold text-foreground">Research</h2>
+            </div>
+            <p className="mb-4 text-xs font-medium text-muted-foreground">
+              Current company intel (web search) — cited, and reused across
+              every role you tailor or reach out about here.
+            </p>
+            <ResearchButton
+              subjectType="company"
+              id={id}
+              existing={companyBrief}
+            />
+          </section>
+
           <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h2 className="mb-6 flex items-center gap-2 text-lg font-bold text-foreground">
               <Building2 size={20} className="text-brand-500" />

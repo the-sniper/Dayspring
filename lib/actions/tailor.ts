@@ -7,6 +7,7 @@ import { tailorJob } from "@/lib/claude/tailor";
 import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
 import { getProfile, MIN_JD_CHARS } from "@/lib/jobs/score";
+import { latestCompanyBrief } from "@/lib/research/core";
 
 export async function tailorJobAction(
   jobId: number,
@@ -29,13 +30,20 @@ export async function tailorJobAction(
     return { ok: false, error: "Insufficient JD — add a description before tailoring." };
   }
 
+  // Thread the latest research brief for this company (if any) into tailoring.
+  const brief = latestCompanyBrief(row.job.companyId)?.brief ?? null;
+
   try {
-    const res = await tailorJob(profile, {
-      title: row.job.title,
-      companyName: row.companyName,
-      location: row.job.location,
-      description: row.job.description,
-    });
+    const res = await tailorJob(
+      profile,
+      {
+        title: row.job.title,
+        companyName: row.companyName,
+        location: row.job.location,
+        description: row.job.description,
+      },
+      brief,
+    );
     db.update(jobs)
       .set({
         tailoredBullets: res.bullets,

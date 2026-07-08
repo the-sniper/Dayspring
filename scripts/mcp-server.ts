@@ -290,6 +290,29 @@ async function main() {
     },
   );
 
+  server.registerTool(
+    "research_brief",
+    {
+      description:
+        "Generate a cited web-research brief on a job or company (funding, news, tech, interview intel). Uses Claude web search — costs Anthropic tokens only. Stored and reused by tailoring + outreach.",
+      inputSchema: {
+        subjectType: z.enum(["job", "company"]),
+        id: z.number(),
+        deep: z.boolean().optional(),
+      },
+    },
+    async ({ subjectType, id, deep }) => {
+      const { hasApiKey } = await import("../lib/claude/client");
+      if (!hasApiKey()) return text({ error: "ANTHROPIC_API_KEY not set" });
+      const { briefForJob, briefForCompany } = await import("../lib/research/core");
+      const res =
+        subjectType === "job"
+          ? await briefForJob(id, deep ?? false)
+          : await briefForCompany(id, deep ?? false);
+      return text(res);
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dayspring mcp server ready (stdio)");

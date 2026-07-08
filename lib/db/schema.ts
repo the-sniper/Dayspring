@@ -179,6 +179,29 @@ export const outreach = sqliteTable("outreach", {
   createdAt: text("created_at").notNull(),
 });
 
+// Claude web_search research briefs. Exactly one of jobId/companyId is set
+// (a job brief also carries its companyId so outreach can reuse it). A
+// "Regenerate" inserts a new row — latest-by-createdAt wins, history kept.
+export const researchBriefs = sqliteTable(
+  "research_briefs",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id").references(() => jobs.id),
+    companyId: integer("company_id").references(() => companies.id),
+    kind: text("kind").notNull(), // "job" | "company"
+    brief: text("brief").notNull(), // markdown prose from the web_search call
+    sources: text("sources", { mode: "json" }).$type<
+      { title: string; url: string }[]
+    >(),
+    model: text("model"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("research_briefs_job_id_idx").on(t.jobId),
+    index("research_briefs_company_id_idx").on(t.companyId),
+  ],
+);
+
 // Key-value store; row key='profile' holds the resume/preferences text.
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),

@@ -142,6 +142,13 @@ export async function enrichContactAction(
   }
 }
 
+// Free local search over saved/imported contacts (no Happenstance credits).
+export async function searchLocalContactsAction(query: string) {
+  const { searchContacts, listContacts } = await import("@/lib/contacts/query");
+  const q = query.trim();
+  return q ? searchContacts(q, 60) : listContacts({ limit: 60 });
+}
+
 export async function deleteContactAction(
   contactId: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {

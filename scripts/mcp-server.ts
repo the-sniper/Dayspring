@@ -313,6 +313,20 @@ async function main() {
     },
   );
 
+  server.registerTool(
+    "read_codes",
+    {
+      description:
+        "Read recent verification/OTP codes and magic links from your Gmail inbox (last ~20 min). Read-only; never sends or spends.",
+    },
+    async () => {
+      const { hasGmail } = await import("../lib/integrations/gmail/client");
+      if (!hasGmail()) return text({ error: "Gmail not connected" });
+      const { findRecentCodes } = await import("../lib/gmail/otp");
+      return text(await findRecentCodes({ withinMinutes: 20 }));
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dayspring mcp server ready (stdio)");

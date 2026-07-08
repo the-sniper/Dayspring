@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
+import { htmlToText } from "@/lib/html";
 import { refreshAccessToken } from "./oauth";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -149,4 +150,74 @@ export async function getThread(threadId: string): Promise<ThreadMessage[]> {
 
 export async function getProfile(): Promise<{ emailAddress: string }> {
   return gmailFetch<{ emailAddress: string }>("/profile");
+}
+
+function fromBase64Url(data: string): string {
+  const b64 = data.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(b64, "base64").toString("utf-8");
+}
+
+// List message ids matching an RFC 5322 search query (e.g.
+// "newer_than:1h in:inbox verification"). Read-only; uses gmail.readonly.
+export async function listMessages(
+  query: string,
+  max = 15,
+): Promise<{ id: string; threadId: string }[]> {
+  const data = await gmailFetch<{
+    messages?: { id: string; threadId: string }[];
+  }>(`/messages?q=${encodeURIComponent(query)}&maxResults=${max}`);
+  return data.messages ?? [];
+}
+
+export type GmailMessage = {
+  id: string;
+  from: string;
+  subject: string;
+  internalDate: number; // epoch ms
+  text: string; // decoded plain-text body (html stripped as fallback)
+};
+
+type RawPart = {
+  mimeType?: string;
+  body?: { data?: string };
+  parts?: RawPart[];
+};
+
+// Depth-first collect the best text body: prefer text/plain, fall back to
+// stripped text/html.
+function extractText(payload: RawPart | undefined): string {
+  if (!payload) return "";
+  const plain: string[] = [];
+  const html: string[] = [];
+  const walk = (p: RawPart) => {
+    if (p.body?.data) {
+      const decoded = fromBase64Url(p.body.data);
+      if (p.mimeType === "text/plain") plain.push(decoded);
+      else if (p.mimeType === "text/html") html.push(decoded);
+    }
+    for (const child of p.parts ?? []) walk(child);
+  };
+  walk(payload);
+  if (plain.length) return plain.join("\n");
+  if (html.length) return htmlToText(html.join("\n"));
+  return "";
+}
+
+export async function getMessage(id: string): Promise<GmailMessage> {
+  const data = await gmailFetch<{
+    id: string;
+    internalDate?: string;
+    snippet?: string;
+    payload?: RawPart & { headers?: { name: string; value: string }[] };
+  }>(`/messages/${id}?format=full`);
+  const headers = data.payload?.headers ?? [];
+  const header = (name: string) =>
+    headers.find((h) => h.name.toLowerCase() === name)?.value ?? "";
+  return {
+    id: data.id,
+    from: header("from"),
+    subject: header("subject"),
+    internalDate: Number(data.internalDate ?? 0),
+    text: extractText(data.payload) || (data.snippet ?? ""),
+  };
 }

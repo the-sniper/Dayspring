@@ -17,7 +17,9 @@ import {
 } from "lucide-react";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
+import VerificationCodes from "@/components/verification-codes";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
+import { hasGmail } from "@/lib/integrations/gmail/client";
 import { db } from "@/lib/db";
 import {
   applications,
@@ -97,6 +99,7 @@ export default async function DashboardPage() {
   const today = new Date().toISOString().slice(0, 10);
   const dueOutreach = outreachDue();
   const staleApps = staleApplications();
+  const gmailConnected = hasGmail();
 
   const lastDailyRun = db
     .select()
@@ -260,6 +263,8 @@ export default async function DashboardPage() {
 
         {/* Sidebar Column */}
         <div className="lg:col-span-4 space-y-8">
+          <VerificationCodes hasGmail={gmailConnected} />
+
           {(dueOutreach.length > 0 || staleApps.length > 0) && (
             <section className="rounded-2xl bg-brand-500 p-5 text-white shadow-xl shadow-brand-500/20">
               <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest mb-4">

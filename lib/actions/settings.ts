@@ -22,3 +22,17 @@ export async function saveProfileAction(
   revalidatePath("/settings");
   return { savedAt: now };
 }
+
+// Absolute path to the resume PDF on disk — apply-assist uploads it.
+export async function saveResumePathAction(
+  path: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const value = path.trim();
+  const now = new Date().toISOString();
+  db.insert(settings)
+    .values({ key: "resumePath", value, updatedAt: now })
+    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } })
+    .run();
+  revalidatePath("/settings");
+  return { ok: true };
+}

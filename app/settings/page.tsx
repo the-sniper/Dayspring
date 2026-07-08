@@ -1,3 +1,4 @@
+import fs from "node:fs";
 import path from "node:path";
 import { eq } from "drizzle-orm";
 import { 
@@ -11,6 +12,7 @@ import {
   Info
 } from "lucide-react";
 import ProfileForm from "@/components/profile-form";
+import ResumePathForm from "@/components/resume-path-form";
 import VaultPanel from "@/components/vault-panel";
 import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
@@ -32,6 +34,10 @@ export default async function SettingsPage() {
     .get();
   const hasKey = !!process.env.ANTHROPIC_API_KEY;
   const gmail = getGmailConfig();
+  const resumePath =
+    db.select().from(settings).where(eq(settings.key, "resumePath")).get()?.value ??
+    "";
+  const resumeExists = resumePath ? fs.existsSync(resumePath) : false;
   const dbPath =
     process.env.DAYSPRING_DB_PATH ??
     path.join(process.cwd(), "data", "dayspring.db");
@@ -74,6 +80,13 @@ export default async function SettingsPage() {
                 </p>
               )}
             </div>
+          </section>
+
+          <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-foreground">
+              Apply-assist
+            </h2>
+            <ResumePathForm value={resumePath} exists={resumeExists} />
           </section>
 
           <VaultPanel

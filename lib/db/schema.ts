@@ -77,6 +77,10 @@ export const jobs = sqliteTable(
     tailoredBullets: text("tailored_bullets", { mode: "json" }).$type<string[]>(),
     coverLetter: text("cover_letter"),
     tailoredAt: text("tailored_at"),
+    // Apply-assist lifecycle — orthogonal to the pipeline `status`.
+    // null / "in_progress" / "submitted" / "abandoned".
+    applyStatus: text("apply_status"),
+    applyLog: text("apply_log", { mode: "json" }).$type<string[]>(),
     createdAt: text("created_at").notNull(), // = date_found
     updatedAt: text("updated_at").notNull(),
   },

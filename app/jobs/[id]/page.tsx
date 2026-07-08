@@ -1,3 +1,4 @@
+import { existsSync } from "node:fs";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
@@ -15,6 +16,7 @@ import {
   Telescope
 } from "lucide-react";
 import ApplicationForm from "@/components/application-form";
+import ApplyHandoff from "@/components/apply-handoff";
 import DeleteForm from "@/components/delete-form";
 import DraftOutreachButton from "@/components/draft-outreach-button";
 import ResearchButton from "@/components/research-button";
@@ -24,6 +26,7 @@ import ScoreJobButton from "@/components/score-job-button";
 import StatusSelect from "@/components/status-select";
 import TailorSection from "@/components/tailor-section";
 import CompanyLogo from "@/components/company-logo";
+import { getProfile } from "@/lib/jobs/score";
 import { latestJobBrief } from "@/lib/research/core";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
@@ -32,6 +35,7 @@ import {
   companies,
   contacts,
   jobs,
+  settings,
   stageEvents,
 } from "@/lib/db/schema";
 import { JOB_STATUSES, ROLE_TYPES } from "@/lib/types";
@@ -62,6 +66,13 @@ export default async function JobDetailPage({
   const jobBrief = briefRow
     ? { brief: briefRow.brief, sources: briefRow.sources ?? [] }
     : null;
+
+  const applyProfileReady = getProfile() !== null;
+  const resumePathSetting =
+    db.select().from(settings).where(eq(settings.key, "resumePath")).get()?.value ?? "";
+  const applyResumeReady = resumePathSetting
+    ? existsSync(resumePathSetting)
+    : false;
 
   const application = db
     .select()
@@ -202,6 +213,16 @@ export default async function JobDetailPage({
             coverLetter={job.coverLetter}
             tailoredAt={job.tailoredAt}
           />
+
+          <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
+            <ApplyHandoff
+              jobId={job.id}
+              hasProfile={applyProfileReady}
+              hasResume={applyResumeReady}
+              hasTailored={!!(job.tailoredBullets?.length || job.coverLetter)}
+              applyStatus={job.applyStatus}
+            />
+          </section>
 
           {job.description && (
             <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">

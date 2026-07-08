@@ -16,6 +16,7 @@
     "backfill": "tsx scripts/backfill-jobs.ts",
     "gmail:auth": "tsx scripts/gmail-auth.ts",
     "daily": "tsx scripts/daily.ts",
+    "apply": "tsx scripts/apply.ts",
     "cron:install": "sh scripts/cron-install.sh",
     "cron:uninstall": "sh scripts/cron-uninstall.sh"
   },
@@ -40,6 +41,7 @@
     "@types/react": "^19.1.0",
     "@types/react-dom": "^19.1.0",
     "drizzle-kit": "^0.31.1",
+    "playwright": "^1.61.1",
     "tailwindcss": "^4.1.8",
     "tsx": "^4.19.4",
     "typescript": "^5.8.3"

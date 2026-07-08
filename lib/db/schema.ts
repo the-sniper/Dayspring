@@ -202,7 +202,28 @@ export const researchBriefs = sqliteTable(
   ],
 );
 
+// Job-site accounts created during apply-assist. Passwords are AES-256-GCM
+// encrypted at rest (lib/vault/crypto.ts); the key never leaves .env.local.
+export const siteCredentials = sqliteTable(
+  "site_credentials",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    site: text("site").notNull(), // human label, e.g. "Workday — Nvidia"
+    host: text("host").notNull(), // e.g. "nvidia.wd5.myworkdayjobs.com"
+    username: text("username").notNull(), // email used to register
+    passwordEnc: text("password_enc").notNull(),
+    iv: text("iv").notNull(),
+    authTag: text("auth_tag").notNull(),
+    createdAt: text("created_at").notNull(),
+    lastUsedAt: text("last_used_at"),
+    notes: text("notes"),
+  },
+  (t) => [uniqueIndex("site_credentials_host_username_unique").on(t.host, t.username)],
+);
+
 // Key-value store; row key='profile' holds the resume/preferences text.
+// Also: gmailRefreshToken, gmailEmail, lastDailyRun, resumePath (M19),
+// masterPasswordEnc (M18, JSON {iv,authTag,cipherText}), tos:<host> (M20).
 export const settings = sqliteTable("settings", {
   key: text("key").primaryKey(),
   value: text("value").notNull(),

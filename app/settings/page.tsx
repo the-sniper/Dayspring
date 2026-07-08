@@ -11,6 +11,9 @@ import {
   Info
 } from "lucide-react";
 import ProfileForm from "@/components/profile-form";
+import VaultPanel from "@/components/vault-panel";
+import { hasVaultKey } from "@/lib/vault/crypto";
+import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
 import { MODEL_CHEAP, MODEL_SCORE } from "@/lib/claude/client";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
@@ -72,6 +75,12 @@ export default async function SettingsPage() {
               )}
             </div>
           </section>
+
+          <VaultPanel
+            hasVaultKey={hasVaultKey()}
+            hasMaster={hasMasterPassword()}
+            credentials={listCredentials()}
+          />
         </div>
 
         <div className="lg:col-span-4 space-y-6">

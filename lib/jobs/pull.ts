@@ -1,15 +1,29 @@
 // Next-free pull core — shared by the UI server action and the CLI script
 // (scripts/pull-jobs.ts, the future cron entry). Nothing in this import
 // chain may touch next/* APIs.
-import { and, inArray, isNotNull, isNull } from "drizzle-orm";
+import { and, eq, inArray, isNotNull, isNull, or } from "drizzle-orm";
 import { hasApiKey } from "@/lib/claude/client";
 import { classifyRoles, CLASSIFY_BATCH_LIMIT } from "@/lib/claude/classify-roles";
 import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
 import { adapters } from "@/lib/integrations/ats";
+import { fetchWorkday } from "@/lib/integrations/ats/workday";
+import type { NormalizedJob } from "@/lib/integrations/ats/types";
 import { dedupeKey } from "@/lib/jobs/dedupe";
 import { deriveJobMeta } from "@/lib/jobs/derive";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
+
+// Resolve the right fetcher per company: bare-slug ATSes use the registry;
+// Workday needs its three-value locator.
+function fetchForCompany(c: typeof companies.$inferSelect): Promise<NormalizedJob[]> {
+  if (c.atsType === "workday") {
+    if (!c.atsTenant || !c.atsHost || !c.atsSite) {
+      return Promise.reject(new Error(`workday/${c.name}: missing tenant/host/site`));
+    }
+    return fetchWorkday({ tenant: c.atsTenant, host: c.atsHost, site: c.atsSite });
+  }
+  return adapters[c.atsType!](c.atsSlug!);
+}
 
 export type PullResult = {
   perCompany: { name: string; fetched: number; added: number; skipped: number }[];
@@ -19,10 +33,24 @@ export type PullResult = {
 };
 
 export async function pullAllJobs(): Promise<PullResult> {
+  // Watched = a bare-slug ATS with a slug, OR Workday with all three fields.
   const watched = db
     .select()
     .from(companies)
-    .where(and(isNotNull(companies.atsType), isNotNull(companies.atsSlug)))
+    .where(
+      and(
+        isNotNull(companies.atsType),
+        or(
+          isNotNull(companies.atsSlug),
+          and(
+            eq(companies.atsType, "workday"),
+            isNotNull(companies.atsTenant),
+            isNotNull(companies.atsHost),
+            isNotNull(companies.atsSite),
+          ),
+        ),
+      ),
+    )
     .all();
 
   const result: PullResult = {
@@ -36,7 +64,7 @@ export async function pullAllJobs(): Promise<PullResult> {
   const settled = await Promise.allSettled(
     watched.map(async (c) => ({
       company: c,
-      fetched: await adapters[c.atsType!](c.atsSlug!),
+      fetched: await fetchForCompany(c),
     })),
   );
 

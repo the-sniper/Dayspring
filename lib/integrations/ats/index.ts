@@ -6,7 +6,10 @@ import { fetchGreenhouse } from "./greenhouse";
 import { fetchLever } from "./lever";
 import type { AtsAdapter } from "./types";
 
-export const adapters: Record<AtsType, AtsAdapter> = {
+// Bare-slug ATSes only. Workday needs a three-value locator, so it's a factory
+// (lib/integrations/ats/workday.ts) resolved per-company in lib/jobs/pull.ts —
+// deliberately not in this registry.
+export const adapters: Record<Exclude<AtsType, "workday">, AtsAdapter> = {
   greenhouse: fetchGreenhouse,
   lever: fetchLever,
   ashby: fetchAshby,

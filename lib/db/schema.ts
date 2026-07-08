@@ -32,9 +32,15 @@ export const companies = sqliteTable(
       .notNull()
       .default(false),
     source: text("source"),
-    // "Watched" for the feed = both atsType and atsSlug set.
+    // "Watched" for the feed = atsType + atsSlug set (GH/Lever/Ashby), OR
+    // atsType=workday + all three Workday fields set.
     atsType: text("ats_type").$type<AtsType>(),
     atsSlug: text("ats_slug"),
+    // Workday needs three values, not one slug: tenant + wd{N} datacenter +
+    // site. Null for GH/Lever/Ashby.
+    atsTenant: text("ats_tenant"),
+    atsHost: text("ats_host"), // e.g. "wd5"
+    atsSite: text("ats_site"),
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("companies_name_unique").on(t.name)],

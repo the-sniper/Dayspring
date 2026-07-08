@@ -37,13 +37,14 @@ export const JOB_SOURCES = [
   "greenhouse",
   "lever",
   "ashby",
+  "workday",
   "manual",
   "csv",
   "paste",
 ] as const;
 export type JobSource = (typeof JOB_SOURCES)[number];
 
-export const ATS_TYPES = ["greenhouse", "lever", "ashby"] as const;
+export const ATS_TYPES = ["greenhouse", "lever", "ashby", "workday"] as const;
 export type AtsType = (typeof ATS_TYPES)[number];
 
 // Where the work happens, parsed from the free-text ATS location string.

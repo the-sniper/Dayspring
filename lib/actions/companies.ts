@@ -15,12 +15,15 @@ function parseCompanyForm(formData: FormData) {
     ? (atsTypeRaw as AtsType)
     : null;
   const atsSlug = String(formData.get("atsSlug") ?? "").trim() || null;
+  const atsTenant = String(formData.get("atsTenant") ?? "").trim() || null;
+  const atsHost = String(formData.get("atsHost") ?? "").trim() || null;
+  const atsSite = String(formData.get("atsSite") ?? "").trim() || null;
   const roleTypes = formData
     .getAll("roleTypes")
     .map(String)
     .filter((r): r is RoleType => (ROLE_TYPES as readonly string[]).includes(r));
   const visaSponsor = formData.get("visaSponsor") === "on";
-  return { name, domain, atsType, atsSlug, roleTypes, visaSponsor };
+  return { name, domain, atsType, atsSlug, atsTenant, atsHost, atsSite, roleTypes, visaSponsor };
 }
 
 export async function createCompanyAction(formData: FormData) {
@@ -45,6 +48,9 @@ export async function createCompanyAction(formData: FormData) {
       source: "manual",
       atsType: f.atsType,
       atsSlug: f.atsSlug,
+      atsTenant: f.atsTenant,
+      atsHost: f.atsHost,
+      atsSite: f.atsSite,
       createdAt: new Date().toISOString(),
     })
     .run();
@@ -65,6 +71,9 @@ export async function updateCompanyAction(id: number, formData: FormData) {
       visaSponsor: f.visaSponsor,
       atsType: f.atsType,
       atsSlug: f.atsSlug,
+      atsTenant: f.atsTenant,
+      atsHost: f.atsHost,
+      atsSite: f.atsSite,
     })
     .where(eq(companies.id, id))
     .run();

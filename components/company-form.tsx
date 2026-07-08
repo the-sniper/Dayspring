@@ -10,6 +10,9 @@ type CompanyValues = {
   domain?: string | null;
   atsType?: AtsType | null;
   atsSlug?: string | null;
+  atsTenant?: string | null;
+  atsHost?: string | null;
+  atsSite?: string | null;
   roleTypes?: RoleType[] | null;
   visaSponsor?: boolean;
 };
@@ -78,10 +81,34 @@ export default function CompanyForm({
             name="atsSlug"
             defaultValue={values.atsSlug ?? ""}
             className={inputCls}
-            placeholder="e.g. vercel"
+            placeholder="e.g. vercel (Greenhouse/Lever/Ashby)"
           />
         </div>
       </div>
+
+      {/* Workday needs three values instead of a slug. Leave blank for others.
+          From a Workday careers URL like
+          https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite →
+          tenant=nvidia, datacenter=wd5, site=NVIDIAExternalCareerSite. */}
+      <details className="rounded-xl border border-border bg-secondary/20 p-3">
+        <summary className="cursor-pointer text-xs font-bold text-muted-foreground">
+          Workday details (only if ATS = Workday)
+        </summary>
+        <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <span className={labelCls}>Tenant</span>
+            <input name="atsTenant" defaultValue={values.atsTenant ?? ""} className={inputCls} placeholder="nvidia" />
+          </div>
+          <div>
+            <span className={labelCls}>Datacenter</span>
+            <input name="atsHost" defaultValue={values.atsHost ?? ""} className={inputCls} placeholder="wd5" />
+          </div>
+          <div>
+            <span className={labelCls}>Site</span>
+            <input name="atsSite" defaultValue={values.atsSite ?? ""} className={inputCls} placeholder="NVIDIAExternalCareerSite" />
+          </div>
+        </div>
+      </details>
 
       <div>
         <span className={labelCls}>Hiring Roles</span>

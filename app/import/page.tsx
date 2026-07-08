@@ -1,5 +1,6 @@
 import ImportPanel from "@/components/import-panel";
-import { Download, FileDown, ClipboardPaste } from "lucide-react";
+import LinkedinImportPanel from "@/components/linkedin-import-panel";
+import { Download, Users2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
@@ -19,9 +20,20 @@ export default function ImportPage() {
         </p>
       </header>
 
-      <div className="mt-8">
+      <section>
+        <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          Jobs
+        </h2>
         <ImportPanel hasKey={!!process.env.ANTHROPIC_API_KEY} />
-      </div>
+      </section>
+
+      <section className="mt-14">
+        <h2 className="mb-4 flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-muted-foreground">
+          <Users2 size={14} />
+          Contacts
+        </h2>
+        <LinkedinImportPanel />
+      </section>
     </div>
   );
 }

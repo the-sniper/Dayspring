@@ -2,6 +2,7 @@ import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { htmlToText } from "@/lib/html";
+import { getKey } from "@/lib/keys";
 import { refreshAccessToken } from "./oauth";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
@@ -20,8 +21,8 @@ export type GmailConfig = {
 };
 
 export function getGmailConfig(): GmailConfig | null {
-  const clientId = process.env.GOOGLE_CLIENT_ID;
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
+  const clientId = getKey("GOOGLE_CLIENT_ID");
+  const clientSecret = getKey("GOOGLE_CLIENT_SECRET");
   if (!clientId || !clientSecret) return null;
   const refreshToken = getSetting("gmailRefreshToken");
   if (!refreshToken) return null;
@@ -32,8 +33,9 @@ export function hasGmail(): boolean {
   return getGmailConfig() !== null;
 }
 
+// Are OAuth client credentials available (env or Settings → API Keys)?
 export function hasGmailEnv(): boolean {
-  return !!process.env.GOOGLE_CLIENT_ID && !!process.env.GOOGLE_CLIENT_SECRET;
+  return !!getKey("GOOGLE_CLIENT_ID") && !!getKey("GOOGLE_CLIENT_SECRET");
 }
 
 // Access-token cache survives HMR via globalThis, same trick as lib/db.
@@ -45,7 +47,7 @@ async function getAccessToken(): Promise<string> {
   const cached = globalForGmail.gmailToken;
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
   const config = getGmailConfig();
-  if (!config) throw new Error("Gmail is not connected — run `npm run gmail:auth`.");
+  if (!config) throw new Error("Gmail is not connected — use Connect Gmail in Settings.");
   const { accessToken, expiresIn } = await refreshAccessToken(config);
   globalForGmail.gmailToken = {
     token: accessToken,

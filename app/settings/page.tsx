@@ -11,30 +11,72 @@ import {
   Zap,
   Info
 } from "lucide-react";
+import ApiKeysPanel, { type KeyRowView } from "@/components/api-keys-panel";
+import AutomationPanel from "@/components/automation-panel";
 import MasterResumesPanel from "@/components/master-resumes-panel";
 import ProfileForm from "@/components/profile-form";
 import ResumePathForm from "@/components/resume-path-form";
 import VaultPanel from "@/components/vault-panel";
+import { dailyRunStatusAction } from "@/lib/actions/automation";
 import { listMasters } from "@/lib/resumes/core";
 import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
-import { MODEL_CHEAP, MODEL_SCORE } from "@/lib/claude/client";
+import { MODEL_CHEAP, MODEL_SCORE, hasApiKey } from "@/lib/claude/client";
 import { db } from "@/lib/db";
 import { settings } from "@/lib/db/schema";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 import { getGmailConfig, hasGmailEnv } from "@/lib/integrations/gmail/client";
+import { hasSavedKey, keySource } from "@/lib/keys";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+const KEY_ROWS: Omit<KeyRowView, "source" | "hasSaved">[] = [
+  {
+    name: "ANTHROPIC_API_KEY",
+    label: "Anthropic",
+    purpose: "Scoring, tailoring, resumes, research, outreach drafts",
+    getUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    name: "APOLLO_API_KEY",
+    label: "Apollo",
+    purpose: "Contact discovery + email reveal",
+    getUrl: "https://app.apollo.io/#/settings/integrations/api",
+  },
+  {
+    name: "HAPPENSTANCE_API_KEY",
+    label: "Happenstance",
+    purpose: "Warm-network search over your connected accounts",
+    getUrl: "https://happenstance.ai",
+  },
+  {
+    name: "GOOGLE_CLIENT_ID",
+    label: "Google client ID",
+    purpose: "Gmail connect (Desktop OAuth client)",
+    getUrl: "https://console.cloud.google.com/apis/credentials",
+  },
+  {
+    name: "GOOGLE_CLIENT_SECRET",
+    label: "Google client secret",
+    purpose: "Gmail connect (Desktop OAuth client)",
+    getUrl: "https://console.cloud.google.com/apis/credentials",
+  },
+];
+
+export default async function SettingsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ gmail?: string; gmailError?: string }>;
+}) {
+  const { gmail: gmailOk, gmailError } = await searchParams;
   const profile = db
     .select()
     .from(settings)
     .where(eq(settings.key, "profile"))
     .get();
-  const hasKey = !!process.env.ANTHROPIC_API_KEY;
+  const hasKey = hasApiKey();
   const gmail = getGmailConfig();
   const resumePath =
     db.select().from(settings).where(eq(settings.key, "resumePath")).get()?.value ??
@@ -55,6 +97,19 @@ export default async function SettingsPage() {
           Settings
         </h1>
       </header>
+
+      {(gmailOk || gmailError) && (
+        <div
+          className={cn(
+            "mb-6 rounded-xl border p-4 text-sm font-bold",
+            gmailOk
+              ? "border-emerald-300/50 bg-emerald-50/50 text-emerald-700 dark:border-emerald-900/40 dark:bg-emerald-950/20 dark:text-emerald-400"
+              : "border-rose-300/50 bg-rose-50/50 text-rose-700 dark:border-rose-900/40 dark:bg-rose-950/20 dark:text-rose-400",
+          )}
+        >
+          {gmailOk ? `Gmail ${gmailOk.replaceAll("+", " ")} ✓` : `Gmail: ${gmailError}`}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
         <div className="lg:col-span-8 space-y-8">
@@ -83,6 +138,14 @@ export default async function SettingsPage() {
               )}
             </div>
           </section>
+
+          <ApiKeysPanel
+            keys={KEY_ROWS.map((k) => ({
+              ...k,
+              source: keySource(k.name as Parameters<typeof keySource>[0]),
+              hasSaved: hasSavedKey(k.name as Parameters<typeof hasSavedKey>[0]),
+            }))}
+          />
 
           <MasterResumesPanel
             masters={listMasters().map((m) => ({
@@ -133,7 +196,7 @@ export default async function SettingsPage() {
                 </div>
                 {!hasKey && (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
-                    Add <code className="text-rose-500">ANTHROPIC_API_KEY</code> to enable scoring and AI parsing.
+                    Paste your <code className="text-rose-500">Anthropic</code> key in API Keys to enable scoring and AI parsing.
                   </p>
                 )}
               </div>
@@ -149,7 +212,7 @@ export default async function SettingsPage() {
                 </div>
                 {!hasApolloKey() && (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
-                    Add <code className="text-rose-500">APOLLO_API_KEY</code> to enable contact discovery.
+                    Paste your <code className="text-rose-500">Apollo</code> key in API Keys to enable contact discovery.
                   </p>
                 )}
               </div>
@@ -165,7 +228,7 @@ export default async function SettingsPage() {
                 </div>
                 {!hasHappenstanceKey() && (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
-                    Add <code className="text-rose-500">HAPPENSTANCE_API_KEY</code> to search your warm network.
+                    Paste your <code className="text-rose-500">Happenstance</code> key in API Keys to search your warm network.
                   </p>
                 )}
               </div>
@@ -180,17 +243,35 @@ export default async function SettingsPage() {
                   )}
                 </div>
                 {gmail ? (
-                  <p className="text-[10px] font-medium text-muted-foreground truncate">
-                    {gmail.email}
-                  </p>
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[10px] font-medium text-muted-foreground truncate">
+                      {gmail.email}
+                    </p>
+                    <a
+                      href="/api/gmail/auth"
+                      className="shrink-0 text-[10px] font-bold text-brand-600 hover:underline"
+                    >
+                      Reconnect
+                    </a>
+                  </div>
+                ) : hasGmailEnv() ? (
+                  <a
+                    href="/api/gmail/auth"
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground transition-all hover:scale-105 active:scale-95"
+                  >
+                    <Mail size={12} />
+                    Connect Gmail
+                  </a>
                 ) : (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
-                    Run <code className="text-amber-600">npm run gmail:auth</code> to connect your outreach inbox.
+                    Paste the Google client ID + secret in API Keys, then connect here.
                   </p>
                 )}
               </div>
             </div>
           </section>
+
+          <AutomationPanel initial={await dailyRunStatusAction()} />
 
           <section className="rounded-2xl border border-border bg-secondary/30 p-6">
             <div className="flex items-center gap-2 mb-4">

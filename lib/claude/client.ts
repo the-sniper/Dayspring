@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { getKey } from "@/lib/keys";
 
 // Model picks (checked against the claude-api reference 2026-07-05):
 // scoring gets Sonnet — fit judgment drives which jobs get pursued; parsing
@@ -11,16 +12,22 @@ export const MODEL_CHEAP = "claude-haiku-4-5";
 export const MODEL_PREMIUM = "claude-opus-4-8";
 
 export function hasApiKey(): boolean {
-  return !!process.env.ANTHROPIC_API_KEY;
+  return !!getKey("ANTHROPIC_API_KEY");
 }
 
+// Env first, then the encrypted key saved in Settings → API Keys. The client
+// is rebuilt if the key changes (e.g. saved/rotated in Settings mid-session).
+// Server-side only — nothing in lib/claude may be imported by a client
+// component.
 let client: Anthropic | null = null;
+let clientKey: string | null = null;
 
 export function getClient(): Anthropic {
-  if (!client) {
-    // Reads ANTHROPIC_API_KEY from the environment. Server-side only —
-    // nothing in lib/claude may be imported by a client component.
-    client = new Anthropic();
+  const key = getKey("ANTHROPIC_API_KEY");
+  if (!key) throw new Error("ANTHROPIC_API_KEY is not set (env or Settings → API Keys).");
+  if (!client || clientKey !== key) {
+    client = new Anthropic({ apiKey: key });
+    clientKey = key;
   }
   return client;
 }

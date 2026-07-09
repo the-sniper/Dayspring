@@ -1,0 +1,5 @@
+#!/bin/sh
+# Dayspring.app — double-clickable launcher. The repo root is three levels up
+# from this executable; all real logic lives in scripts/launch.sh.
+DIR="$(cd "$(dirname "$0")/../../.." && pwd)"
+exec /bin/sh "$DIR/scripts/launch.sh"

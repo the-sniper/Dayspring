@@ -1,12 +1,14 @@
+import { getKey } from "@/lib/keys";
+
 export function hasApolloKey(): boolean {
-  return !!process.env.APOLLO_API_KEY;
+  return !!getKey("APOLLO_API_KEY");
 }
 
 // Bearer per current docs; some Apollo accounts still authenticate with the
 // X-Api-Key header, so retry once on 401 before surfacing the error.
 export async function apolloFetch<T>(path: string, body: unknown): Promise<T> {
-  const key = process.env.APOLLO_API_KEY;
-  if (!key) throw new Error("APOLLO_API_KEY is not set");
+  const key = getKey("APOLLO_API_KEY");
+  if (!key) throw new Error("APOLLO_API_KEY is not set (env or Settings → API Keys)");
 
   const attempt = (auth: Record<string, string>) =>
     fetch(`https://api.apollo.io/api/v1/${path}`, {

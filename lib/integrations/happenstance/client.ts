@@ -1,5 +1,7 @@
+import { getKey } from "@/lib/keys";
+
 export function hasHappenstanceKey(): boolean {
-  return !!process.env.HAPPENSTANCE_API_KEY;
+  return !!getKey("HAPPENSTANCE_API_KEY");
 }
 
 const BASE = "https://api.happenstance.ai";
@@ -10,8 +12,8 @@ export async function hpFetch<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const key = process.env.HAPPENSTANCE_API_KEY;
-  if (!key) throw new Error("HAPPENSTANCE_API_KEY is not set");
+  const key = getKey("HAPPENSTANCE_API_KEY");
+  if (!key) throw new Error("HAPPENSTANCE_API_KEY is not set (env or Settings → API Keys)");
 
   const res = await fetch(`${BASE}${path}`, {
     method,

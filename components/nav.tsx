@@ -11,6 +11,7 @@ import {
   Building2,
   Settings,
   Users2,
+  UserCircle,
   Sunrise
 } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
@@ -24,6 +25,7 @@ const links = [
   { href: "/network", label: "Network", icon: Users2 },
   { href: "/import", label: "Import", icon: Download },
   { href: "/companies", label: "Companies", icon: Building2 },
+  { href: "/profile", label: "Profile", icon: UserCircle },
   { href: "/settings", label: "Settings", icon: Settings },
 ];
 

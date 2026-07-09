@@ -101,9 +101,64 @@ export async function fillCommonForm(
     ], ctx.job.coverLetter));
   }
 
-  // NOTE: EEO / demographic / veteran / disability questions are intentionally
-  // NEVER auto-answered — the human decides those.
+  // Application defaults (M27): fill ONLY the answers the user explicitly set
+  // on their profile — a null means "the human decides on the page". This is
+  // executing the user's own standing decision, not guessing; the review gate
+  // still shows everything before submit.
+  if (ctx.defaults) {
+    const d = ctx.defaults;
+    const yesNo = (v: boolean) => (v ? ["Yes", "yes"] : ["No", "no"]);
+    await track("work authorization", trySelectByContext(page, ["authorized to work", "legally authorized", "work authorization"], d.authorizedToWork === null ? null : yesNo(d.authorizedToWork)));
+    await track("sponsorship", trySelectByContext(page, ["sponsorship", "require sponsorship", "visa sponsorship"], d.needsSponsorship === null ? null : yesNo(d.needsSponsorship)));
+    await track("gender", trySelectByContext(page, ["gender"], d.gender ? [d.gender] : null));
+    await track("ethnicity", trySelectByContext(page, ["race", "ethnicity"], d.ethnicity ? [d.ethnicity] : null));
+    await track("veteran status", trySelectByContext(page, ["veteran"], d.veteran === null ? null : d.veteran ? ["I am a veteran", "Veteran", "Yes"] : ["I am not a protected veteran", "not a veteran", "No"]));
+    await track("disability status", trySelectByContext(page, ["disability"], d.disability === null ? null : d.disability ? ["Yes, I have a disability", "Yes"] : ["No, I do not have a disability", "No"]));
+  }
+
   return { filled, skipped };
+}
+
+// Best-effort <select> answer near a matching label/name. Misses are fine —
+// the human reviews the whole form before anything submits.
+async function trySelectByContext(
+  page: Page,
+  keywords: string[],
+  optionLabels: string[] | null,
+): Promise<boolean> {
+  if (!optionLabels?.length) return false;
+  for (const kw of keywords) {
+    const candidates = [
+      page.locator(`select[name*="${kw.split(" ")[0]}" i]`).first(),
+      page.locator(`select[id*="${kw.split(" ")[0]}" i]`).first(),
+      page.locator(`label:has-text("${kw}")`).locator("xpath=following::select[1]").first(),
+    ];
+    for (const sel of candidates) {
+      try {
+        if ((await sel.count()) === 0 || !(await sel.isVisible())) continue;
+        // Try exact labels first, then substring matches against the options.
+        for (const label of optionLabels) {
+          try {
+            await sel.selectOption({ label }, { timeout: 1500 });
+            return true;
+          } catch {
+            // try substring match below
+          }
+        }
+        const options = await sel.locator("option").allInnerTexts();
+        for (const label of optionLabels) {
+          const hit = options.find((o) => o.toLowerCase().includes(label.toLowerCase()));
+          if (hit) {
+            await sel.selectOption({ label: hit }, { timeout: 1500 });
+            return true;
+          }
+        }
+      } catch {
+        // next candidate
+      }
+    }
+  }
+  return false;
 }
 
 export function detectAts(url: string): "greenhouse" | "lever" | "ashby" | "workday" | "unknown" {

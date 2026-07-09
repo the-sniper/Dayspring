@@ -1,9 +1,10 @@
 // Next-free apply-assist context — read by scripts/apply.ts (the attended CLI).
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, jobs } from "@/lib/db/schema";
+import { companies, jobs, type ApplicationDefaults } from "@/lib/db/schema";
 import { extractFields, type ApplicantFields } from "@/lib/apply/fields";
 import { getProfile } from "@/lib/jobs/score";
+import { getDefaultProfile } from "@/lib/profiles/core";
 import { latestJobBrief } from "@/lib/research/core";
 import { resumePdfForJob } from "@/lib/resumes/core";
 
@@ -21,6 +22,9 @@ export type ApplyContext = {
     coverLetter: string | null;
   };
   fields: ApplicantFields;
+  // User-set application defaults (M27) — only non-null values ever get
+  // filled on a form; null means "the human decides on the page".
+  defaults: ApplicationDefaults | null;
   resumePath: string | null;
   // Which resume got attached: per-job tailored > primary master PDF > setting.
   resumeSource: "tailored" | "master" | "settings" | null;
@@ -45,6 +49,22 @@ export function loadApplyContext(
 
   const resume = resumePdfForJob(jobId);
 
+  // Structured profile columns beat regex extraction; regex fills the gaps
+  // for anything the user hasn't set on the profile page yet.
+  const p = getDefaultProfile();
+  const regex = extractFields(profile);
+  const fields: ApplicantFields = {
+    fullName: p?.fullName ?? regex.fullName,
+    firstName: p?.fullName?.split(/\s+/)[0] ?? regex.firstName,
+    lastName: p?.fullName?.split(/\s+/).slice(-1)[0] ?? regex.lastName,
+    email: p?.email ?? regex.email,
+    phone: p?.phone ?? regex.phone,
+    linkedin: p?.linkedin ?? regex.linkedin,
+    github: p?.github ?? regex.github,
+    portfolio: p?.website ?? regex.portfolio,
+    location: p?.location ?? regex.location,
+  };
+
   return {
     ok: true,
     ctx: {
@@ -58,7 +78,8 @@ export function loadApplyContext(
         tailoredBullets: row.job.tailoredBullets,
         coverLetter: row.job.coverLetter,
       },
-      fields: extractFields(profile),
+      fields,
+      defaults: p?.defaults ?? null,
       resumePath: resume?.path ?? null,
       resumeSource: resume?.source ?? null,
       briefSummary: latestJobBrief(jobId)?.brief ?? null,

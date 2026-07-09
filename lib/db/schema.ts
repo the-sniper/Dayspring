@@ -265,6 +265,48 @@ export const generatedResumes = sqliteTable(
   (t) => [index("generated_resumes_job_id_idx").on(t.jobId)],
 );
 
+// Candidate profiles (M27, Tsenta-style). Several may exist (e.g. "SWE" vs
+// "ML-focused"); exactly one isDefault — scoring/tailoring/apply read it.
+// content = the canonical markdown corpus (usually the consolidation of all
+// master resumes, hand-editable); doc = its structured form for card renders.
+export const profiles = sqliteTable("profiles", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  name: text("name").notNull(), // "Default", "AI-focused", …
+  isDefault: integer("is_default", { mode: "boolean" }).notNull().default(false),
+  // Header / contact — what apply autofill uses (structured beats regex).
+  fullName: text("full_name"),
+  headline: text("headline"),
+  summary: text("summary"),
+  email: text("email"),
+  phone: text("phone"),
+  location: text("location"),
+  linkedin: text("linkedin"),
+  github: text("github"),
+  website: text("website"),
+  // Canonical corpus + structured render source.
+  content: text("content").notNull().default(""),
+  doc: text("doc", { mode: "json" }), // ConsolidatedDoc JSON (nullable)
+  // Application defaults — ONLY what the user explicitly set is ever filled
+  // on a form; everything else stays blank (never-fabricate).
+  defaults: text("defaults", { mode: "json" }).$type<ApplicationDefaults>(),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// All nullable — null = "user hasn't decided", never guessed.
+export type ApplicationDefaults = {
+  visaType: string | null; // e.g. "OPT", "H-1B", "Citizen"
+  authorizedToWork: boolean | null;
+  needsSponsorship: boolean | null;
+  inPersonOk: boolean | null;
+  canRelocate: boolean | null;
+  startImmediately: boolean | null;
+  gender: string | null;
+  ethnicity: string | null;
+  veteran: boolean | null;
+  disability: boolean | null;
+};
+
 // Key-value store; row key='profile' holds the resume/preferences text.
 // Also: gmailRefreshToken, gmailEmail, lastDailyRun, resumePath (M19),
 // masterPasswordEnc (M18, JSON {iv,authTag,cipherText}), tos:<host> (M20).

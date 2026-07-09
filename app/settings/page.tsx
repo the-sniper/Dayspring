@@ -23,7 +23,7 @@ import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
 import { MODEL_CHEAP, MODEL_SCORE, hasApiKey } from "@/lib/claude/client";
 import { db } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
+import { profiles, settings } from "@/lib/db/schema";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 import { getGmailConfig, hasGmailEnv } from "@/lib/integrations/gmail/client";
@@ -76,6 +76,9 @@ export default async function SettingsPage({
     .from(settings)
     .where(eq(settings.key, "profile"))
     .get();
+  // Once a profile row exists, the Profile page owns this — the legacy
+  // textarea would edit a dead settings blob.
+  const hasProfileRow = db.select().from(profiles).get() !== undefined;
   const hasKey = hasApiKey();
   const gmail = getGmailConfig();
   const resumePath =
@@ -127,14 +130,28 @@ export default async function SettingsPage({
             </div>
             
             <div className="space-y-4">
-              <p className="text-sm font-medium text-muted-foreground leading-relaxed">
-                Paste your resume and specify your targets (role types, locations, visa needs, comp floor). The higher the quality of this text, the more accurate your match scores will be.
-              </p>
-              <ProfileForm value={profile?.value ?? ""} />
-              {profile?.updatedAt && (
-                <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
-                  Last updated {profile.updatedAt.slice(0, 16).replace("T", " ")}
+              {hasProfileRow ? (
+                <p className="text-sm font-medium text-muted-foreground leading-relaxed">
+                  Your profile now lives on the{" "}
+                  <a href="/profile" className="font-bold text-brand-600 hover:underline">
+                    Profile page
+                  </a>{" "}
+                  — contact details, consolidated resume content, and the
+                  application defaults apply-assist fills. Scoring and tailoring
+                  read the default profile there.
                 </p>
+              ) : (
+                <>
+                  <p className="text-sm font-medium text-muted-foreground leading-relaxed">
+                    Paste your resume and specify your targets (role types, locations, visa needs, comp floor). The higher the quality of this text, the more accurate your match scores will be.
+                  </p>
+                  <ProfileForm value={profile?.value ?? ""} />
+                  {profile?.updatedAt && (
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
+                      Last updated {profile.updatedAt.slice(0, 16).replace("T", " ")}
+                    </p>
+                  )}
+                </>
               )}
             </div>
           </section>

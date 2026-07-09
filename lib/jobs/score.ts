@@ -4,12 +4,17 @@ import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { scoreJob } from "@/lib/claude/score";
 import { db } from "@/lib/db";
 import { companies, jobs, settings } from "@/lib/db/schema";
+import { getDefaultProfile, profileText } from "@/lib/profiles/core";
 
 export const MIN_JD_CHARS = 200;
 export const BATCH_LIMIT = 25;
 const CONCURRENCY = 3;
 
+// The default profile drives everything (M27). Falls back to the legacy
+// settings.profile blob — getDefaultProfile() self-migrates it on first read.
 export function getProfile(): string | null {
+  const p = getDefaultProfile();
+  if (p && p.content.trim()) return profileText(p);
   const row = db
     .select()
     .from(settings)

@@ -161,10 +161,31 @@ export default function ContactSearch({
             {!q && total > rows.length && ` · showing ${rows.length} most recent — search to find any`}
           </p>
           {rows.length === 0 ? (
-            <div className="rounded-xl border-2 border-dashed border-border p-8 text-center">
-              <p className="text-sm font-medium text-muted-foreground">
-                {q ? "No contacts match that filter — try Ask AI." : "No contacts yet — import your LinkedIn connections."}
-              </p>
+            <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border p-8 text-center">
+              {q ? (
+                <>
+                  <p className="text-sm font-medium text-muted-foreground">
+                    No exact matches for &ldquo;{q}&rdquo; — but AI can search by
+                    meaning (e.g. infer a company&apos;s city, or related roles).
+                  </p>
+                  <button
+                    type="button"
+                    disabled={asking || !hasApiKey}
+                    onClick={ask}
+                    className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-600 active:scale-95 disabled:opacity-50 cursor-pointer"
+                  >
+                    {asking ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
+                    Ask AI about &ldquo;{q.length > 30 ? q.slice(0, 30) + "…" : q}&rdquo;
+                  </button>
+                  {!hasApiKey && (
+                    <p className="text-[11px] text-muted-foreground">Needs ANTHROPIC_API_KEY (Settings).</p>
+                  )}
+                </>
+              ) : (
+                <p className="text-sm font-medium text-muted-foreground">
+                  No contacts yet — import your LinkedIn connections.
+                </p>
+              )}
             </div>
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border bg-secondary/10 overflow-hidden">

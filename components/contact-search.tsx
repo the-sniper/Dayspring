@@ -12,11 +12,15 @@ import {
   Sparkles,
   Info,
   X,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import {
   askContactsAction,
+  browseContactsPageAction,
   searchLocalContactsAction,
 } from "@/lib/actions/contacts";
+import { CONTACTS_PAGE_SIZE } from "@/lib/contacts/constants";
 import type { ContactRow } from "@/lib/contacts/query";
 import { cn } from "@/lib/utils";
 
@@ -44,16 +48,37 @@ export default function ContactSearch({
 }) {
   const [rows, setRows] = useState<ContactRow[]>(initial);
   const [q, setQ] = useState("");
+  const [page, setPage] = useState(1);
   const [ai, setAi] = useState<AiState>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [filtering, startFilter] = useTransition();
   const [asking, startAsk] = useTransition();
+  const [paging, startPaging] = useTransition();
+
+  const totalPages = Math.max(1, Math.ceil(total / CONTACTS_PAGE_SIZE));
 
   function filter(query: string) {
     setAi(null);
     setAiError(null);
+    setPage(1);
     startFilter(async () => setRows(await searchLocalContactsAction(query)));
   }
+
+  function goToPage(next: number) {
+    const target = Math.min(Math.max(1, next), totalPages);
+    if (target === page) return;
+    startPaging(async () => {
+      const res = await browseContactsPageAction(target);
+      setRows(res.rows);
+      setPage(res.page);
+      if (typeof window !== "undefined") {
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }
+    });
+  }
+
+  // Browse mode = no active text filter and not showing AI results.
+  const browsing = !q && ai === null;
 
   function ask() {
     if (!q.trim()) return;
@@ -150,8 +175,16 @@ export default function ContactSearch({
       ) : (
         <>
           <p className="text-xs font-medium text-muted-foreground">
-            {q ? `${rows.length} match${rows.length === 1 ? "" : "es"}` : `${total} contacts`}
-            {!q && total > rows.length && ` · showing ${rows.length} most recent — search to find any`}
+            {q ? (
+              `${rows.length} match${rows.length === 1 ? "" : "es"}`
+            ) : (
+              <>
+                {total} contacts
+                {totalPages > 1 && (
+                  <> · page <span className="font-bold text-foreground">{page}</span> of {totalPages}</>
+                )}
+              </>
+            )}
           </p>
           {rows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border p-8 text-center">
@@ -181,11 +214,51 @@ export default function ContactSearch({
               )}
             </div>
           ) : (
-            <div className="divide-y divide-border rounded-xl border border-border bg-secondary/10 overflow-hidden">
-              {rows.map((c) => (
-                <ContactRowView key={c.id} c={c} />
-              ))}
-            </div>
+            <>
+              <div
+                className={cn(
+                  "divide-y divide-border rounded-xl border border-border bg-secondary/10 overflow-hidden transition-opacity",
+                  paging && "opacity-50",
+                )}
+              >
+                {rows.map((c) => (
+                  <ContactRowView key={c.id} c={c} />
+                ))}
+              </div>
+              {browsing && totalPages > 1 && (
+                <div className="mt-4 flex items-center justify-between gap-4">
+                  <button
+                    type="button"
+                    disabled={paging || page <= 1}
+                    onClick={() => goToPage(page - 1)}
+                    className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold text-foreground transition-all hover:border-brand-500 hover:text-brand-600 active:scale-95 disabled:opacity-40 disabled:hover:border-border disabled:hover:text-foreground cursor-pointer"
+                  >
+                    {paging ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <ChevronLeft size={14} />
+                    )}
+                    Previous
+                  </button>
+                  <span className="text-[11px] font-bold uppercase tracking-widest text-muted-foreground tabular-nums">
+                    {page} / {totalPages}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={paging || page >= totalPages}
+                    onClick={() => goToPage(page + 1)}
+                    className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-3 py-2 text-xs font-bold text-foreground transition-all hover:border-brand-500 hover:text-brand-600 active:scale-95 disabled:opacity-40 disabled:hover:border-border disabled:hover:text-foreground cursor-pointer"
+                  >
+                    Next
+                    {paging ? (
+                      <Loader2 size={14} className="animate-spin" />
+                    ) : (
+                      <ChevronRight size={14} />
+                    )}
+                  </button>
+                </div>
+              )}
+            </>
           )}
         </>
       )}

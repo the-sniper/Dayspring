@@ -268,6 +268,21 @@ export async function searchLocalContactsAction(query: string) {
   return q ? searchContacts(q, 60) : listContacts({ limit: 60 });
 }
 
+// Paginated browse over all saved/imported contacts (no query, most-recent
+// first). Powers the page controls on the Warm Network list.
+export async function browseContactsPageAction(page = 1) {
+  const { listContacts } = await import("@/lib/contacts/query");
+  const { CONTACTS_PAGE_SIZE } = await import("@/lib/contacts/constants");
+  const p = Math.max(1, Math.floor(page));
+  return {
+    rows: listContacts({
+      limit: CONTACTS_PAGE_SIZE,
+      offset: (p - 1) * CONTACTS_PAGE_SIZE,
+    }),
+    page: p,
+  };
+}
+
 // Semantic "ask" search over ALL contacts via Claude (name/title/company).
 export type AskContactsResult =
   | {

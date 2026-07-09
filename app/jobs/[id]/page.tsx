@@ -1,4 +1,3 @@
-import { existsSync } from "node:fs";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { desc, eq } from "drizzle-orm";
@@ -20,6 +19,7 @@ import ApplyHandoff from "@/components/apply-handoff";
 import DeleteForm from "@/components/delete-form";
 import DraftOutreachButton from "@/components/draft-outreach-button";
 import ResearchButton from "@/components/research-button";
+import ResumeStudio from "@/components/resume-studio";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
 import ScoreJobButton from "@/components/score-job-button";
@@ -27,6 +27,7 @@ import StatusSelect from "@/components/status-select";
 import TailorSection from "@/components/tailor-section";
 import CompanyLogo from "@/components/company-logo";
 import { getProfile } from "@/lib/jobs/score";
+import { latestGeneratedForJob, mastersCount, resumePdfForJob } from "@/lib/resumes/core";
 import { latestJobBrief } from "@/lib/research/core";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
@@ -35,7 +36,6 @@ import {
   companies,
   contacts,
   jobs,
-  settings,
   stageEvents,
 } from "@/lib/db/schema";
 import { JOB_STATUSES, ROLE_TYPES } from "@/lib/types";
@@ -68,11 +68,9 @@ export default async function JobDetailPage({
     : null;
 
   const applyProfileReady = getProfile() !== null;
-  const resumePathSetting =
-    db.select().from(settings).where(eq(settings.key, "resumePath")).get()?.value ?? "";
-  const applyResumeReady = resumePathSetting
-    ? existsSync(resumePathSetting)
-    : false;
+  // Tailored PDF → primary master PDF → static resumePath setting.
+  const applyResumeReady = resumePdfForJob(job.id) !== null;
+  const generated = latestGeneratedForJob(job.id);
 
   const application = db
     .select()
@@ -212,6 +210,21 @@ export default async function JobDetailPage({
             bullets={job.tailoredBullets}
             coverLetter={job.coverLetter}
             tailoredAt={job.tailoredAt}
+          />
+
+          <ResumeStudio
+            jobId={job.id}
+            initial={
+              generated
+                ? {
+                    id: generated.id,
+                    tailoringNote: generated.tailoringNote,
+                    createdAt: generated.createdAt,
+                  }
+                : null
+            }
+            mastersCount={mastersCount()}
+            hasApiKey={!!process.env.ANTHROPIC_API_KEY}
           />
 
           <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">

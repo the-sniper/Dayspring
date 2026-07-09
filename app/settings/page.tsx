@@ -11,9 +11,11 @@ import {
   Zap,
   Info
 } from "lucide-react";
+import MasterResumesPanel from "@/components/master-resumes-panel";
 import ProfileForm from "@/components/profile-form";
 import ResumePathForm from "@/components/resume-path-form";
 import VaultPanel from "@/components/vault-panel";
+import { listMasters } from "@/lib/resumes/core";
 import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
 import { MODEL_CHEAP, MODEL_SCORE } from "@/lib/claude/client";
@@ -82,10 +84,26 @@ export default async function SettingsPage() {
             </div>
           </section>
 
+          <MasterResumesPanel
+            masters={listMasters().map((m) => ({
+              id: m.id,
+              label: m.label,
+              chars: m.content.length,
+              isPrimary: m.isPrimary,
+              isPdf: !!m.sourceFile?.endsWith(".pdf"),
+              updatedAt: m.updatedAt,
+            }))}
+            hasApiKey={hasKey}
+          />
+
           <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
             <h2 className="mb-4 text-sm font-bold uppercase tracking-widest text-foreground">
               Apply-assist
             </h2>
+            <p className="mb-3 text-xs font-medium text-muted-foreground">
+              Fallback resume path — used only when a job has neither a tailored
+              resume nor a primary master PDF.
+            </p>
             <ResumePathForm value={resumePath} exists={resumeExists} />
           </section>
 

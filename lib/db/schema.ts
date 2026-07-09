@@ -231,6 +231,40 @@ export const siteCredentials = sqliteTable(
   (t) => [uniqueIndex("site_credentials_host_username_unique").on(t.host, t.username)],
 );
 
+// Master resume documents — the source-of-truth corpus for per-JD resume
+// generation (M21). Content is clean markdown extracted VERBATIM from the
+// upload; the original file is kept on disk (data/resumes/masters/) so a PDF
+// master can still be attached directly as a fallback.
+export const masterResumes = sqliteTable("master_resumes", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  label: text("label").notNull(), // e.g. "SWE resume", "Data resume"
+  content: text("content").notNull(), // markdown, extraction-only (never invented)
+  sourceFile: text("source_file"), // absolute path of the saved original upload
+  isPrimary: integer("is_primary", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+  updatedAt: text("updated_at").notNull(),
+});
+
+// Per-JD tailored resumes (M21). content = structured ResumeDoc JSON; pdfPath
+// = the rendered ATS-safe PDF apply-assist attaches. Regenerate inserts a new
+// row — latest-by-createdAt wins, history kept (same pattern as briefs).
+export const generatedResumes = sqliteTable(
+  "generated_resumes",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    jobId: integer("job_id")
+      .notNull()
+      .references(() => jobs.id),
+    content: text("content").notNull(),
+    pdfPath: text("pdf_path"),
+    // One line from the model: what was emphasized for this JD (UI display).
+    tailoringNote: text("tailoring_note"),
+    model: text("model"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("generated_resumes_job_id_idx").on(t.jobId)],
+);
+
 // Key-value store; row key='profile' holds the resume/preferences text.
 // Also: gmailRefreshToken, gmailEmail, lastDailyRun, resumePath (M19),
 // masterPasswordEnc (M18, JSON {iv,authTag,cipherText}), tos:<host> (M20).

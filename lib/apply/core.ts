@@ -1,11 +1,11 @@
 // Next-free apply-assist context — read by scripts/apply.ts (the attended CLI).
-import fs from "node:fs";
 import { eq } from "drizzle-orm";
 import { db } from "@/lib/db";
-import { companies, jobs, settings } from "@/lib/db/schema";
+import { companies, jobs } from "@/lib/db/schema";
 import { extractFields, type ApplicantFields } from "@/lib/apply/fields";
 import { getProfile } from "@/lib/jobs/score";
 import { latestJobBrief } from "@/lib/research/core";
+import { resumePdfForJob } from "@/lib/resumes/core";
 
 export type ApplyStatus = "in_progress" | "submitted" | "abandoned";
 
@@ -22,14 +22,10 @@ export type ApplyContext = {
   };
   fields: ApplicantFields;
   resumePath: string | null;
+  // Which resume got attached: per-job tailored > primary master PDF > setting.
+  resumeSource: "tailored" | "master" | "settings" | null;
   briefSummary: string | null;
 };
-
-function getSetting(key: string): string | null {
-  return (
-    db.select().from(settings).where(eq(settings.key, key)).get()?.value ?? null
-  );
-}
 
 export function loadApplyContext(
   jobId: number,
@@ -47,8 +43,7 @@ export function loadApplyContext(
   if (!row) return { ok: false, error: "Job not found" };
   if (!row.job.url) return { ok: false, error: "Job has no application URL." };
 
-  const resumePath = getSetting("resumePath");
-  const resumeOk = resumePath ? fs.existsSync(resumePath) : false;
+  const resume = resumePdfForJob(jobId);
 
   return {
     ok: true,
@@ -64,7 +59,8 @@ export function loadApplyContext(
         coverLetter: row.job.coverLetter,
       },
       fields: extractFields(profile),
-      resumePath: resumeOk ? resumePath : null,
+      resumePath: resume?.path ?? null,
+      resumeSource: resume?.source ?? null,
       briefSummary: latestJobBrief(jobId)?.brief ?? null,
     },
   };

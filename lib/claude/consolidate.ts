@@ -6,7 +6,7 @@ import { getClient, MODEL_PREMIUM } from "@/lib/claude/client";
 // the union of the candidate's truthful material (Tsenta-style profile).
 // Never-fabricate: merge, dedupe, and organize; invent nothing.
 
-const ConsolidatedDocSchema = z.object({
+export const ConsolidatedDocSchema = z.object({
   name: z.string(),
   headline: z.string().nullable(), // e.g. "Full-Stack / AI Engineer" — from master facts
   summary: z.string().nullable(), // 2–3 lines, drawn only from master facts

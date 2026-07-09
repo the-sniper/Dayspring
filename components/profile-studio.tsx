@@ -19,11 +19,6 @@ import {
   Copy,
   AlertCircle,
   CheckCircle2,
-  Briefcase,
-  GraduationCap,
-  Code2,
-  Rocket,
-  BadgeCheck,
   ClipboardList,
   FileText,
   Download,
@@ -39,6 +34,13 @@ import {
   updateProfileDefaultsAction,
   updateProfileHeaderAction,
 } from "@/lib/actions/profiles";
+import {
+  CertificationsCard,
+  EducationCard,
+  ExperienceCard,
+  ProjectsCard,
+  SkillsCard,
+} from "@/components/profile-sections";
 import type { ConsolidatedDoc } from "@/lib/claude/consolidate";
 import type { ApplicationDefaults } from "@/lib/db/schema";
 import { cn } from "@/lib/utils";
@@ -120,7 +122,7 @@ export default function ProfileStudio({
         <ConsolidateCard active={active} mastersCount={mastersCount} />
       </div>
 
-      <SectionCards doc={active.doc} />
+      <SectionCards doc={active.doc} profileId={active.id} />
 
       <DefaultsCard active={active} />
 
@@ -443,8 +445,8 @@ function ConsolidateCard({ active, mastersCount }: { active: ProfileView; master
   );
 }
 
-// ── Structured section cards (from the consolidated doc) ─────────────────────
-function SectionCards({ doc }: { doc: ConsolidatedDoc | null }) {
+// ── Structured section cards (editable — components/profile-sections.tsx) ────
+function SectionCards({ doc, profileId }: { doc: ConsolidatedDoc | null; profileId: number }) {
   if (!doc) {
     return (
       <section className={cn(card, "border-2 border-dashed bg-transparent shadow-none text-center")}>
@@ -457,123 +459,37 @@ function SectionCards({ doc }: { doc: ConsolidatedDoc | null }) {
   }
   return (
     <>
-      <section className={card}>
-        <div className="mb-4 flex items-center gap-2">
-          <Briefcase size={16} className="text-brand-500" />
-          <h3 className="text-sm font-bold text-foreground">Experience</h3>
-          <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            {doc.experience.length} role{doc.experience.length === 1 ? "" : "s"}
-          </span>
-        </div>
-        <div className="space-y-5">
-          {doc.experience.map((e) => (
-            <div key={`${e.company}-${e.title}`}>
-              <p className="text-sm font-bold text-foreground">{e.title}</p>
-              <p className="text-xs font-medium text-muted-foreground">
-                {e.company}
-                {e.location ? ` · ${e.location}` : ""} · {e.dates}
-              </p>
-              <ul className="mt-1.5 space-y-1">
-                {e.bullets.map((b) => (
-                  <li key={b} className="pl-3 text-xs font-medium text-muted-foreground leading-relaxed relative before:content-['•'] before:absolute before:left-0">
-                    {b}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          ))}
-        </div>
-      </section>
-
+      <ExperienceCard profileId={profileId} doc={doc} />
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <section className={card}>
-          <div className="mb-4 flex items-center gap-2">
-            <Code2 size={16} className="text-brand-500" />
-            <h3 className="text-sm font-bold text-foreground">Skills</h3>
-          </div>
-          <div className="space-y-3">
-            {doc.skills.map((g) => (
-              <div key={g.group}>
-                <p className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                  {g.group}
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {g.items.map((s) => (
-                    <span key={s} className="rounded-lg bg-secondary/50 px-2 py-0.5 text-xs font-bold text-foreground">
-                      {s}
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
+        <SkillsCard profileId={profileId} doc={doc} />
         <div className="space-y-6">
-          <section className={card}>
-            <div className="mb-3 flex items-center gap-2">
-              <GraduationCap size={16} className="text-brand-500" />
-              <h3 className="text-sm font-bold text-foreground">Education</h3>
-            </div>
-            {doc.education.map((e) => (
-              <div key={e.school} className="mb-2 last:mb-0">
-                <p className="text-sm font-bold text-foreground">{e.school}</p>
-                <p className="text-xs font-medium text-muted-foreground">
-                  {[e.degree, e.dates, e.detail].filter(Boolean).join(" · ")}
-                </p>
-              </div>
-            ))}
-          </section>
-
-          <section className={card}>
-            <div className="mb-3 flex items-center gap-2">
-              <BadgeCheck size={16} className="text-brand-500" />
-              <h3 className="text-sm font-bold text-foreground">Certifications</h3>
-            </div>
-            {doc.certifications.length ? (
-              doc.certifications.map((c) => (
-                <p key={c} className="text-xs font-medium text-muted-foreground">
-                  · {c}
-                </p>
-              ))
-            ) : (
-              <p className="text-xs italic text-muted-foreground/60">None on file.</p>
-            )}
-          </section>
+          <EducationCard profileId={profileId} doc={doc} />
+          <CertificationsCard profileId={profileId} doc={doc} />
         </div>
       </div>
-
-      {doc.projects.length > 0 && (
-        <section className={card}>
-          <div className="mb-4 flex items-center gap-2">
-            <Rocket size={16} className="text-brand-500" />
-            <h3 className="text-sm font-bold text-foreground">Projects</h3>
-          </div>
-          <div className="space-y-4">
-            {doc.projects.map((p) => (
-              <div key={p.name}>
-                <p className="text-sm font-bold text-foreground">
-                  {p.name}
-                  {p.blurb && <span className="font-medium text-muted-foreground"> — {p.blurb}</span>}
-                </p>
-                <ul className="mt-1 space-y-1">
-                  {p.bullets.map((b) => (
-                    <li key={b} className="pl-3 text-xs font-medium text-muted-foreground leading-relaxed relative before:content-['•'] before:absolute before:left-0">
-                      {b}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        </section>
-      )}
+      <ProjectsCard profileId={profileId} doc={doc} />
     </>
   );
 }
 
 // ── Application defaults ──────────────────────────────────────────────────────
 type TriKey = Exclude<keyof ApplicationDefaults, "visaType" | "gender" | "ethnicity">;
+
+// Client-side template (can't import the server core's EMPTY_DEFAULTS — it pulls
+// in better-sqlite3). Merging incoming defaults over this guarantees every field
+// key exists even if the DB row is null, partial, or from an older schema.
+const DEFAULTS_TEMPLATE: ApplicationDefaults = {
+  visaType: null,
+  authorizedToWork: null,
+  needsSponsorship: null,
+  inPersonOk: null,
+  canRelocate: null,
+  startImmediately: null,
+  gender: null,
+  ethnicity: null,
+  veteran: null,
+  disability: null,
+};
 
 // Hoisted (stable component types): defining these inside DefaultsCard would
 // remount the fields on every keystroke and drop focus/state.
@@ -594,7 +510,7 @@ function Tri({
         {label}
       </span>
       <select
-        value={d[k] === null ? "" : d[k] ? "yes" : "no"}
+        value={d?.[k] == null ? "" : d[k] ? "yes" : "no"}
         onChange={(e) =>
           setD({ ...d, [k]: e.target.value === "" ? null : e.target.value === "yes" })
         }
@@ -627,7 +543,7 @@ function Txt({
         {label}
       </span>
       <input
-        value={d[k] ?? ""}
+        value={d?.[k] ?? ""}
         placeholder={placeholder}
         onChange={(e) => setD({ ...d, [k]: e.target.value.trim() || null })}
         className={inputCls}
@@ -637,20 +553,10 @@ function Txt({
 }
 
 function DefaultsCard({ active }: { active: ProfileView }) {
-  const [d, setD] = useState<ApplicationDefaults>(
-    active.defaults ?? {
-      visaType: null,
-      authorizedToWork: null,
-      needsSponsorship: null,
-      inPersonOk: null,
-      canRelocate: null,
-      startImmediately: null,
-      gender: null,
-      ethnicity: null,
-      veteran: null,
-      disability: null,
-    },
-  );
+  const [d, setD] = useState<ApplicationDefaults>({
+    ...DEFAULTS_TEMPLATE,
+    ...(active.defaults ?? {}),
+  });
   const [saved, setSaved] = useState(false);
   const [pending, startTransition] = useTransition();
 

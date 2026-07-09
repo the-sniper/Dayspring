@@ -2,7 +2,11 @@
 
 import { revalidatePath } from "next/cache";
 import { hasApiKey } from "@/lib/claude/client";
-import { consolidateResumes, type ConsolidatedDoc } from "@/lib/claude/consolidate";
+import {
+  ConsolidatedDocSchema,
+  consolidateResumes,
+  type ConsolidatedDoc,
+} from "@/lib/claude/consolidate";
 import type { ApplicationDefaults } from "@/lib/db/schema";
 import {
   createProfile,
@@ -109,6 +113,40 @@ export async function consolidateAction(): Promise<ConsolidateResult> {
     return { ok: true, doc, markdown: docToMarkdown(doc), sources: masters.length };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Consolidation failed" };
+  }
+}
+
+// Per-card structured edits (M28): the doc is canonical — every save also
+// regenerates the markdown corpus so scoring/tailoring read the same facts.
+export async function updateProfileDocAction(
+  profileId: number,
+  doc: ConsolidatedDoc,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = ConsolidatedDocSchema.safeParse(doc);
+  if (!parsed.success) {
+    return { ok: false, error: "That edit didn't validate — refresh and try again." };
+  }
+  // Drop entries emptied out in the editor rather than saving blanks.
+  const clean: ConsolidatedDoc = {
+    ...parsed.data,
+    experience: parsed.data.experience
+      .filter((e) => e.company.trim() || e.title.trim())
+      .map((e) => ({ ...e, bullets: e.bullets.map((b) => b.trim()).filter(Boolean) })),
+    projects: parsed.data.projects
+      .filter((p) => p.name.trim())
+      .map((p) => ({ ...p, bullets: p.bullets.map((b) => b.trim()).filter(Boolean) })),
+    education: parsed.data.education.filter((e) => e.school.trim()),
+    skills: parsed.data.skills
+      .filter((g) => g.group.trim() && g.items.some((i) => i.trim()))
+      .map((g) => ({ ...g, items: g.items.map((i) => i.trim()).filter(Boolean) })),
+    certifications: parsed.data.certifications.map((c) => c.trim()).filter(Boolean),
+  };
+  try {
+    updateProfile(profileId, { doc: clean, content: docToMarkdown(clean) });
+    revalidatePath("/", "layout");
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Save failed" };
   }
 }
 

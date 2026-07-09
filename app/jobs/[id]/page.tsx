@@ -15,7 +15,7 @@ import {
   Telescope
 } from "lucide-react";
 import ApplicationForm from "@/components/application-form";
-import ApplyHandoff from "@/components/apply-handoff";
+import ApplyPanel from "@/components/apply-panel";
 import DeleteForm from "@/components/delete-form";
 import DraftOutreachButton from "@/components/draft-outreach-button";
 import ResearchButton from "@/components/research-button";
@@ -228,7 +228,7 @@ export default async function JobDetailPage({
           />
 
           <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-            <ApplyHandoff
+            <ApplyPanel
               jobId={job.id}
               hasProfile={applyProfileReady}
               hasResume={applyResumeReady}

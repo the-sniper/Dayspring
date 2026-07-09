@@ -8,7 +8,6 @@ import {
   ExternalLink,
   AtSign,
   Mail,
-  Trash2,
   Building2,
   Sparkles,
   Info,
@@ -16,7 +15,6 @@ import {
 } from "lucide-react";
 import {
   askContactsAction,
-  deleteContactAction,
   searchLocalContactsAction,
 } from "@/lib/actions/contacts";
 import type { ContactRow } from "@/lib/contacts/query";
@@ -144,12 +142,7 @@ export default function ContactSearch({
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border bg-secondary/10 overflow-hidden">
               {ai.rows.map((c) => (
-                <ContactRowView
-                  key={c.id}
-                  c={c}
-                  reason={c.reason}
-                  onDeleted={() => setAi((s) => (s ? { ...s, rows: s.rows.filter((r) => r.id !== c.id) } : s))}
-                />
+                <ContactRowView key={c.id} c={c} reason={c.reason} />
               ))}
             </div>
           )}
@@ -190,7 +183,7 @@ export default function ContactSearch({
           ) : (
             <div className="divide-y divide-border rounded-xl border border-border bg-secondary/10 overflow-hidden">
               {rows.map((c) => (
-                <ContactRowView key={c.id} c={c} onDeleted={() => setRows((rs) => rs.filter((r) => r.id !== c.id))} />
+                <ContactRowView key={c.id} c={c} />
               ))}
             </div>
           )}
@@ -203,13 +196,10 @@ export default function ContactSearch({
 function ContactRowView({
   c,
   reason,
-  onDeleted,
 }: {
   c: ContactRow;
   reason?: string;
-  onDeleted: () => void;
 }) {
-  const [pending, startTransition] = useTransition();
   return (
     <div className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-secondary/20">
       <div className="min-w-0 flex-1">
@@ -261,20 +251,6 @@ function ContactRowView({
             <AtSign size={14} />
           </a>
         )}
-        <button
-          type="button"
-          disabled={pending}
-          title="Remove contact"
-          onClick={() =>
-            startTransition(async () => {
-              const res = await deleteContactAction(c.id);
-              if (res.ok) onDeleted();
-            })
-          }
-          className="p-1.5 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors cursor-pointer disabled:opacity-50"
-        >
-          {pending ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-        </button>
       </div>
     </div>
   );

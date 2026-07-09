@@ -1,12 +1,16 @@
 "use server";
 
-import { count, eq, inArray } from "drizzle-orm";
+import { count, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { db } from "@/lib/db";
 import { companies, contacts, outreach } from "@/lib/db/schema";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { enrichPerson } from "@/lib/integrations/apollo/enrich";
-import { searchPeople, type ApolloPerson } from "@/lib/integrations/apollo/search";
+import {
+  searchPeople,
+  searchPeopleFlexible,
+  type ApolloPerson,
+} from "@/lib/integrations/apollo/search";
 
 const NO_KEY = "Contact search needs APOLLO_API_KEY in .env.local (see Settings).";
 
@@ -64,6 +68,121 @@ export async function searchApolloAction(
   } catch (err) {
     return { ok: false, error: apolloError(err, "Search failed") };
   }
+}
+
+// ── Find NEW people (cold, not yet in your network) ──────────────────────────
+// Parse a plain-English query → Apollo people search across the whole database
+// (no company/domain needed). Results are shown before anything is saved; email
+// reveal stays the separate, credit-gated enrich step.
+export type FindPeopleResult =
+  | {
+      ok: true;
+      people: (ApolloPerson & { saved: boolean })[];
+      interpretation: string;
+      totalEntries: number;
+    }
+  | { ok: false; error: string };
+
+export async function findNewPeopleAction(
+  query: string,
+): Promise<FindPeopleResult> {
+  const q = query.trim();
+  if (!q) return { ok: false, error: "Type who you're looking for first." };
+  if (!hasApolloKey()) return { ok: false, error: NO_KEY };
+
+  const { hasApiKey } = await import("@/lib/claude/client");
+  if (!hasApiKey()) {
+    return {
+      ok: false,
+      error:
+        "Parsing your search into a people query needs ANTHROPIC_API_KEY in .env.local (see Settings).",
+    };
+  }
+
+  const { queryToApolloParams } = await import("@/lib/claude/apollo-query");
+  let params;
+  try {
+    params = await queryToApolloParams(q);
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Couldn't read that query." };
+  }
+
+  if (
+    params.person_titles.length === 0 &&
+    params.person_locations.length === 0 &&
+    !params.keywords
+  ) {
+    return {
+      ok: false,
+      error:
+        "Couldn't turn that into a people search — name a role or place, e.g. “recruiters in Philadelphia hiring fullstack devs”.",
+    };
+  }
+
+  try {
+    const res = await searchPeopleFlexible({
+      titles: params.person_titles,
+      locations: params.person_locations,
+      keywords: params.keywords,
+      seniorities: params.seniorities,
+    });
+    const ids = res.people.map((p) => p.apolloId);
+    const saved = new Set(
+      ids.length
+        ? db
+            .select({ apolloId: contacts.apolloId })
+            .from(contacts)
+            .where(inArray(contacts.apolloId, ids))
+            .all()
+            .map((c) => c.apolloId)
+        : [],
+    );
+    return {
+      ok: true,
+      people: res.people.map((p) => ({ ...p, saved: saved.has(p.apolloId) })),
+      interpretation: params.interpretation,
+      totalEntries: res.totalEntries,
+    };
+  } catch (err) {
+    return { ok: false, error: apolloError(err, "People search failed") };
+  }
+}
+
+// Save a discovered cold contact. No company is required — if the person's
+// company matches one you already track, we attach it; otherwise company +
+// location are kept in notes so the context isn't lost.
+export async function saveColdContactAction(
+  person: ApolloPerson,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!person.apolloId || !person.name) {
+    return { ok: false, error: "Invalid contact data" };
+  }
+  const companyId = person.company
+    ? (db
+        .select({ id: companies.id })
+        .from(companies)
+        .where(sql`lower(${companies.name}) = ${person.company.toLowerCase()}`)
+        .get()?.id ?? null)
+    : null;
+  const notes =
+    [person.company, person.location].filter(Boolean).join(" · ") || null;
+
+  db.insert(contacts)
+    .values({
+      companyId,
+      name: person.name,
+      title: person.title,
+      linkedin: person.linkedinUrl,
+      source: "apollo",
+      apolloId: person.apolloId,
+      emailStatus: person.emailStatus,
+      notes,
+      createdAt: new Date().toISOString(),
+    })
+    .onConflictDoNothing()
+    .run();
+  revalidatePath("/network");
+  return { ok: true };
 }
 
 // Apollo gates People Search + enrichment behind paid plans and returns a

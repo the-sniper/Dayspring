@@ -1,6 +1,7 @@
 import { Users2, Sparkles } from "lucide-react";
 import ContactSearch from "@/components/contact-search";
 import NetworkFinder from "@/components/network-finder";
+import { hasApiKey } from "@/lib/claude/client";
 import { contactsCount, listContacts } from "@/lib/contacts/query";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 
@@ -23,14 +24,16 @@ export default function NetworkPage() {
           Who do I know?
         </h1>
         <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
-          Search your saved &amp; imported contacts instantly — free. Your
-          LinkedIn connections, Apollo finds, and warm intros all live here.
+          Filter instantly, or <span className="font-bold text-foreground">ask
+          in plain English</span> — &ldquo;recruiters hiring fullstack
+          devs&rdquo; — across your LinkedIn connections, Apollo finds, and warm
+          intros.
         </p>
       </header>
 
-      {/* Primary: free local search over saved/imported contacts */}
+      {/* Primary: free local filter + AI ask over saved/imported contacts */}
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <ContactSearch initial={initial} total={total} />
+        <ContactSearch initial={initial} total={total} hasApiKey={hasApiKey()} />
       </section>
 
       {/* Secondary: Happenstance cloud graph (optional, credit-metered) */}

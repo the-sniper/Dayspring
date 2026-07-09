@@ -149,6 +149,53 @@ export async function searchLocalContactsAction(query: string) {
   return q ? searchContacts(q, 60) : listContacts({ limit: 60 });
 }
 
+// Semantic "ask" search over ALL contacts via Claude (name/title/company).
+export type AskContactsResult =
+  | {
+      ok: true;
+      rows: (import("@/lib/contacts/query").ContactRow & { reason: string })[];
+      caveat: string | null;
+    }
+  | { ok: false; error: string };
+
+export async function askContactsAction(
+  query: string,
+): Promise<AskContactsResult> {
+  const q = query.trim();
+  if (!q) return { ok: false, error: "Type a question first." };
+  const { hasApiKey } = await import("@/lib/claude/client");
+  if (!hasApiKey()) {
+    return { ok: false, error: "AI search needs ANTHROPIC_API_KEY in .env.local (see Settings)." };
+  }
+  const { listContacts } = await import("@/lib/contacts/query");
+  // Full set for the model (capped inside askContacts).
+  const all = listContacts({ limit: 5000 });
+  if (all.length === 0) return { ok: false, error: "No contacts to search yet." };
+
+  const { askContacts } = await import("@/lib/claude/contact-search");
+  try {
+    const res = await askContacts(
+      q,
+      all.map((c) => ({
+        id: c.id,
+        name: c.name,
+        title: c.title,
+        detail: c.notes ?? c.companyName ?? c.summary,
+      })),
+    );
+    const byId = new Map(all.map((c) => [c.id, c]));
+    const rows = res.matches
+      .map((m) => {
+        const row = byId.get(m.id);
+        return row ? { ...row, reason: m.reason } : null;
+      })
+      .filter((r): r is NonNullable<typeof r> => r !== null);
+    return { ok: true, rows, caveat: res.caveat };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "AI search failed" };
+  }
+}
+
 export async function deleteContactAction(
   contactId: number,
 ): Promise<{ ok: true } | { ok: false; error: string }> {

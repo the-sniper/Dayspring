@@ -147,6 +147,90 @@ export function updateProfile(
     .run();
 }
 
+// ── Legacy-doc migration (M29) ───────────────────────────────────────────────
+// M27 docs stored education as {school, degree, dates, detail} strings and
+// certifications as plain strings. Normalize on read so older rows render and
+// edit in the richer shape; the next save persists the new format.
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function normalizeEducation(e: any): ConsolidatedDoc["education"][number] {
+  if ("field" in e || "gpa" in e || "startDate" in e) return e; // already new
+  let degree: string | null = e.degree ?? null;
+  let field: string | null = null;
+  let gpa: string | null = null;
+  let startDate: string | null = null;
+  let endDate: string | null = null;
+  let location: string | null = null;
+  const leftovers: string[] = [];
+
+  // "Masters in Computer Science" → degree "Masters", field "Computer Science"
+  const degIn = degree?.match(/^(.*?)\s+in\s+(.+)$/i);
+  if (degIn) {
+    degree = degIn[1].trim();
+    field = degIn[2].trim();
+  }
+
+  // dates: "Sep 2024 – Mar 2026" or "Expected Graduation: June 2026"
+  const dates: string = e.dates ?? "";
+  const expected = dates.match(/expected\s+graduation[:\s]*(.+)/i);
+  const range = dates.match(/^(.+?)\s*[–—-]\s*(.+)$/);
+  if (expected) endDate = `${expected[1].trim()} (expected)`;
+  else if (range) {
+    startDate = range[1].trim();
+    endDate = range[2].trim();
+  } else if (dates.trim()) endDate = dates.trim();
+
+  // detail: mine GPA / concentration / location out of the blob
+  for (const part of String(e.detail ?? "")
+    .split(/[·—]|\s{2,}/)
+    .map((s: string) => s.trim())
+    .filter(Boolean)) {
+    const g = part.match(/gpa[:\s]*([0-4](?:\.\d+)?)/i);
+    const conc = part.match(/^concentration[:\s]*(.+)$/i);
+    if (g) gpa = g[1];
+    else if (conc && !field) field = conc[1].trim();
+    else if (/^[A-Z][A-Za-z .]+,\s*[A-Z]{2}$/.test(part)) location = part;
+    else leftovers.push(part);
+  }
+
+  return {
+    school: e.school ?? "",
+    degree,
+    field,
+    minor: null,
+    gpa,
+    startDate,
+    endDate,
+    location,
+    detail: leftovers.length ? leftovers.join(" · ") : null,
+  };
+}
+
+export function normalizeDoc(raw: unknown): ConsolidatedDoc | null {
+  if (!raw || typeof raw !== "object") return null;
+  const d = raw as any;
+  return {
+    ...d,
+    education: (d.education ?? []).map(normalizeEducation),
+    certifications: (d.certifications ?? []).map((c: any) =>
+      typeof c === "string"
+        ? {
+            name: c,
+            organization: null,
+            issueDate: null,
+            expirationDate: null,
+            credentialId: null,
+            credentialUrl: null,
+          }
+        : c,
+    ),
+  } as ConsolidatedDoc;
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+export function readProfileDoc(p: ProfileRow): ConsolidatedDoc | null {
+  return normalizeDoc(p.doc);
+}
+
 // Deterministic doc → markdown (no LLM) — what "Apply to profile" writes.
 export function docToMarkdown(doc: ConsolidatedDoc): string {
   const lines: string[] = [`# ${doc.name}`];
@@ -179,14 +263,24 @@ export function docToMarkdown(doc: ConsolidatedDoc): string {
   if (doc.education.length) {
     lines.push(`\n## Education\n`);
     for (const e of doc.education) {
-      lines.push(
-        `- ${e.school}${e.degree ? ` — ${e.degree}` : ""}${e.dates ? ` (${e.dates})` : ""}${e.detail ? ` · ${e.detail}` : ""}`,
-      );
+      const degreeLine = [e.degree, e.field && `in ${e.field}`, e.minor && `(minor: ${e.minor})`]
+        .filter(Boolean)
+        .join(" ");
+      const dates = [e.startDate, e.endDate].filter(Boolean).join(" – ");
+      const bits = [degreeLine || null, e.gpa ? `GPA ${e.gpa}` : null, dates || null, e.location, e.detail]
+        .filter(Boolean)
+        .join(" · ");
+      lines.push(`- ${e.school}${bits ? ` — ${bits}` : ""}`);
     }
   }
   if (doc.certifications.length) {
     lines.push(`\n## Certifications\n`);
-    for (const c of doc.certifications) lines.push(`- ${c}`);
+    for (const c of doc.certifications) {
+      const bits = [c.organization, [c.issueDate, c.expirationDate].filter(Boolean).join(" – ") || null, c.credentialId && `ID ${c.credentialId}`]
+        .filter(Boolean)
+        .join(" · ");
+      lines.push(`- ${c.name}${bits ? ` — ${bits}` : ""}`);
+    }
   }
   return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
 }

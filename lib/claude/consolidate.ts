@@ -38,12 +38,26 @@ export const ConsolidatedDocSchema = z.object({
   education: z.array(
     z.object({
       school: z.string(),
-      degree: z.string().nullable(),
-      dates: z.string().nullable(),
-      detail: z.string().nullable(),
+      degree: z.string().nullable(), // "Masters", "BS" — the credential alone
+      field: z.string().nullable(), // major/concentration, e.g. "Computer Science"
+      minor: z.string().nullable(),
+      gpa: z.string().nullable(), // "3.7" — exactly as printed
+      startDate: z.string().nullable(), // "Sep 2024"
+      endDate: z.string().nullable(), // "June 2026 (expected)"
+      location: z.string().nullable(),
+      detail: z.string().nullable(), // anything true that fits nowhere above
     }),
   ),
-  certifications: z.array(z.string()),
+  certifications: z.array(
+    z.object({
+      name: z.string(),
+      organization: z.string().nullable(),
+      issueDate: z.string().nullable(),
+      expirationDate: z.string().nullable(),
+      credentialId: z.string().nullable(),
+      credentialUrl: z.string().nullable(),
+    }),
+  ),
   // What was merged/deduped/conflicted — shown to the human, never hidden.
   merge_notes: z.array(z.string()),
 });
@@ -57,6 +71,8 @@ HARD RULES — never fabricate:
 - Same role in multiple versions → ONE entry: union the bullets, dropping only near-duplicates (keep the more specific/quantified phrasing). Conflicting dates or titles for the same role → prefer the most complete/recent version and record the conflict in merge_notes.
 - Include EVERY distinct role, project, education entry, and certification found anywhere.
 - skills: the union, grouped sensibly; every skill must appear in some source.
+- education: split into fields — degree is the credential alone ("Masters"), field is the major/concentration ("Computer Science"), gpa exactly as printed, start/end dates separately (mark expected graduations "(expected)"). null for anything the sources don't state; unclassifiable-but-true remainders go in detail.
+- certifications: structured (name/organization/dates/credential) — null for anything not printed.
 - summary/headline: only from source facts; no adjectives the sources don't support.
 - contact: exactly as printed in the sources; conflicts → most recent, noted in merge_notes.
 - merge_notes: one line per merge decision worth knowing ("Merged 'Acme SWE II' bullets from 2 versions, dropped 1 duplicate", "Phone differs between versions; kept …"). Empty if nothing notable.`;

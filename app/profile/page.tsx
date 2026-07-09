@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { UserCircle } from "lucide-react";
 import ProfileStudio, { type ProfileView } from "@/components/profile-studio";
-import type { ConsolidatedDoc } from "@/lib/claude/consolidate";
-import { completeness, getDefaultProfile, listProfiles } from "@/lib/profiles/core";
+import { completeness, getDefaultProfile, listProfiles, readProfileDoc } from "@/lib/profiles/core";
 import { listMasters } from "@/lib/resumes/core";
 
 export const dynamic = "force-dynamic";
@@ -53,7 +52,8 @@ export default function ProfilePage() {
               github: active.github,
               website: active.website,
               content: active.content,
-              doc: (active.doc as ConsolidatedDoc | null) ?? null,
+              // Normalized on read — legacy M27-shape docs migrate here.
+              doc: readProfileDoc(active),
               defaults: active.defaults,
             } satisfies ProfileView
           }

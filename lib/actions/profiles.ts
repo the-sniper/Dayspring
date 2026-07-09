@@ -139,7 +139,7 @@ export async function updateProfileDocAction(
     skills: parsed.data.skills
       .filter((g) => g.group.trim() && g.items.some((i) => i.trim()))
       .map((g) => ({ ...g, items: g.items.map((i) => i.trim()).filter(Boolean) })),
-    certifications: parsed.data.certifications.map((c) => c.trim()).filter(Boolean),
+    certifications: parsed.data.certifications.filter((c) => c.name.trim()),
   };
   try {
     updateProfile(profileId, { doc: clean, content: docToMarkdown(clean) });

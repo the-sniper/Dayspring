@@ -151,7 +151,7 @@ export default async function SettingsPage({
             masters={listMasters().map((m) => ({
               id: m.id,
               label: m.label,
-              chars: m.content.length,
+              content: m.content,
               isPrimary: m.isPrimary,
               isPdf: !!m.sourceFile?.endsWith(".pdf"),
               updatedAt: m.updatedAt,

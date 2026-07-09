@@ -6,13 +6,22 @@ import {
   deleteMaster,
   generateForJob,
   ingestMasterFile,
+  reparseMaster,
   setPrimaryMaster,
+  updateMasterContent,
+  type IngestResult,
 } from "@/lib/resumes/core";
 
 const MAX_UPLOAD = 10 * 1024 * 1024; // 10 MB
 
 export type UploadMasterResult =
-  | { ok: true; label: string; chars: number; seededProfile: boolean }
+  | {
+      ok: true;
+      label: string;
+      chars: number;
+      seededProfile: boolean;
+      parse: IngestResult["parse"];
+    }
   | { ok: false; error: string };
 
 export async function uploadMasterResumeAction(
@@ -28,7 +37,7 @@ export async function uploadMasterResumeAction(
   if (file.name.toLowerCase().endsWith(".pdf") && !hasApiKey()) {
     return {
       ok: false,
-      error: "PDF transcription needs ANTHROPIC_API_KEY — or upload .md/.txt instead.",
+      error: "PDF parsing needs your Anthropic key (Settings → API Keys) — or upload .md/.txt instead.",
     };
   }
   try {
@@ -37,9 +46,51 @@ export async function uploadMasterResumeAction(
       buffer: Buffer.from(await file.arrayBuffer()),
     });
     revalidatePath("/settings");
-    return { ok: true, label: res.label, chars: res.chars, seededProfile: res.seededProfile };
+    return {
+      ok: true,
+      label: res.label,
+      chars: res.chars,
+      seededProfile: res.seededProfile,
+      parse: res.parse,
+    };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Upload failed" };
+  }
+}
+
+export type ReparseResult =
+  | {
+      ok: true;
+      label: string;
+      chars: number;
+      content: string;
+      parse: NonNullable<IngestResult["parse"]>;
+    }
+  | { ok: false; error: string };
+
+export async function reparseMasterAction(id: number): Promise<ReparseResult> {
+  if (!hasApiKey()) {
+    return { ok: false, error: "Parsing needs your Anthropic key (Settings → API Keys)." };
+  }
+  try {
+    const res = await reparseMaster(id);
+    revalidatePath("/settings");
+    return { ok: true, ...res };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Re-parse failed" };
+  }
+}
+
+export async function updateMasterContentAction(
+  id: number,
+  content: string,
+): Promise<{ ok: true; chars: number } | { ok: false; error: string }> {
+  try {
+    updateMasterContent(id, content);
+    revalidatePath("/settings");
+    return { ok: true, chars: content.trim().length };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "Save failed" };
   }
 }
 

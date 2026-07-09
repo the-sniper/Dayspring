@@ -4,7 +4,11 @@ import path from "node:path";
 import { desc, eq, sql } from "drizzle-orm";
 import { db } from "@/lib/db";
 import { companies, generatedResumes, jobs, masterResumes, settings } from "@/lib/db/schema";
-import { extractResumeMarkdown, generateResume } from "@/lib/claude/resume";
+import {
+  extractResumeVerified,
+  generateResume,
+  type ParsedResume,
+} from "@/lib/claude/resume";
 import { MODEL_PREMIUM } from "@/lib/claude/client";
 import { latestJobBrief } from "@/lib/research/core";
 import { RESUMES_DIR, renderResumePdf } from "@/lib/resumes/render";
@@ -33,18 +37,29 @@ function slugify(s: string): string {
   return s.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 40) || "x";
 }
 
-// Ingest an uploaded master resume. PDFs go through Claude transcription
-// (extraction-only); md/txt are stored as-is. The original file is kept on
-// disk so a PDF master doubles as a directly-attachable fallback resume.
+export type IngestResult = {
+  id: number;
+  label: string;
+  chars: number;
+  seededProfile: boolean;
+  // PDF parses carry the fidelity-audit outcome; md/txt are stored verbatim.
+  parse: Pick<ParsedResume, "faithful" | "problems" | "passes"> | null;
+};
+
+// Ingest an uploaded master resume. PDFs go through the VERIFIED Claude
+// transcription (extract → audit → repair); md/txt are stored as-is. The
+// original file is kept on disk so a PDF master doubles as a
+// directly-attachable fallback resume — and so it can be re-parsed later.
 export async function ingestMasterFile(args: {
   filename: string;
   buffer: Buffer;
-}): Promise<{ id: number; label: string; chars: number; seededProfile: boolean }> {
+}): Promise<IngestResult> {
   const ext = path.extname(args.filename).toLowerCase();
   const label = path.basename(args.filename, path.extname(args.filename)).slice(0, 60) || "resume";
 
   let content: string;
   let sourceFile: string | null = null;
+  let parse: IngestResult["parse"] = null;
 
   if (ext === ".pdf") {
     fs.mkdirSync(MASTERS_DIR, { recursive: true });
@@ -53,7 +68,9 @@ export async function ingestMasterFile(args: {
       `${Date.now()}-${slugify(label)}.pdf`,
     );
     fs.writeFileSync(sourceFile, args.buffer);
-    content = await extractResumeMarkdown(args.buffer.toString("base64"));
+    const parsed = await extractResumeVerified(args.buffer.toString("base64"));
+    content = parsed.markdown;
+    parse = { faithful: parsed.faithful, problems: parsed.problems, passes: parsed.passes };
   } else if (ext === ".md" || ext === ".txt") {
     content = args.buffer.toString("utf-8").trim();
     if (!content) throw new Error("That file is empty.");
@@ -80,7 +97,50 @@ export async function ingestMasterFile(args: {
     label,
     chars: content.length,
     seededProfile: maybeSeedProfile(content),
+    parse,
   };
+}
+
+// Re-run the verified parse from the stored original PDF — for when a parse
+// predates a parser upgrade, or the human wants another pass. Updates ONLY
+// this master's content; the scoring profile is never touched (it may carry
+// user-written preferences).
+export async function reparseMaster(id: number): Promise<{
+  label: string;
+  chars: number;
+  content: string;
+  parse: NonNullable<IngestResult["parse"]>;
+}> {
+  const row = db.select().from(masterResumes).where(eq(masterResumes.id, id)).get();
+  if (!row) throw new Error("Master resume not found.");
+  if (!row.sourceFile?.endsWith(".pdf") || !fs.existsSync(row.sourceFile)) {
+    throw new Error("No stored PDF for this master — re-parse applies to PDF uploads.");
+  }
+  const parsed = await extractResumeVerified(
+    fs.readFileSync(row.sourceFile).toString("base64"),
+  );
+  db.update(masterResumes)
+    .set({ content: parsed.markdown, updatedAt: new Date().toISOString() })
+    .where(eq(masterResumes.id, id))
+    .run();
+  return {
+    label: row.label,
+    chars: parsed.markdown.length,
+    content: parsed.markdown,
+    parse: { faithful: parsed.faithful, problems: parsed.problems, passes: parsed.passes },
+  };
+}
+
+// Human fix-up of a parse — the final quality backstop. Content only.
+export function updateMasterContent(id: number, content: string): void {
+  const clean = content.trim();
+  if (!clean) throw new Error("Content can't be empty.");
+  const res = db
+    .update(masterResumes)
+    .set({ content: clean, updatedAt: new Date().toISOString() })
+    .where(eq(masterResumes.id, id))
+    .run();
+  if (res.changes === 0) throw new Error("Master resume not found.");
 }
 
 // If the scoring profile is still the seed stub, replace it with the master

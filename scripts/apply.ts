@@ -1,12 +1,14 @@
-// Attended apply-assist. Opens a HEADED browser you watch, autofills the form
-// from your profile + tailored materials + resume, then STOPS at hard human
-// gates: solve any CAPTCHA yourself, review everything, and YOU submit. Nothing
-// is ever submitted automatically.
+// Attended apply-assist. Opens a HEADED browser you watch, autofills each form
+// from your profile + tailored materials + per-job resume PDF, then stops at a
+// hard review gate. When YOU type 'go', the tool clicks Submit for you
+// (Tsenta-style approve→submit). Nothing is ever submitted without your
+// explicit per-application approval; CAPTCHAs and EEO answers stay yours.
 //
-// Usage: npm run apply -- <jobId>
+// Usage: npm run apply -- <jobId> [jobId2 jobId3 …]
 export {}; // module scope
 
 import { createInterface } from "node:readline";
+import type { Page } from "playwright";
 
 function prompt(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -18,131 +20,225 @@ function prompt(question: string): Promise<string> {
   );
 }
 
-async function main() {
-  const jobId = Number(process.argv[2]);
-  if (!Number.isFinite(jobId)) {
-    console.error("Usage: npm run apply -- <jobId>");
-    process.exit(1);
+// ── Submit-click helpers (M22) ───────────────────────────────────────────────
+
+// ATS-specific candidates first, generic role-based last. The click only ever
+// happens after the human types 'go' at the review gate.
+const SUBMIT_SELECTORS = [
+  "#submit_app", // greenhouse
+  'button[type="submit"]:visible',
+  'input[type="submit"]:visible',
+  ".template-btn-submit", // lever
+];
+
+async function clickSubmit(page: Page): Promise<{ ok: boolean; how: string }> {
+  for (const sel of SUBMIT_SELECTORS) {
+    try {
+      const el = page.locator(sel).first();
+      if ((await el.count()) > 0 && (await el.isVisible())) {
+        await el.click({ timeout: 5000 });
+        return { ok: true, how: sel };
+      }
+    } catch {
+      // try the next candidate
+    }
   }
+  try {
+    const byRole = page
+      .getByRole("button", { name: /submit application|submit|apply now|apply/i })
+      .first();
+    if ((await byRole.count()) > 0 && (await byRole.isVisible())) {
+      await byRole.click({ timeout: 5000 });
+      return { ok: true, how: "role:button submit/apply" };
+    }
+  } catch {
+    // fall through
+  }
+  return { ok: false, how: "no submit button found" };
+}
 
-  const { loadLocalEnv } = await import("../lib/env");
-  loadLocalEnv();
+// Post-submit confirmation heuristic: confirmation copy or a telltale URL.
+async function detectConfirmation(page: Page): Promise<string | null> {
+  const rx =
+    /thank you|application (?:was )?submitted|we(?:'|’)ve received your application|received your application|application received|successfully submitted/i;
+  const deadline = Date.now() + 15_000;
+  while (Date.now() < deadline) {
+    try {
+      if (/confirmation|thank[-_]?you|success/i.test(page.url())) {
+        return `url: ${page.url()}`;
+      }
+      const body = await page.locator("body").innerText({ timeout: 3000 });
+      const m = body.match(rx);
+      if (m) return `page text: “${m[0]}”`;
+    } catch {
+      // page may be mid-navigation — retry until deadline
+    }
+    await page.waitForTimeout(1000);
+  }
+  return null;
+}
 
-  const { loadApplyContext, setApplyStatus, appendApplyLog } = await import(
-    "../lib/apply/core"
-  );
+// ── Per-job flow ─────────────────────────────────────────────────────────────
+
+type Deps = {
+  loadApplyContext: typeof import("../lib/apply/core").loadApplyContext;
+  setApplyStatus: typeof import("../lib/apply/core").setApplyStatus;
+  appendApplyLog: typeof import("../lib/apply/core").appendApplyLog;
+};
+
+async function ensureTosAck(host: string): Promise<boolean> {
+  const { db } = await import("../lib/db");
+  const { settings } = await import("../lib/db/schema");
+  const { eq } = await import("drizzle-orm");
+  const tosKey = `tos:${host}`;
+  const already = db.select().from(settings).where(eq(settings.key, tosKey)).get();
+  if (already) return true;
+
+  console.log(`\n⚠  FIRST RUN against ${host}`);
+  console.log(`   Automating form-fill / submit on a third-party ATS can violate its`);
+  console.log(`   terms of service and, for account-based sites, risk an account ban.`);
+  console.log(`   Dayspring runs ATTENDED — you watch, solve CAPTCHAs, and approve`);
+  console.log(`   every submission before it happens.`);
+  const ack = await prompt(`\n   Type exactly "I accept the risk for ${host}" to proceed: `);
+  if (ack !== `I accept the risk for ${host}`) {
+    console.log("   Not acknowledged — skipping this job.");
+    return false;
+  }
+  db.insert(settings)
+    .values({ key: tosKey, value: new Date().toISOString(), updatedAt: new Date().toISOString() })
+    .onConflictDoNothing()
+    .run();
+  return true;
+}
+
+async function applyOneJob(
+  page: Page,
+  jobId: number,
+  deps: Deps,
+): Promise<"submitted" | "manual" | "skipped" | "abandoned" | "error"> {
+  const { loadApplyContext, setApplyStatus, appendApplyLog } = deps;
+
   const loaded = loadApplyContext(jobId);
   if (!loaded.ok) {
-    console.error(`✗ ${loaded.error}`);
-    process.exit(1);
+    console.error(`\n✗ Job ${jobId}: ${loaded.error}`);
+    return "error";
   }
   const { ctx } = loaded;
   const { detectAts, fillCommonForm } = await import("../lib/apply/ats-forms");
   const ats = detectAts(ctx.job.url!);
   const host = new URL(ctx.job.url!).host;
 
-  // Per-site ToS acknowledgement — required once per host before automating
-  // against it. Automating ATS interaction can violate site terms; this is a
-  // deliberate, logged opt-in.
-  const { db } = await import("../lib/db");
-  const { settings } = await import("../lib/db/schema");
-  const { eq } = await import("drizzle-orm");
-  const tosKey = `tos:${host}`;
-  const already = db.select().from(settings).where(eq(settings.key, tosKey)).get();
-  if (!already) {
-    console.log(`\n⚠  FIRST RUN against ${host}`);
-    console.log(`   Automating form-fill / signup on a third-party ATS can violate its`);
-    console.log(`   terms of service and, for account-based sites, risk an account ban.`);
-    console.log(`   Dayspring runs ATTENDED only — you watch, solve CAPTCHAs, and submit.`);
-    const ack = await prompt(`\n   Type exactly "I accept the risk for ${host}" to proceed: `);
-    if (ack !== `I accept the risk for ${host}`) {
-      console.log("   Not acknowledged — aborting.");
-      process.exit(0);
-    }
-    db.insert(settings)
-      .values({ key: tosKey, value: new Date().toISOString(), updatedAt: new Date().toISOString() })
-      .onConflictDoNothing()
-      .run();
-  }
+  if (!(await ensureTosAck(host))) return "skipped";
 
-  console.log(`\n🌅 Dayspring apply-assist — ATTENDED`);
-  console.log(`   ${ctx.job.title} @ ${ctx.job.companyName}`);
+  const resumeLabel = ctx.resumePath
+    ? `${ctx.resumePath}  (${
+        { tailored: "tailored for THIS job", master: "primary master", settings: "static fallback" }[
+          ctx.resumeSource!
+        ]
+      })`
+    : "⚠ none — generate one on the job page or upload a master in Settings";
+
+  console.log(`\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━`);
+  console.log(`   ${ctx.job.title} @ ${ctx.job.companyName}   [job ${jobId}]`);
   console.log(`   ${ctx.job.url}`);
-  console.log(`   ATS: ${ats}${ats === "workday" ? " (account required — see M20)" : ""}`);
-  console.log(`   Resume: ${ctx.resumePath ?? "⚠ not set (set resumePath in Settings)"}`);
-  console.log(`   Tailored materials: bullets ${ctx.job.tailoredBullets ? "✓" : "—"}, cover letter ${ctx.job.coverLetter ? "✓" : "—"}`);
+  console.log(`   ATS: ${ats}`);
+  console.log(`   Resume: ${resumeLabel}`);
   console.log(
-    `\n   This drives a browser on a third-party site. You stay in control:`,
+    `   Tailored materials: bullets ${ctx.job.tailoredBullets ? "✓" : "—"}, cover letter ${ctx.job.coverLetter ? "✓" : "—"}`,
   );
-  console.log(`   it fills, then pauses for you to solve CAPTCHAs and to submit.`);
-  const go = await prompt(`\n   Open the browser and begin? [y/N] `);
-  if (go.toLowerCase() !== "y") {
-    console.log("   Aborted — nothing changed.");
-    process.exit(0);
-  }
 
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: false });
-  const page = await browser.newPage();
   setApplyStatus(jobId, "in_progress", `apply-assist opened (${ats})`);
+  await page.goto(ctx.job.url!, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
-  try {
-    await page.goto(ctx.job.url!, { waitUntil: "domcontentloaded", timeout: 60_000 });
-
-    if (ats === "workday") {
-      await runWorkdayAssist(page, host, ctx.fields.email, appendApplyLog, jobId, prompt);
-    } else {
-      console.log(`\n   Autofilling…`);
-      const res = await fillCommonForm(page, ctx);
-      console.log(`   ✓ filled: ${res.filled.join(", ") || "(nothing matched)"}`);
-      if (res.skipped.length) {
-        console.log(`   – not found (fill manually if present): ${res.skipped.join(", ")}`);
-      }
-      appendApplyLog(jobId, `autofilled: ${res.filled.join(", ")}`);
+  if (ats === "workday") {
+    await runWorkdayAssist(page, host, ctx.fields.email, appendApplyLog, jobId);
+  } else {
+    console.log(`\n   Autofilling…`);
+    const res = await fillCommonForm(page, ctx);
+    console.log(`   ✓ filled: ${res.filled.join(", ") || "(nothing matched)"}`);
+    if (res.skipped.length) {
+      console.log(`   – not found (fill manually if present): ${res.skipped.join(", ")}`);
     }
-
-    // Gate 1 — CAPTCHA / anything the autofill couldn't do.
-    console.log(
-      `\n   ⏸  GATE 1 — Review the form in the browser. Solve any CAPTCHA,`,
-    );
-    console.log(`      fix any fields, and answer EEO questions yourself.`);
-    await prompt(`      Press Enter when the form is ready to submit… `);
-
-    // Gate 2 — submission is the human's, always.
-    console.log(`\n   ⏸  GATE 2 — Final submit is yours.`);
-    const done = await prompt(
-      `      Type 'submitted' AFTER you've clicked submit in the browser,\n      or anything else to record it as not submitted: `,
-    );
-
-    if (done.toLowerCase() === "submitted") {
-      const { setJobStatusCore } = await import("../lib/jobs/transition");
-      setJobStatusCore(jobId, "applied"); // auto-creates the application row
-      setApplyStatus(jobId, "submitted", "human confirmed submit → applied");
-      console.log(`\n   ✅ Recorded as applied. Nice.`);
-    } else {
-      setApplyStatus(jobId, "abandoned", "closed without submit");
-      console.log(`\n   Recorded as not submitted. Pipeline status unchanged.`);
-    }
-  } catch (err) {
-    appendApplyLog(jobId, `error: ${err instanceof Error ? err.message : String(err)}`);
-    console.error(`\n   ✗ ${err instanceof Error ? err.message : err}`);
-  } finally {
-    const keep = await prompt(`\n   Close the browser now? [Y/n] `);
-    if (keep.toLowerCase() !== "n") await browser.close();
+    appendApplyLog(jobId, `autofilled: ${res.filled.join(", ")} [resume: ${ctx.resumeSource ?? "none"}]`);
   }
+
+  // THE review gate — the human approves; the tool submits.
+  console.log(`\n   ⏸  REVIEW GATE — in the browser: solve any CAPTCHA, answer EEO`);
+  console.log(`      questions yourself, and fix anything the autofill missed.`);
+  console.log(`      Then tell me what to do:`);
+  console.log(`        go    → I click Submit for you`);
+  console.log(`        done  → you already clicked Submit yourself`);
+  console.log(`        skip  → move on WITHOUT submitting`);
+  const answer = (await prompt(`\n      go / done / skip: `)).toLowerCase();
+
+  if (answer === "go") {
+    const clicked = await clickSubmit(page);
+    if (!clicked.ok) {
+      console.log(`   ✗ Couldn't find a Submit button (${clicked.how}).`);
+      console.log(`     Click it yourself, then confirm below.`);
+      const manual = await prompt(`     Type 'done' if you submitted, anything else to abandon: `);
+      if (manual.toLowerCase() !== "done") {
+        setApplyStatus(jobId, "abandoned", "no submit button; user did not submit");
+        return "abandoned";
+      }
+      const { setJobStatusCore } = await import("../lib/jobs/transition");
+      setJobStatusCore(jobId, "applied");
+      setApplyStatus(jobId, "submitted", "human submitted manually → applied");
+      console.log(`   ✅ Recorded as applied.`);
+      return "manual";
+    }
+
+    appendApplyLog(jobId, `tool clicked submit (${clicked.how}) after human approval`);
+    console.log(`   🖱  Clicked Submit (${clicked.how}). Watching for confirmation…`);
+    const confirmed = await detectConfirmation(page);
+    if (confirmed) {
+      console.log(`   ✓ Confirmation detected — ${confirmed}`);
+    } else {
+      console.log(`   ? No clear confirmation appeared within 15s.`);
+      const looks = await prompt(`     Does the page show it went through? [y/N] `);
+      if (looks.toLowerCase() !== "y") {
+        setApplyStatus(jobId, "abandoned", "submit clicked but unconfirmed — check manually");
+        console.log(`   Recorded as NOT submitted — verify on the site.`);
+        return "abandoned";
+      }
+    }
+    const { setJobStatusCore } = await import("../lib/jobs/transition");
+    setJobStatusCore(jobId, "applied"); // auto-creates the application row
+    setApplyStatus(jobId, "submitted", `approved → tool submitted${confirmed ? ` (${confirmed})` : ""}`);
+    console.log(`   ✅ Recorded as applied. Nice.`);
+    return "submitted";
+  }
+
+  if (answer === "done") {
+    const { setJobStatusCore } = await import("../lib/jobs/transition");
+    setJobStatusCore(jobId, "applied");
+    setApplyStatus(jobId, "submitted", "human confirmed manual submit → applied");
+    console.log(`   ✅ Recorded as applied.`);
+    return "manual";
+  }
+
+  if (answer === "skip") {
+    setApplyStatus(jobId, "abandoned", "skipped at review gate");
+    console.log(`   Skipped — pipeline status unchanged.`);
+    return "skipped";
+  }
+
+  setApplyStatus(jobId, "abandoned", "closed at review gate without submit");
+  console.log(`   Recorded as not submitted. Pipeline status unchanged.`);
+  return "abandoned";
 }
 
-// Workday account assist: surface the vaulted/master credential to paste, then
-// auto-read the verification code from Gmail, and offer to vault a new account.
-// The human drives the (per-tenant, highly variable) Workday form.
+// Workday account assist: surface the vaulted/master credential, auto-read the
+// verification code from Gmail, and offer to vault a new account. The human
+// drives the (per-tenant, highly variable) Workday form itself.
 async function runWorkdayAssist(
-  page: import("playwright").Page,
+  page: Page,
   host: string,
   email: string | null,
   appendApplyLog: (jobId: number, line: string) => void,
   jobId: number,
-  prompt: (q: string) => Promise<string>,
 ) {
+  void page;
   const { credentialForHost, getMasterPassword, addCredential, hasMasterPassword } =
     await import("../lib/vault/core");
   const { hasVaultKey } = await import("../lib/vault/crypto");
@@ -150,9 +246,7 @@ async function runWorkdayAssist(
   const { waitForWorkdayCode } = await import("../lib/apply/workday-signup");
 
   if (!hasVaultKey() || !hasMasterPassword()) {
-    console.log(
-      `\n   ⚠ Vault/master password not set — set them in Settings to use the`,
-    );
+    console.log(`\n   ⚠ Vault/master password not set — set them in Settings to use the`);
     console.log(`     one-password + auto-OTP flow. Continuing manually.`);
     return;
   }
@@ -191,6 +285,63 @@ async function runWorkdayAssist(
         console.log(`   (No code found in the window — grab it from the dashboard widget or inbox.)`);
       }
     }
+  }
+}
+
+// ── Main: one browser session, N jobs ────────────────────────────────────────
+
+async function main() {
+  const jobIds = process.argv.slice(2).map(Number).filter((n) => Number.isFinite(n));
+  if (jobIds.length === 0) {
+    console.error("Usage: npm run apply -- <jobId> [jobId2 …]");
+    process.exit(1);
+  }
+
+  const { loadLocalEnv } = await import("../lib/env");
+  loadLocalEnv();
+
+  const { loadApplyContext, setApplyStatus, appendApplyLog } = await import(
+    "../lib/apply/core"
+  );
+  const deps: Deps = { loadApplyContext, setApplyStatus, appendApplyLog };
+
+  console.log(`\n🌅 Dayspring apply-assist — ATTENDED, approve→submit`);
+  console.log(`   ${jobIds.length} job${jobIds.length === 1 ? "" : "s"} queued: ${jobIds.join(", ")}`);
+  console.log(`\n   This drives a browser on third-party sites. You stay in control:`);
+  console.log(`   it fills, you review each application, and it submits only after`);
+  console.log(`   you type 'go' — per job, every time.`);
+  const start = await prompt(`\n   Open the browser and begin? [y/N] `);
+  if (start.toLowerCase() !== "y") {
+    console.log("   Aborted — nothing changed.");
+    process.exit(0);
+  }
+
+  const { chromium } = await import("playwright");
+  const browser = await chromium.launch({ headless: false });
+  const tally: Record<string, number> = {};
+
+  try {
+    for (const jobId of jobIds) {
+      const page = await browser.newPage();
+      try {
+        const outcome = await applyOneJob(page, jobId, deps);
+        tally[outcome] = (tally[outcome] ?? 0) + 1;
+      } catch (err) {
+        tally.error = (tally.error ?? 0) + 1;
+        appendApplyLog(jobId, `error: ${err instanceof Error ? err.message : String(err)}`);
+        console.error(`\n   ✗ Job ${jobId}: ${err instanceof Error ? err.message : err}`);
+      } finally {
+        // Keep the last page open until the user releases the browser below.
+        if (jobId !== jobIds[jobIds.length - 1]) await page.close();
+      }
+    }
+  } finally {
+    const summary = Object.entries(tally)
+      .map(([k, v]) => `${k}: ${v}`)
+      .join(" · ");
+    console.log(`\n   ── Run summary: ${summary || "nothing processed"}`);
+    const keep = await prompt(`\n   Close the browser now? [Y/n] `);
+    if (keep.toLowerCase() !== "n") await browser.close();
   }
 }
 

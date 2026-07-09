@@ -47,13 +47,14 @@ export default function ApplyHandoff({
       </div>
       <p className="mb-3 text-[11px] font-medium text-muted-foreground leading-relaxed">
         Runs an <span className="font-bold">attended</span> browser in your
-        terminal: it autofills, then pauses for you to solve any CAPTCHA and to
-        submit. Nothing is submitted automatically.
+        terminal: it autofills + attaches this job&apos;s resume, you review
+        (CAPTCHA, EEO), then type <span className="font-bold">go</span> and it
+        clicks Submit for you. Add more job ids to the command to queue several.
       </p>
 
       <ul className="mb-3 space-y-1">
         <Prereq ok={hasProfile} label="Profile set (fills name/email/links)" />
-        <Prereq ok={hasResume} label="Resume PDF path set (auto-uploads)" />
+        <Prereq ok={hasResume} label="Resume PDF ready (tailored → master → fallback path)" />
         <Prereq ok={hasTailored} label="Tailored bullets + cover letter (optional)" />
       </ul>
 

@@ -4,9 +4,7 @@
 // schema change). Local single-user app — no auth layer by design.
 import fs from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { generatedResumes } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { renderResumeDocx } from "@/lib/resumes/docx";
 import { normalizeStyle } from "@/lib/resumes/style";
 import type { ResumeDocType } from "@/lib/claude/resume";
@@ -15,15 +13,10 @@ export async function GET(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id: idRaw } = await params;
-  const id = Number(idRaw);
-  if (!Number.isFinite(id)) return new Response("Bad id", { status: 400 });
+  const { id } = await params;
+  if (!id) return new Response("Bad id", { status: 400 });
 
-  const row = db
-    .select()
-    .from(generatedResumes)
-    .where(eq(generatedResumes.id, id))
-    .get();
+  const row = await convex().query(api.resumes.getGenerated, { id: id as never });
   if (!row) return new Response("Not found", { status: 404 });
 
   if (new URL(req.url).searchParams.get("format") === "docx") {
@@ -42,7 +35,7 @@ export async function GET(
     const buffer = await renderResumeDocx(doc, normalizeStyle(style));
     const base = row.pdfPath
       ? path.basename(row.pdfPath, ".pdf")
-      : `resume-${row.id}`;
+      : `resume-${row._id}`;
     return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type":

@@ -1,6 +1,5 @@
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, MODEL_SCORE } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
 
 // Plain number — the API strips numeric constraints from wire schemas anyway;
 // we clamp/round in code as belt-and-braces.
@@ -48,39 +47,21 @@ export async function scoreJob(
   job: JobForScoring,
 ): Promise<ScoreOutcome> {
   const jd = job.description.slice(0, 12_000);
-  const response = await getClient().messages.parse({
-    model: MODEL_SCORE,
-    max_tokens: 6000, // room for adaptive thinking + the JSON
-    system: [
-      { type: "text", text: RUBRIC },
-      {
-        type: "text",
-        text: `CANDIDATE PROFILE:\n\n${profile}`,
-        // Batch runs re-read the profile at ~0.1x. No-op if below the
-        // model's minimum cacheable prefix — harmless either way.
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [
-      {
-        role: "user",
-        content: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${jd}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(ScoreResult) },
+  const { data: raw, usage } = await structuredComplete({
+    tier: "standard",
+    schema: ScoreResult,
+    schemaName: "job_score",
+    maxTokens: 6000, // room for reasoning + the JSON
+    system: RUBRIC,
+    // Stable across a batch run — cached prefix on both providers.
+    cache: `CANDIDATE PROFILE:\n\n${profile}`,
+    user: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${jd}`,
   });
 
-  if (!response.parsed_output) {
-    throw new Error(`Scoring failed (stop_reason: ${response.stop_reason})`);
-  }
-  const raw = response.parsed_output;
   return {
     score: Math.max(0, Math.min(100, Math.round(raw.score))),
     fitSummary: raw.fit_summary,
     gaps: raw.gaps.slice(0, 6),
-    tokens: {
-      input: response.usage.input_tokens + (response.usage.cache_read_input_tokens ?? 0) + (response.usage.cache_creation_input_tokens ?? 0),
-      output: response.usage.output_tokens,
-    },
+    tokens: usage,
   };
 }

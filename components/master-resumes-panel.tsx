@@ -24,7 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type MasterView = {
-  id: number;
+  id: string;
   label: string;
   content: string;
   isPrimary: boolean;

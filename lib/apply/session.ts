@@ -8,10 +8,7 @@
 // The registry lives on globalThis so dev HMR doesn't orphan a live session.
 // This is a one-machine, one-human-at-a-time design — the browser opens on
 // the machine running Dayspring.
-import { eq } from "drizzle-orm";
 import type { Browser, Page } from "playwright";
-import { db } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
 import {
   appendApplyLog,
   loadApplyContext,
@@ -20,6 +17,7 @@ import {
 } from "@/lib/apply/core";
 import { detectAts } from "@/lib/apply/ats-forms";
 import { setJobStatusCore } from "@/lib/jobs/transition";
+import { getSetting, setSetting } from "@/lib/settings/store";
 
 export type ApplyPhase =
   | "launching"
@@ -32,7 +30,7 @@ export type ApplyPhase =
 export type ApplyOutcome = "submitted" | "manual" | "abandoned" | "error";
 
 export type ApplySessionState = {
-  jobId: number;
+  jobId: string;
   jobTitle: string;
   companyName: string;
   host: string;
@@ -83,25 +81,23 @@ function finish(s: ActiveSession, outcome: ApplyOutcome, message: string): void 
   s.state.message = message;
 }
 
-// ── ToS acknowledgement (per host, persisted like the CLI's) ────────────────
+// ── ToS acknowledgement (per host, persisted in the local settings store) ────
 export function hasTosAck(host: string): boolean {
-  return !!db.select().from(settings).where(eq(settings.key, `tos:${host}`)).get();
+  return getSetting(`tos:${host}`) !== null;
 }
 
 export function recordTosAck(host: string): void {
-  const now = new Date().toISOString();
-  db.insert(settings)
-    .values({ key: `tos:${host}`, value: now, updatedAt: now })
-    .onConflictDoNothing()
-    .run();
+  if (getSetting(`tos:${host}`) === null) {
+    setSetting(`tos:${host}`, new Date().toISOString());
+  }
 }
 
 // ── Start ────────────────────────────────────────────────────────────────────
 export type StartResult =
   | { ok: true; state: ApplySessionState }
-  | { ok: false; error: string; needsTosFor?: string; activeJobId?: number };
+  | { ok: false; error: string; needsTosFor?: string; activeJobId?: string };
 
-export async function startSession(jobId: number): Promise<StartResult> {
+export async function startSession(jobId: string): Promise<StartResult> {
   const existing = active();
   if (existing && existing.state.phase !== "done") {
     if (browserAlive(existing)) {
@@ -116,10 +112,10 @@ export async function startSession(jobId: number): Promise<StartResult> {
     }
     // Browser died out from under a previous session — clear it.
     finish(existing, "abandoned", "browser window was closed");
-    setApplyStatus(existing.state.jobId, "abandoned", "browser closed mid-session");
+    await setApplyStatus(existing.state.jobId, "abandoned", "browser closed mid-session");
   }
 
-  const loaded = loadApplyContext(jobId);
+  const loaded = await loadApplyContext(jobId);
   if (!loaded.ok) return { ok: false, error: loaded.error };
   const { ctx } = loaded;
 
@@ -154,15 +150,15 @@ export async function startSession(jobId: number): Promise<StartResult> {
     },
   };
   g.__dsApplySession = session;
-  setApplyStatus(jobId, "in_progress", `apply session opened (${ats}, in-app)`);
+  await setApplyStatus(jobId, "in_progress", `apply session opened (${ats}, in-app)`);
 
   // Fire-and-forget: the flow advances state; the UI polls it. Local Node
   // process — the promise keeps running after the action responds.
   void runToReview(session).catch(async (err) => {
-    appendApplyLog(jobId, `error: ${err instanceof Error ? err.message : String(err)}`);
+    await appendApplyLog(jobId, `error: ${err instanceof Error ? err.message : String(err)}`);
     await closeBrowser(session);
     finish(session, "error", err instanceof Error ? err.message : "Apply session failed");
-    setApplyStatus(jobId, "abandoned", "session error");
+    await setApplyStatus(jobId, "abandoned", "session error");
   });
 
   return { ok: true, state: session.state };
@@ -179,14 +175,14 @@ async function runToReview(s: ActiveSession): Promise<void> {
     // we surface the vaulted credential + OTP helpers in the panel instead.
     const { credentialForHost, hasMasterPassword } = await import("@/lib/vault/core");
     const { hasVaultKey } = await import("@/lib/vault/crypto");
-    const cred = hasVaultKey() ? credentialForHost(s.state.host) : null;
+    const cred = hasVaultKey() ? await credentialForHost(s.state.host) : null;
     s.state.workday = {
       existingUsername: cred?.username ?? null,
       hasMaster: hasVaultKey() && hasMasterPassword(),
     };
     s.state.message =
       "Workday is account-based — sign in or register in the browser window (credential helpers below), complete the form, then approve here.";
-    appendApplyLog(s.state.jobId, "workday session — manual fill with helpers");
+    await appendApplyLog(s.state.jobId, "workday session — manual fill with helpers");
   } else {
     s.state.phase = "filling";
     s.state.message = "Autofilling from your profile + tailored materials…";
@@ -196,7 +192,7 @@ async function runToReview(s: ActiveSession): Promise<void> {
     s.state.skipped = res.skipped;
     s.state.message =
       "Review the browser window: solve any CAPTCHA, answer EEO questions yourself, fix anything missed — then approve here.";
-    appendApplyLog(
+    await appendApplyLog(
       s.state.jobId,
       `autofilled: ${res.filled.join(", ") || "(nothing)"} [resume: ${s.state.resumeSource ?? "none"}]`,
     );
@@ -205,7 +201,7 @@ async function runToReview(s: ActiveSession): Promise<void> {
 }
 
 // ── Poll ─────────────────────────────────────────────────────────────────────
-export function getSessionState(jobId?: number): ApplySessionState | null {
+export function getSessionState(jobId?: string): ApplySessionState | null {
   const s = active();
   if (!s) return null;
   if (jobId !== undefined && s.state.jobId !== jobId) return null;
@@ -215,7 +211,7 @@ export function getSessionState(jobId?: number): ApplySessionState | null {
     !browserAlive(s)
   ) {
     finish(s, "abandoned", "The browser window was closed — nothing was submitted.");
-    setApplyStatus(s.state.jobId, "abandoned", "browser closed at review");
+    void setApplyStatus(s.state.jobId, "abandoned", "browser closed at review");
   }
   return s.state;
 }
@@ -272,9 +268,9 @@ async function detectConfirmation(page: Page): Promise<string | null> {
   return null;
 }
 
-function markApplied(s: ActiveSession, how: string): void {
-  setJobStatusCore(s.state.jobId, "applied"); // auto-creates the application row
-  setApplyStatus(s.state.jobId, "submitted", how);
+async function markApplied(s: ActiveSession, how: string): Promise<void> {
+  await setJobStatusCore(s.state.jobId, "applied"); // auto-creates the application row
+  await setApplyStatus(s.state.jobId, "submitted", how);
 }
 
 export type DecisionResult = { ok: true; state: ApplySessionState } | { ok: false; error: string };
@@ -285,7 +281,7 @@ function requirePhase(phase: ApplyPhase): ActiveSession | { error: string } {
   if (s.state.phase !== phase) return { error: `Session is ${s.state.phase}, not ${phase}.` };
   if (!browserAlive(s)) {
     finish(s, "abandoned", "The browser window was closed — nothing was submitted.");
-    setApplyStatus(s.state.jobId, "abandoned", "browser closed");
+    void setApplyStatus(s.state.jobId, "abandoned", "browser closed");
     return { error: "The browser window was closed." };
   }
   return s;
@@ -305,11 +301,11 @@ export async function approveAndSubmit(): Promise<DecisionResult> {
       "Couldn't find a Submit button — click it yourself in the browser, then use “I clicked Submit”.";
     return { ok: true, state: s.state };
   }
-  appendApplyLog(s.state.jobId, `tool clicked submit (${clicked.how}) after in-app approval`);
+  await appendApplyLog(s.state.jobId, `tool clicked submit (${clicked.how}) after in-app approval`);
 
   const confirmed = await detectConfirmation(s.page!);
   if (confirmed) {
-    markApplied(s, `approved in-app → tool submitted (${confirmed})`);
+    await markApplied(s, `approved in-app → tool submitted (${confirmed})`);
     await closeBrowser(s);
     finish(s, "submitted", `Submitted ✓ — ${confirmed}. Recorded as applied.`);
   } else {
@@ -327,11 +323,11 @@ export async function resolveVerdict(submitted: boolean): Promise<DecisionResult
     return { ok: false, error: "Nothing awaiting a verdict." };
   }
   if (submitted) {
-    markApplied(s, "approved in-app → tool submitted (human confirmed on page)");
+    await markApplied(s, "approved in-app → tool submitted (human confirmed on page)");
     await closeBrowser(s);
     finish(s, "submitted", "Submitted ✓ (you confirmed). Recorded as applied.");
   } else {
-    setApplyStatus(s.state.jobId, "abandoned", "submit clicked but unconfirmed — verify on site");
+    await setApplyStatus(s.state.jobId, "abandoned", "submit clicked but unconfirmed — verify on site");
     await closeBrowser(s);
     finish(s, "abandoned", "Recorded as NOT submitted — verify on the site before retrying.");
   }
@@ -344,7 +340,7 @@ export async function recordManualSubmit(): Promise<DecisionResult> {
   if (!s || (s.state.phase !== "awaiting_review" && s.state.phase !== "awaiting_verdict")) {
     return { ok: false, error: "No session awaiting review." };
   }
-  markApplied(s, "human submitted in the window → applied");
+  await markApplied(s, "human submitted in the window → applied");
   await closeBrowser(s);
   finish(s, "manual", "Recorded as applied ✓ (you submitted).");
   return { ok: true, state: s.state };
@@ -354,7 +350,7 @@ export async function cancelSession(): Promise<DecisionResult> {
   const s = active();
   if (!s || s.state.phase === "done") return { ok: false, error: "No apply session is running." };
   await closeBrowser(s);
-  setApplyStatus(s.state.jobId, "abandoned", "cancelled in-app");
+  await setApplyStatus(s.state.jobId, "abandoned", "cancelled in-app");
   finish(s, "abandoned", "Cancelled — nothing was submitted; pipeline status unchanged.");
   return { ok: true, state: s.state };
 }
@@ -376,13 +372,13 @@ export async function vaultWorkdayAccount(): Promise<{ ok: true } | { ok: false;
   const { addCredential } = await import("@/lib/vault/core");
   const username = s.ctx.fields.email;
   if (!username) return { ok: false, error: "No email in your profile to register with." };
-  const res = addCredential({
+  const res = await addCredential({
     site: `Workday — ${s.state.host.split(".")[0]}`,
     host: s.state.host,
     username,
   });
   if (!res.ok) return { ok: false, error: res.error };
-  appendApplyLog(s.state.jobId, `workday credential vaulted for ${s.state.host}`);
+  await appendApplyLog(s.state.jobId, `workday credential vaulted for ${s.state.host}`);
   s.state.workday = { existingUsername: username, hasMaster: true };
   return { ok: true };
 }

@@ -1,6 +1,4 @@
-import { sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { companies, contacts } from "@/lib/db/schema";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
 import { parseCsv } from "@/lib/imports/csv";
 
 // One row of LinkedIn's Connections.csv, mapped to a contact.
@@ -24,7 +22,7 @@ export type LinkedinParseResult = {
 // the real header row. Find the header, then map by column name (order varies
 // across exports). Columns: First Name, Last Name, URL, Email Address,
 // Company, Position, Connected On.
-export function linkedinCsvToCandidates(text: string): LinkedinParseResult {
+export async function linkedinCsvToCandidates(text: string): Promise<LinkedinParseResult> {
   const rows = parseCsv(text);
   const warnings: string[] = [];
 
@@ -87,7 +85,7 @@ export function linkedinCsvToCandidates(text: string): LinkedinParseResult {
     warnings.push(`${inFileDupes} duplicate row(s) within the file were merged.`);
   }
 
-  return { candidates: flagExisting(deduped), warnings };
+  return { candidates: await flagExisting(deduped), warnings };
 }
 
 // Strip query/hash/trailing slash so the same connection dedupes across exports.
@@ -97,16 +95,19 @@ function normalizeLinkedin(url: string): string {
   return u.split(/[?#]/)[0].replace(/\/+$/, "").toLowerCase();
 }
 
-// Flag candidates already in contacts (by normalized linkedin URL).
-function flagExisting(candidates: LinkedinCandidate[]): PreparedLinkedin[] {
-  const existing = new Set(
-    db
-      .select({ linkedin: contacts.linkedin })
-      .from(contacts)
-      .where(sql`${contacts.linkedin} is not null`)
-      .all()
+// Existing normalized linkedin URLs across all saved contacts.
+async function existingLinkedinUrls(): Promise<Set<string>> {
+  const all = await convex().query(api.contacts.allEnriched, {});
+  return new Set(
+    all
+      .filter((c) => c.linkedin)
       .map((c) => normalizeLinkedin(c.linkedin ?? "")),
   );
+}
+
+// Flag candidates already in contacts (by normalized linkedin URL).
+async function flagExisting(candidates: LinkedinCandidate[]): Promise<PreparedLinkedin[]> {
+  const existing = await existingLinkedinUrls();
   return candidates.map((c) => ({
     ...c,
     duplicate: !!c.linkedin && existing.has(c.linkedin),
@@ -115,19 +116,11 @@ function flagExisting(candidates: LinkedinCandidate[]): PreparedLinkedin[] {
 
 // Insert selected candidates. Attaches companyId ONLY when the company already
 // exists (never auto-creates hundreds of companies from a connections dump).
-export function confirmLinkedinImport(
+export async function confirmLinkedinImport(
   candidates: LinkedinCandidate[],
-): { inserted: number; skipped: number } {
+): Promise<{ inserted: number; skipped: number }> {
   const now = new Date().toISOString();
-  // Existing linkedin URLs, to skip cross-batch dupes.
-  const existingUrls = new Set(
-    db
-      .select({ linkedin: contacts.linkedin })
-      .from(contacts)
-      .where(sql`${contacts.linkedin} is not null`)
-      .all()
-      .map((c) => normalizeLinkedin(c.linkedin ?? "")),
-  );
+  const existingUrls = await existingLinkedinUrls();
 
   let inserted = 0;
   let skipped = 0;
@@ -137,27 +130,27 @@ export function confirmLinkedinImport(
       continue;
     }
     const company = c.companyName
-      ? db
-          .select({ id: companies.id })
-          .from(companies)
-          .where(sql`lower(${companies.name}) = ${c.companyName.trim().toLowerCase()}`)
-          .get()
+      ? await convex().query(api.companies.getByName, { name: c.companyName })
       : null;
-    db.insert(contacts)
-      .values({
-        companyId: company?.id ?? null,
+    await convex().mutation(api.contacts.save, {
+      doc: cleanDoc({
+        companyId: company?._id ?? null,
         name: c.name,
         title: c.title,
         email: c.email,
         linkedin: c.linkedin,
         source: "linkedin",
-        notes: [c.title && c.companyName ? `${c.title} @ ${c.companyName}` : c.companyName,
-          c.connectedOn ? `Connected ${c.connectedOn}` : null]
-          .filter(Boolean)
-          .join(" · ") || null,
+        outreachStatus: "none",
+        notes:
+          [
+            c.title && c.companyName ? `${c.title} @ ${c.companyName}` : c.companyName,
+            c.connectedOn ? `Connected ${c.connectedOn}` : null,
+          ]
+            .filter(Boolean)
+            .join(" · ") || null,
         createdAt: now,
-      })
-      .run();
+      }),
+    });
     if (c.linkedin) existingUrls.add(c.linkedin);
     inserted++;
   }

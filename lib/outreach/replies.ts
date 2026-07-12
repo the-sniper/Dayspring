@@ -1,6 +1,4 @@
-import { and, isNotNull, isNull } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { outreach } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import {
   getGmailConfig,
   getThread,
@@ -15,17 +13,7 @@ export async function checkReplies(): Promise<{ checked: number; found: number }
   if (!hasGmail()) return { checked: 0, found: 0 };
   const me = (getGmailConfig()?.email ?? "").toLowerCase();
 
-  const rows = db
-    .select()
-    .from(outreach)
-    .where(
-      and(
-        isNotNull(outreach.sentAt),
-        isNull(outreach.repliedAt),
-        isNotNull(outreach.gmailThreadId),
-      ),
-    )
-    .all();
+  const rows = await convex().query(api.outreach.sentUnreplied, {});
 
   let found = 0;
   for (const row of rows) {
@@ -38,7 +26,7 @@ export async function checkReplies(): Promise<{ checked: number; found: number }
           (!me || !m.from.toLowerCase().includes(me)),
       );
       if (hasReply) {
-        markReplied(row.id);
+        await markReplied(row.id);
         found++;
       }
     } catch {

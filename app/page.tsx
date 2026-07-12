@@ -1,9 +1,7 @@
 import Link from "next/link";
-import { and, desc, eq, gte, inArray, isNotNull, sql } from "drizzle-orm";
 import { 
   ArrowRight, 
   Calendar, 
-  CheckCircle2, 
   Clock, 
   Inbox, 
   LayoutDashboard, 
@@ -22,92 +20,72 @@ import PageHeader from "@/components/page-header";
 import ButtonLink from "@/components/button-link";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { hasGmail } from "@/lib/integrations/gmail/client";
-import { db } from "@/lib/db";
-import {
-  applications,
-  companies,
-  jobs,
-  settings,
-  stageEvents,
-} from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
+import { getSetting } from "@/lib/settings/store";
 import { outreachDue, staleApplications } from "@/lib/outreach/due";
-import { KANBAN_STATUSES, type JobStatus } from "@/lib/types";
+import { KANBAN_STATUSES, type JobStatus, type RoleType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
 
+const ACTIVE_STATUSES = ["applied", "screen", "interview", "offer"];
+
 export default async function DashboardPage() {
-  const statusCounts = new Map<JobStatus, number>();
-  for (const row of db
-    .select({ status: jobs.status, id: jobs.id })
-    .from(jobs)
-    .all()) {
-    statusCounts.set(row.status, (statusCounts.get(row.status) ?? 0) + 1);
-  }
+  const [countsRaw, needsDecisionRaw, activeJobs, apps, activityRaw] =
+    await Promise.all([
+      convex().query(api.jobs.statusCounts, {}),
+      convex().query(api.jobs.topNewByScore, { limit: 5, minScore: 70 }),
+      convex().query(api.jobs.byStatuses, { statuses: ACTIVE_STATUSES }),
+      convex().query(api.applications.listAll, {}),
+      convex().query(api.stageEvents.recent, { limit: 6 }),
+    ]);
 
-  const needsDecision = db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      matchScore: jobs.matchScore,
-      roleType: jobs.roleType,
-      companyName: companies.name,
-    })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(eq(jobs.status, "new"), gte(jobs.matchScore, 70)))
-    .orderBy(desc(jobs.matchScore))
-    .limit(5)
-    .all();
+  const statusCounts = new Map<JobStatus, number>(
+    Object.entries(countsRaw) as [JobStatus, number][],
+  );
 
-  const activity = db
-    .select({
-      id: stageEvents.id,
-      at: stageEvents.at,
-      fromStatus: stageEvents.fromStatus,
-      toStatus: stageEvents.toStatus,
-      jobId: jobs.id,
-      title: jobs.title,
-      companyName: companies.name,
-    })
-    .from(stageEvents)
-    .innerJoin(jobs, eq(stageEvents.jobId, jobs.id))
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .orderBy(desc(stageEvents.at))
-    .limit(6)
-    .all();
+  const needsDecision = needsDecisionRaw.map((j) => ({
+    id: j.id,
+    title: j.title,
+    matchScore: j.matchScore ?? null,
+    roleType: (j.roleType ?? null) as RoleType | null,
+    companyName: j.companyName,
+  }));
 
-  const nextActions = db
-    .select({
-      jobId: jobs.id,
-      title: jobs.title,
-      companyName: companies.name,
-      nextAction: applications.nextAction,
-      nextActionDue: applications.nextActionDue,
+  const activity = activityRaw.map((e) => ({
+    id: e.id,
+    at: e.at,
+    fromStatus: e.fromStatus ?? null,
+    toStatus: e.toStatus,
+    jobId: e.jobId,
+    title: e.jobTitle ?? "",
+    companyName: e.companyName ?? "",
+  }));
+
+  const jobById = new Map(activeJobs.map((j) => [String(j.id), j]));
+  const nextActions = apps
+    .filter((a) => {
+      const j = jobById.get(String(a.jobId));
+      return a.nextActionDue && j && ACTIVE_STATUSES.includes(j.status);
     })
-    .from(applications)
-    .innerJoin(jobs, eq(applications.jobId, jobs.id))
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(
-      and(
-        isNotNull(applications.nextActionDue),
-        inArray(jobs.status, ["applied", "screen", "interview", "offer"]),
-      ),
-    )
-    .orderBy(applications.nextActionDue)
-    .limit(5)
-    .all();
+    .sort((a, b) => (a.nextActionDue ?? "").localeCompare(b.nextActionDue ?? ""))
+    .slice(0, 5)
+    .map((a) => {
+      const j = jobById.get(String(a.jobId))!;
+      return {
+        jobId: a.jobId,
+        title: j.title,
+        companyName: j.companyName,
+        nextAction: a.nextAction ?? null,
+        nextActionDue: a.nextActionDue ?? null,
+      };
+    });
 
   const today = new Date().toISOString().slice(0, 10);
-  const dueOutreach = outreachDue();
-  const staleApps = staleApplications();
+  const [dueOutreach, staleApps] = await Promise.all([outreachDue(), staleApplications()]);
   const gmailConnected = hasGmail();
 
-  const lastDailyRun = db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "lastDailyRun"))
-    .get()?.value;
+  const lastDailyRun = getSetting("lastDailyRun") ?? undefined;
 
   return (
     <div className="mx-auto max-w-6xl stagger-load">

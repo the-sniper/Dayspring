@@ -23,7 +23,7 @@ import {
 import { cn } from "@/lib/utils";
 
 type SavedContact = {
-  id: number;
+  id: string;
   name: string;
   title: string | null;
   email: string | null;
@@ -40,7 +40,7 @@ export default function ContactFinder({
   hasApolloKey,
   domainSet,
 }: {
-  companyId: number;
+  companyId: string;
   defaultTitles: string[];
   savedContacts: SavedContact[];
   hasApolloKey: boolean;
@@ -263,7 +263,7 @@ function SaveButton({
   companyId,
   person,
 }: {
-  companyId: number;
+  companyId: string;
   person: ApolloPerson;
 }) {
   const [pending, startTransition] = useTransition();
@@ -301,7 +301,7 @@ function EnrichButton({
   contactId,
   onError,
 }: {
-  contactId: number;
+  contactId: string;
   onError: (e: string) => void;
 }) {
   const [pending, startTransition] = useTransition();

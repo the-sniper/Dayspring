@@ -1,10 +1,9 @@
 // Next-free scoring orchestration — the future overnight cron and MCP layer
 // call this directly, same as the pull core.
-import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { scoreJob } from "@/lib/claude/score";
-import { db } from "@/lib/db";
-import { companies, jobs, settings } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { getDefaultProfile, profileText } from "@/lib/profiles/core";
+import { getSetting } from "@/lib/settings/store";
 
 export const MIN_JD_CHARS = 200;
 export const BATCH_LIMIT = 25;
@@ -12,15 +11,10 @@ const CONCURRENCY = 3;
 
 // The default profile drives everything (M27). Falls back to the legacy
 // settings.profile blob — getDefaultProfile() self-migrates it on first read.
-export function getProfile(): string | null {
-  const p = getDefaultProfile();
+export async function getProfile(): Promise<string | null> {
+  const p = await getDefaultProfile();
   if (p && p.content.trim()) return profileText(p);
-  const row = db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "profile"))
-    .get();
-  const value = row?.value.trim() ?? "";
+  const value = getSetting("profile")?.trim() ?? "";
   if (!value || value.startsWith("REPLACE ME")) return null;
   return value;
 }
@@ -30,41 +24,39 @@ export type ScoreOneResult =
   | { ok: false; error: string };
 
 export async function scoreOneJob(
-  jobId: number,
+  jobId: string,
   force = false,
 ): Promise<ScoreOneResult> {
-  const profile = getProfile();
+  const profile = await getProfile();
   if (!profile) {
     return { ok: false, error: "No profile yet — paste your resume in Settings first." };
   }
-  const row = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, jobId))
-    .get();
-  if (!row) return { ok: false, error: "Job not found" };
-  if (row.job.matchScore !== null && !force) return { ok: true, score: row.job.matchScore };
-  if (row.job.description.length < MIN_JD_CHARS) {
+  const job = await convex().query(api.jobs.getWithCompany, { id: jobId as never });
+  if (!job) return { ok: false, error: "Job not found" };
+  if (job.matchScore !== null && job.matchScore !== undefined && !force) {
+    return { ok: true, score: job.matchScore };
+  }
+  if (job.description.length < MIN_JD_CHARS) {
     return { ok: false, error: "Insufficient JD — add a description before scoring." };
   }
 
   const res = await scoreJob(profile, {
-    title: row.job.title,
-    companyName: row.companyName,
-    location: row.job.location,
-    description: row.job.description,
+    title: job.title,
+    companyName: job.companyName,
+    location: job.location ?? null,
+    description: job.description,
   });
-  db.update(jobs)
-    .set({
+  const now = new Date().toISOString();
+  await convex().mutation(api.jobs.patch, {
+    id: jobId as never,
+    patch: {
       matchScore: res.score,
       fitSummary: res.fitSummary,
       gapNotes: res.gaps,
-      scoredAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    })
-    .where(eq(jobs.id, jobId))
-    .run();
+      scoredAt: now,
+      updatedAt: now,
+    },
+  });
   return { ok: true, score: res.score };
 }
 
@@ -80,28 +72,16 @@ export type BatchScoreResult = {
 export async function scoreUnscored(
   limit = BATCH_LIMIT,
 ): Promise<BatchScoreResult | { profileMissing: true }> {
-  const profile = getProfile();
+  const profile = await getProfile();
   if (!profile) return { profileMissing: true };
 
-  const eligible = and(
-    isNull(jobs.matchScore),
-    inArray(jobs.status, ["new", "wishlist"]),
+  // Bounded server-side selection: the newest `limit` unscored new/wishlist
+  // jobs with a long-enough JD (by cached jdChars), plus totals. Avoids pulling
+  // the whole table into Node (Convex caps query results at 8192 rows).
+  const { rows: candidates, total, skippedThinJd } = await convex().query(
+    api.jobs.unscoredScorable,
+    { limit, minJdChars: MIN_JD_CHARS },
   );
-  const candidates = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(eligible, sql`length(${jobs.description}) >= ${MIN_JD_CHARS}`))
-    .orderBy(sql`${jobs.createdAt} desc`)
-    .limit(limit)
-    .all();
-
-  const skippedThinJd =
-    db
-      .select({ n: sql<number>`count(*)` })
-      .from(jobs)
-      .where(and(eligible, sql`length(${jobs.description}) < ${MIN_JD_CHARS}`))
-      .get()?.n ?? 0;
 
   const result: BatchScoreResult = {
     scored: 0,
@@ -117,24 +97,27 @@ export async function scoreUnscored(
   const now = () => new Date().toISOString();
   async function worker() {
     while (next < candidates.length) {
-      const { job, companyName } = candidates[next++];
+      const job = candidates[next++];
       try {
+        const description = await convex().query(api.jobs.getDescription, {
+          id: job.id as never,
+        });
         const res = await scoreJob(profile!, {
           title: job.title,
-          companyName,
-          location: job.location,
-          description: job.description,
+          companyName: job.companyName,
+          location: job.location ?? null,
+          description,
         });
-        db.update(jobs)
-          .set({
+        await convex().mutation(api.jobs.patch, {
+          id: job.id as never,
+          patch: {
             matchScore: res.score,
             fitSummary: res.fitSummary,
             gapNotes: res.gaps,
             scoredAt: now(),
             updatedAt: now(),
-          })
-          .where(eq(jobs.id, job.id))
-          .run();
+          },
+        });
         result.scored++;
         result.tokens.input += res.tokens.input;
         result.tokens.output += res.tokens.output;
@@ -152,11 +135,6 @@ export async function scoreUnscored(
     Array.from({ length: Math.min(CONCURRENCY, candidates.length) }, worker),
   );
 
-  result.remaining =
-    (db
-      .select({ n: sql<number>`count(*)` })
-      .from(jobs)
-      .where(and(eligible, sql`length(${jobs.description}) >= ${MIN_JD_CHARS}`))
-      .get()?.n ?? 0);
+  result.remaining = total - result.scored;
   return result;
 }

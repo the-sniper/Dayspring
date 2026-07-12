@@ -11,9 +11,11 @@ import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 
 export const dynamic = "force-dynamic";
 
-export default function NetworkPage() {
-  const total = contactsCount();
-  const initial = listContacts({ limit: CONTACTS_PAGE_SIZE });
+export default async function NetworkPage() {
+  const [total, initial] = await Promise.all([
+    contactsCount(),
+    listContacts({ limit: CONTACTS_PAGE_SIZE }),
+  ]);
 
   return (
     <div className="mx-auto max-w-5xl stagger-load">

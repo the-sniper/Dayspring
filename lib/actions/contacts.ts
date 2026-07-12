@@ -1,9 +1,7 @@
 "use server";
 
-import { count, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
-import { companies, contacts, outreach } from "@/lib/db/schema";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { enrichPerson } from "@/lib/integrations/apollo/enrich";
 import {
@@ -25,16 +23,12 @@ export type ApolloSearchResult =
   | { ok: false; error: string };
 
 export async function searchApolloAction(
-  companyId: number,
+  companyId: string,
   titles: string[],
   page = 1,
 ): Promise<ApolloSearchResult> {
   if (!hasApolloKey()) return { ok: false, error: NO_KEY };
-  const company = db
-    .select()
-    .from(companies)
-    .where(eq(companies.id, companyId))
-    .get();
+  const company = await convex().query(api.companies.getById, { id: companyId as never });
   if (!company) return { ok: false, error: "Company not found" };
   if (!company.domain) {
     return {
@@ -49,14 +43,7 @@ export async function searchApolloAction(
     const res = await searchPeople({ domain: company.domain, titles: clean, page });
     const ids = res.people.map((p) => p.apolloId);
     const saved = new Set(
-      ids.length
-        ? db
-            .select({ apolloId: contacts.apolloId })
-            .from(contacts)
-            .where(inArray(contacts.apolloId, ids))
-            .all()
-            .map((c) => c.apolloId)
-        : [],
+      ids.length ? await convex().query(api.contacts.byApolloIds, { apolloIds: ids }) : [],
     );
     return {
       ok: true,
@@ -128,14 +115,7 @@ export async function findNewPeopleAction(
     });
     const ids = res.people.map((p) => p.apolloId);
     const saved = new Set(
-      ids.length
-        ? db
-            .select({ apolloId: contacts.apolloId })
-            .from(contacts)
-            .where(inArray(contacts.apolloId, ids))
-            .all()
-            .map((c) => c.apolloId)
-        : [],
+      ids.length ? await convex().query(api.contacts.byApolloIds, { apolloIds: ids }) : [],
     );
     return {
       ok: true,
@@ -157,18 +137,15 @@ export async function saveColdContactAction(
   if (!person.apolloId || !person.name) {
     return { ok: false, error: "Invalid contact data" };
   }
-  const companyId = person.company
-    ? (db
-        .select({ id: companies.id })
-        .from(companies)
-        .where(sql`lower(${companies.name}) = ${person.company.toLowerCase()}`)
-        .get()?.id ?? null)
+  const match = person.company
+    ? await convex().query(api.companies.getByName, { name: person.company })
     : null;
+  const companyId = match?._id ?? null;
   const notes =
     [person.company, person.location].filter(Boolean).join(" · ") || null;
 
-  db.insert(contacts)
-    .values({
+  await convex().mutation(api.contacts.save, {
+    doc: cleanDoc({
       companyId,
       name: person.name,
       title: person.title,
@@ -178,10 +155,10 @@ export async function saveColdContactAction(
       apolloId: person.apolloId,
       emailStatus: person.emailStatus,
       notes,
+      outreachStatus: "none",
       createdAt: new Date().toISOString(),
-    })
-    .onConflictDoNothing()
-    .run();
+    }),
+  });
   revalidatePath("/network");
   return { ok: true };
 }
@@ -203,14 +180,14 @@ function apolloError(err: unknown, fallback: string): string {
 }
 
 export async function saveContactAction(
-  companyId: number,
+  companyId: string,
   person: ApolloPerson,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!person.apolloId || !person.name) {
     return { ok: false, error: "Invalid contact data" };
   }
-  db.insert(contacts)
-    .values({
+  await convex().mutation(api.contacts.save, {
+    doc: cleanDoc({
       companyId,
       name: person.name,
       title: person.title,
@@ -219,23 +196,19 @@ export async function saveContactAction(
       source: "apollo",
       apolloId: person.apolloId,
       emailStatus: person.emailStatus,
+      outreachStatus: "none",
       createdAt: new Date().toISOString(),
-    })
-    .onConflictDoNothing()
-    .run();
+    }),
+  });
   revalidatePath(`/companies/${companyId}`);
   return { ok: true };
 }
 
 export async function enrichContactAction(
-  contactId: number,
+  contactId: string,
 ): Promise<{ ok: true; email: string } | { ok: false; error: string }> {
   if (!hasApolloKey()) return { ok: false, error: NO_KEY };
-  const contact = db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.id, contactId))
-    .get();
+  const contact = await convex().query(api.contacts.getById, { id: contactId as never });
   if (!contact) return { ok: false, error: "Contact not found" };
   if (contact.email) return { ok: true, email: contact.email };
   if (!contact.apolloId) {
@@ -245,17 +218,17 @@ export async function enrichContactAction(
     const res = await enrichPerson({ apolloId: contact.apolloId });
     if (!res.email) {
       // Record the status so the button doesn't invite retry-burning credits.
-      db.update(contacts)
-        .set({ emailStatus: res.emailStatus ?? "unavailable" })
-        .where(eq(contacts.id, contactId))
-        .run();
+      await convex().mutation(api.contacts.patch, {
+        id: contactId as never,
+        patch: { emailStatus: res.emailStatus ?? "unavailable" },
+      });
       revalidatePath("/", "layout");
       return { ok: false, error: "Apollo has no work email for this person." };
     }
-    db.update(contacts)
-      .set({ email: res.email, emailStatus: res.emailStatus })
-      .where(eq(contacts.id, contactId))
-      .run();
+    await convex().mutation(api.contacts.patch, {
+      id: contactId as never,
+      patch: cleanDoc({ email: res.email, emailStatus: res.emailStatus }),
+    });
     revalidatePath("/", "layout");
     return { ok: true, email: res.email };
   } catch (err) {
@@ -281,7 +254,7 @@ export async function browseContactsPageAction(
   const size = normalizeContactsPageSize(pageSize ?? 0);
   const p = Math.max(1, Math.floor(page));
   return {
-    rows: listContacts({
+    rows: await listContacts({
       limit: size,
       offset: (p - 1) * size,
     }),
@@ -310,7 +283,7 @@ export async function askContactsAction(
   }
   const { listContacts } = await import("@/lib/contacts/query");
   // Full set for the model (capped inside askContacts).
-  const all = listContacts({ limit: 5000 });
+  const all = await listContacts({ limit: 5000 });
   if (all.length === 0) return { ok: false, error: "No contacts to search yet." };
 
   const { askContacts } = await import("@/lib/claude/contact-search");
@@ -338,21 +311,18 @@ export async function askContactsAction(
 }
 
 export async function deleteContactAction(
-  contactId: number,
+  contactId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const outreachCount =
-    db
-      .select({ n: count() })
-      .from(outreach)
-      .where(eq(outreach.contactId, contactId))
-      .get()?.n ?? 0;
+  const outreachCount = await convex().query(api.outreach.countForContact, {
+    contactId: contactId as never,
+  });
   if (outreachCount > 0) {
     return {
       ok: false,
       error: `Blocked: ${outreachCount} outreach record(s) reference this contact.`,
     };
   }
-  db.delete(contacts).where(eq(contacts.id, contactId)).run();
+  await convex().mutation(api.contacts.remove, { id: contactId as never });
   revalidatePath("/", "layout");
   return { ok: true };
 }

@@ -37,7 +37,7 @@ export default function ApplyPanel({
   hasTailored,
   applyStatus,
 }: {
-  jobId: number;
+  jobId: string;
   hasProfile: boolean;
   hasResume: boolean;
   hasTailored: boolean;

@@ -7,10 +7,13 @@ import { listMasters } from "@/lib/resumes/core";
 
 export const dynamic = "force-dynamic";
 
-export default function ProfilePage() {
+export default async function ProfilePage() {
   // Seeds itself from the legacy Settings blob on first visit.
-  const active = getDefaultProfile();
-  const masters = listMasters();
+  const [active, masters, profiles] = await Promise.all([
+    getDefaultProfile(),
+    listMasters(),
+    listProfiles(),
+  ]);
   const primary = masters.find((m) => m.isPrimary) ?? masters[0] ?? null;
 
   return (
@@ -24,7 +27,7 @@ export default function ProfilePage() {
 
       {active ? (
         <ProfileStudio
-          profiles={listProfiles().map((p) => ({
+          profiles={profiles.map((p) => ({
             id: p.id,
             name: p.name,
             isDefault: p.isDefault,

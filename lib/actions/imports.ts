@@ -34,7 +34,7 @@ export async function parseCsvAction(
   }
   return {
     ok: true,
-    candidates: flagDuplicates(candidates),
+    candidates: await flagDuplicates(candidates),
     warnings: allWarnings,
     source: "csv",
   };
@@ -57,7 +57,7 @@ export async function parsePasteAction(
     if (jobs.length === 0) warnings.push("No job postings found in the pasted text.");
     return {
       ok: true,
-      candidates: flagDuplicates(jobs),
+      candidates: await flagDuplicates(jobs),
       warnings,
       source: "paste",
     };
@@ -72,7 +72,7 @@ export async function confirmImportAction(
 ): Promise<{ ok: true; inserted: number; skipped: number } | { ok: false; error: string }> {
   const parsed = CandidateJobSchema.array().safeParse(candidates);
   if (!parsed.success) return { ok: false, error: "Invalid candidate data." };
-  const res = confirmImport(parsed.data, source);
+  const res = await confirmImport(parsed.data, source);
   revalidatePath("/", "layout");
   return { ok: true, ...res };
 }

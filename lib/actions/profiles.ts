@@ -7,7 +7,7 @@ import {
   consolidateResumes,
   type ConsolidatedDoc,
 } from "@/lib/claude/consolidate";
-import type { ApplicationDefaults } from "@/lib/db/schema";
+import type { ApplicationDefaults } from "@/lib/types";
 import {
   createProfile,
   deleteProfile,
@@ -19,30 +19,30 @@ import { listMasters } from "@/lib/resumes/core";
 
 export async function createProfileAction(
   name: string,
-): Promise<{ ok: true; id: number } | { ok: false; error: string }> {
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   if (!name.trim()) return { ok: false, error: "Give the profile a name." };
-  const id = createProfile(name);
-  setDefaultProfile(id); // the switcher selects it immediately
+  const id = await createProfile(name);
+  await setDefaultProfile(id); // the switcher selects it immediately
   revalidatePath("/profile");
   return { ok: true, id };
 }
 
-export async function setDefaultProfileAction(id: number): Promise<{ ok: true }> {
-  setDefaultProfile(id);
+export async function setDefaultProfileAction(id: string): Promise<{ ok: true }> {
+  await setDefaultProfile(id);
   revalidatePath("/", "layout"); // scoring/tailoring/apply all read the default
   return { ok: true };
 }
 
 export async function deleteProfileAction(
-  id: number,
+  id: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  const res = deleteProfile(id);
+  const res = await deleteProfile(id);
   if (res.ok) revalidatePath("/profile");
   return res;
 }
 
 export async function updateProfileHeaderAction(
-  id: number,
+  id: string,
   fields: {
     name?: string;
     fullName?: string;
@@ -61,7 +61,7 @@ export async function updateProfileHeaderAction(
       Object.entries(fields).map(([k, v]) => [k, typeof v === "string" ? v.trim() || null : v]),
     );
     if (clean.name === null) delete clean.name; // profile name can't be empty
-    updateProfile(id, clean);
+    await updateProfile(id, clean);
     revalidatePath("/profile");
     return { ok: true };
   } catch (err) {
@@ -70,11 +70,11 @@ export async function updateProfileHeaderAction(
 }
 
 export async function updateProfileDefaultsAction(
-  id: number,
+  id: string,
   defaults: ApplicationDefaults,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    updateProfile(id, { defaults });
+    await updateProfile(id, { defaults });
     revalidatePath("/profile");
     return { ok: true };
   } catch (err) {
@@ -83,11 +83,11 @@ export async function updateProfileDefaultsAction(
 }
 
 export async function updateProfileContentAction(
-  id: number,
+  id: string,
   content: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!content.trim()) return { ok: false, error: "Content can't be empty." };
-  updateProfile(id, { content: content.trim() });
+  await updateProfile(id, { content: content.trim() });
   revalidatePath("/profile");
   return { ok: true };
 }
@@ -102,7 +102,7 @@ export async function consolidateAction(): Promise<ConsolidateResult> {
   if (!hasApiKey()) {
     return { ok: false, error: "Consolidation needs your Anthropic key (Settings → API Keys)." };
   }
-  const masters = listMasters();
+  const masters = await listMasters();
   if (masters.length === 0) {
     return { ok: false, error: "Upload at least one master resume in Settings first." };
   }
@@ -119,7 +119,7 @@ export async function consolidateAction(): Promise<ConsolidateResult> {
 // Per-card structured edits (M28): the doc is canonical — every save also
 // regenerates the markdown corpus so scoring/tailoring read the same facts.
 export async function updateProfileDocAction(
-  profileId: number,
+  profileId: string,
   doc: ConsolidatedDoc,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   const parsed = ConsolidatedDocSchema.safeParse(doc);
@@ -142,7 +142,7 @@ export async function updateProfileDocAction(
     certifications: parsed.data.certifications.filter((c) => c.name.trim()),
   };
   try {
-    updateProfile(profileId, { doc: clean, content: docToMarkdown(clean) });
+    await updateProfile(profileId, { doc: clean, content: docToMarkdown(clean) });
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (err) {
@@ -153,11 +153,11 @@ export async function updateProfileDocAction(
 // Write a consolidation into a profile: content + structured doc + any header
 // fields the doc carries (doc values win — they came from the user's resumes).
 export async function applyConsolidationAction(
-  profileId: number,
+  profileId: string,
   doc: ConsolidatedDoc,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    updateProfile(profileId, {
+    await updateProfile(profileId, {
       content: docToMarkdown(doc),
       doc,
       fullName: doc.name || undefined,

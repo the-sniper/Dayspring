@@ -1,11 +1,9 @@
 // Local contact queries — the free, instant "who do I know" over your saved +
 // imported contacts (LinkedIn CSV, Apollo, Happenstance saves, manual).
-import { and, desc, eq, or, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { companies, contacts } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 
 export type ContactRow = {
-  id: number;
+  id: string;
   name: string;
   title: string | null;
   email: string | null;
@@ -15,41 +13,45 @@ export type ContactRow = {
   source: string | null;
   summary: string | null;
   notes: string | null;
-  companyId: number | null;
+  companyId: string | null;
   companyName: string | null;
 };
 
-const SELECT = {
-  id: contacts.id,
-  name: contacts.name,
-  title: contacts.title,
-  email: contacts.email,
-  linkedin: contacts.linkedin,
-  twitter: contacts.twitter,
-  photoUrl: contacts.photoUrl,
-  source: contacts.source,
-  summary: contacts.summary,
-  notes: contacts.notes,
-  companyId: contacts.companyId,
-  companyName: companies.name,
-};
-
-export function contactsCount(): number {
-  return db.select({ n: sql<number>`count(*)` }).from(contacts).get()?.n ?? 0;
+function toRow(c: Record<string, unknown> & { id: string; companyName: string | null }): ContactRow {
+  return {
+    id: c.id,
+    name: c.name as string,
+    title: (c.title as string) ?? null,
+    email: (c.email as string) ?? null,
+    linkedin: (c.linkedin as string) ?? null,
+    twitter: (c.twitter as string) ?? null,
+    photoUrl: (c.photoUrl as string) ?? null,
+    source: (c.source as string) ?? null,
+    summary: (c.summary as string) ?? null,
+    notes: (c.notes as string) ?? null,
+    companyId: (c.companyId as string) ?? null,
+    companyName: c.companyName ?? null,
+  };
 }
 
-export function listContacts({
+// All contacts, newest first (the Convex query returns them unordered).
+async function allByRecency(): Promise<ContactRow[]> {
+  const rows = await convex().query(api.contacts.allEnriched, {});
+  return [...rows]
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+    .map((c) => toRow(c));
+}
+
+export async function contactsCount(): Promise<number> {
+  return await convex().query(api.contacts.count, {});
+}
+
+export async function listContacts({
   limit = 50,
   offset = 0,
-}: { limit?: number; offset?: number } = {}): ContactRow[] {
-  return db
-    .select(SELECT)
-    .from(contacts)
-    .leftJoin(companies, eq(contacts.companyId, companies.id))
-    .orderBy(desc(contacts.createdAt))
-    .limit(limit)
-    .offset(offset)
-    .all();
+}: { limit?: number; offset?: number } = {}): Promise<ContactRow[]> {
+  const all = await allByRecency();
+  return all.slice(offset, offset + limit);
 }
 
 // Filler words that shouldn't constrain a filter (so "recruiter in philly"
@@ -71,7 +73,7 @@ function normalizeToken(t: string): string {
 // Word-aware filter: split the query into meaningful tokens and require EACH to
 // appear somewhere in name / title / company / notes / summary (AND across
 // tokens, OR across fields). Plural/filler-tolerant. Free + instant.
-export function searchContacts(query: string, limit = 60): ContactRow[] {
+export async function searchContacts(query: string, limit = 60): Promise<ContactRow[]> {
   const tokens = query
     .toLowerCase()
     .split(/\s+/)
@@ -79,25 +81,17 @@ export function searchContacts(query: string, limit = 60): ContactRow[] {
     .map(normalizeToken)
     .filter((t) => t.length > 1);
 
-  if (tokens.length === 0) return listContacts({ limit });
+  const all = await allByRecency();
+  if (tokens.length === 0) return all.slice(0, limit);
 
-  const perToken = tokens.map((tok) => {
-    const like = `%${tok}%`;
-    return or(
-      sql`lower(${contacts.name}) like ${like}`,
-      sql`lower(coalesce(${contacts.title}, '')) like ${like}`,
-      sql`lower(coalesce(${companies.name}, '')) like ${like}`,
-      sql`lower(coalesce(${contacts.notes}, '')) like ${like}`,
-      sql`lower(coalesce(${contacts.summary}, '')) like ${like}`,
-    );
-  });
-
-  return db
-    .select(SELECT)
-    .from(contacts)
-    .leftJoin(companies, eq(contacts.companyId, companies.id))
-    .where(and(...perToken))
-    .orderBy(desc(contacts.createdAt))
-    .limit(limit)
-    .all();
+  // Each token must appear somewhere in name/title/company/notes/summary.
+  return all
+    .filter((c) => {
+      const hay = [c.name, c.title, c.companyName, c.notes, c.summary]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase();
+      return tokens.every((t) => hay.includes(t));
+    })
+    .slice(0, limit);
 }

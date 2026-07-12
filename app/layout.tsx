@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Hanken_Grotesk, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
 import Nav from "@/components/nav";
+import ConvexClientProvider from "@/components/convex-provider";
 
 const fraunces = Fraunces({
   subsets: ["latin"],
@@ -43,11 +44,13 @@ export default function RootLayout({
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className="min-h-screen bg-background text-foreground antialiased">
-        <div className="atmosphere" aria-hidden />
-        <div className="flex min-h-screen">
-          <Nav />
-          <main className="min-w-0 flex-1 px-8 py-10 lg:px-12 lg:py-14">{children}</main>
-        </div>
+        <ConvexClientProvider>
+          <div className="atmosphere" aria-hidden />
+          <div className="flex min-h-screen">
+            <Nav />
+            <main className="min-w-0 flex-1 px-8 py-10 lg:px-12 lg:py-14">{children}</main>
+          </div>
+        </ConvexClientProvider>
       </body>
     </html>
   );

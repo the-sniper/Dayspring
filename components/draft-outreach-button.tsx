@@ -8,8 +8,8 @@ export default function DraftOutreachButton({
   contactId,
   jobId,
 }: {
-  contactId: number;
-  jobId: number;
+  contactId: string;
+  jobId: string;
 }) {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);

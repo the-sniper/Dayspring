@@ -1,47 +1,37 @@
 import { Gauge } from "lucide-react";
-import { desc, eq, ne } from "drizzle-orm";
 import PageHeader from "@/components/page-header";
 import ResumeMatch from "@/components/resume-match";
 import { hasApiKey } from "@/lib/claude/client";
-import { db } from "@/lib/db";
-import { companies, jobs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { listProfiles } from "@/lib/profiles/core";
 import { listMasters } from "@/lib/resumes/core";
 
 export const dynamic = "force-dynamic";
 
-export default function MatchPage() {
-  const profiles = listProfiles().map((p) => ({
+export default async function MatchPage() {
+  const [profileRows, masterRows, savedJobsRaw] = await Promise.all([
+    listProfiles(),
+    listMasters(),
+    // Newest jobs with a non-empty JD (server-side), to prefill the textarea.
+    convex().query(api.jobs.savedForMatch, { limit: 150 }),
+  ]);
+  const profiles = profileRows.map((p) => ({
     id: p.id,
     name: p.name,
     isDefault: p.isDefault,
   }));
-  const masters = listMasters().map((m) => ({
+  const masters = masterRows.map((m) => ({
     id: m.id,
     label: m.label,
     isPrimary: m.isPrimary,
   }));
 
-  // Light saved-job list to optionally prefill the JD textarea.
-  const savedJobs = db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      companyName: companies.name,
-      description: jobs.description,
-    })
-    .from(jobs)
-    .leftJoin(companies, eq(jobs.companyId, companies.id))
-    .where(ne(jobs.description, ""))
-    .orderBy(desc(jobs.id))
-    .limit(150)
-    .all()
-    .map((j) => ({
-      id: j.id,
-      title: j.title,
-      companyName: j.companyName,
-      description: j.description,
-    }));
+  const savedJobs = savedJobsRaw.map((j) => ({
+    id: j.id,
+    title: j.title,
+    companyName: j.companyName,
+    description: j.description,
+  }));
 
   return (
     <div className="mx-auto max-w-5xl stagger-load">

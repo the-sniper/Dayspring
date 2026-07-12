@@ -26,7 +26,7 @@ export default function TailorSection({
   coverLetter,
   tailoredAt,
 }: {
-  jobId: number;
+  jobId: string;
   bullets: string[] | null;
   coverLetter: string | null;
   tailoredAt: string | null;

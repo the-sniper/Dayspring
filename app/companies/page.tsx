@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { count, eq } from "drizzle-orm";
 import { Building2, Plus, ArrowUpRight, ShieldCheck, Briefcase } from "lucide-react";
 import CompanyForm from "@/components/company-form";
 import ErrorBanner from "@/components/error-banner";
@@ -7,9 +6,8 @@ import RoleChip from "@/components/role-chip";
 import CompanyLogo from "@/components/company-logo";
 import PageHeader from "@/components/page-header";
 import { createCompanyAction } from "@/lib/actions/companies";
-import { db } from "@/lib/db";
-import { companies, jobs } from "@/lib/db/schema";
-import { cn } from "@/lib/utils";
+import { api, convex } from "@/lib/convex/server";
+import type { RoleType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -19,13 +17,9 @@ export default async function CompaniesPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const rows = db
-    .select({ company: companies, jobCount: count(jobs.id) })
-    .from(companies)
-    .leftJoin(jobs, eq(jobs.companyId, companies.id))
-    .groupBy(companies.id)
-    .orderBy(companies.name)
-    .all();
+  const rows = (await convex().query(api.companies.withJobCounts, {}))
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((c) => ({ company: c, jobCount: c.jobCount }));
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -108,7 +102,7 @@ export default async function CompaniesPage({
                 <td className="px-4 py-5">
                   <div className="flex flex-wrap gap-1">
                     {(c.roleTypes ?? []).map((r) => (
-                      <RoleChip key={r} role={r} />
+                      <RoleChip key={r} role={r as RoleType} />
                     ))}
                     {(c.roleTypes ?? []).length === 0 && (
                       <span className="text-muted-foreground/30">—</span>

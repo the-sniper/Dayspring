@@ -1,10 +1,8 @@
 "use server";
 
-import { count, eq, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
-import { companies, contacts, jobs } from "@/lib/db/schema";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
 import { ATS_TYPES, ROLE_TYPES, type AtsType, type RoleType } from "@/lib/types";
 
 function parseCompanyForm(formData: FormData) {
@@ -30,17 +28,13 @@ export async function createCompanyAction(formData: FormData) {
   const f = parseCompanyForm(formData);
   if (!f.name) redirect(`/companies?error=${encodeURIComponent("Name is required")}`);
 
-  const existing = db
-    .select({ id: companies.id })
-    .from(companies)
-    .where(sql`lower(${companies.name}) = ${f.name.toLowerCase()}`)
-    .get();
+  const existing = await convex().query(api.companies.getByName, { name: f.name });
   if (existing) {
     redirect(`/companies?error=${encodeURIComponent(`"${f.name}" already exists`)}`);
   }
 
-  db.insert(companies)
-    .values({
+  await convex().mutation(api.companies.create, {
+    doc: cleanDoc({
       name: f.name,
       domain: f.domain,
       roleTypes: f.roleTypes.length ? f.roleTypes : null,
@@ -52,19 +46,20 @@ export async function createCompanyAction(formData: FormData) {
       atsHost: f.atsHost,
       atsSite: f.atsSite,
       createdAt: new Date().toISOString(),
-    })
-    .run();
+    }),
+  });
   revalidatePath("/companies");
   redirect("/companies");
 }
 
-export async function updateCompanyAction(id: number, formData: FormData) {
+export async function updateCompanyAction(id: string, formData: FormData) {
   const f = parseCompanyForm(formData);
   if (!f.name) {
     redirect(`/companies/${id}?error=${encodeURIComponent("Name is required")}`);
   }
-  db.update(companies)
-    .set({
+  await convex().mutation(api.companies.update, {
+    id: id as never,
+    patch: cleanDoc({
       name: f.name,
       domain: f.domain,
       roleTypes: f.roleTypes.length ? f.roleTypes : null,
@@ -74,28 +69,22 @@ export async function updateCompanyAction(id: number, formData: FormData) {
       atsTenant: f.atsTenant,
       atsHost: f.atsHost,
       atsSite: f.atsSite,
-    })
-    .where(eq(companies.id, id))
-    .run();
+    }),
+  });
   revalidatePath("/companies");
   redirect("/companies");
 }
 
-export async function deleteCompanyAction(id: number) {
-  const jobCount = db
-    .select({ n: count() })
-    .from(jobs)
-    .where(eq(jobs.companyId, id))
-    .get();
-  if (jobCount && jobCount.n > 0) {
+export async function deleteCompanyAction(id: string) {
+  const jobCount = await convex().query(api.companies.jobCount, { id: id as never });
+  if (jobCount > 0) {
     redirect(
       `/companies/${id}?error=${encodeURIComponent(
-        `Blocked: ${jobCount.n} job(s) reference this company`,
+        `Blocked: ${jobCount} job(s) reference this company`,
       )}`,
     );
   }
-  db.delete(contacts).where(eq(contacts.companyId, id)).run();
-  db.delete(companies).where(eq(companies.id, id)).run();
+  await convex().mutation(api.companies.removeCascade, { id: id as never });
   revalidatePath("/companies");
   redirect("/companies");
 }

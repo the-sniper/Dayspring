@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { draftNudgeAction } from "@/lib/actions/outreach";
 
-export default function NudgeButton({ originalId }: { originalId: number }) {
+export default function NudgeButton({ originalId }: { originalId: string }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   return (

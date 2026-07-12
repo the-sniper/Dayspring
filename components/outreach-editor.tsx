@@ -14,7 +14,7 @@ export default function OutreachEditor({
   contactEmail,
   hasGmail,
 }: {
-  id: number;
+  id: string;
   initialSubject: string;
   initialBody: string;
   contactEmail: string | null;

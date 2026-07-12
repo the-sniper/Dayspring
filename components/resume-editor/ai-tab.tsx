@@ -59,6 +59,7 @@ export default function AiTab({
   jd,
   sourceText,
   initialScore,
+  initialAnalysis,
   onDoc,
   onAudit,
 }: {
@@ -71,22 +72,38 @@ export default function AiTab({
   jd: string;
   sourceText: string;
   initialScore: number | null;
+  // Full analysis carried in from the Match tool so the "Raise your score"
+  // panel + fit score render on first open (not only after a manual Rescore).
+  // Reflects the pre-align resume; Rescore refreshes it against the current doc.
+  initialAnalysis?: MatchAnalysis | null;
   onDoc: (d: ResumeDocType) => void;
   onAudit: (a: ResumeAudit | null) => void;
 }) {
   const [instruction, setInstruction] = useState("");
   const [aiNote, setAiNote] = useState<string | null>(null);
   const [aiError, setAiError] = useState<string | null>(null);
-  const [editing, startEdit] = useTransition();
+  // Plain boolean (not useTransition): isPending stays true until the deferred
+  // parent re-render (the PDF preview regenerating) commits, which kept the
+  // spinner alive long after the edit had already applied. An explicit flag
+  // clears exactly when we say — the moment the edit lands.
+  const [editing, setEditing] = useState(false);
+  // The fabrication audit runs in the background after an edit lands, so it gets
+  // its own (non-blocking) indicator instead of holding the editor's spinner.
+  const [auditing, setAuditing] = useState(false);
 
   // ATS searchability score — the controllable, editable one (target 85+).
-  const [ats, setAts] = useState<number | null>(initialScore);
+  const [ats, setAts] = useState<number | null>(
+    initialAnalysis?.atsScore ?? initialScore,
+  );
   const [prevAts, setPrevAts] = useState<number | null>(null);
   // Experience-fit score — mostly immovable by editing; shown for honesty.
-  const [fit, setFit] = useState<number | null>(null);
-  // Full analyzer output from the latest rescore — drives the actionable
-  // "Raise your score" section (checks, missing keywords, improvements).
-  const [analysis, setAnalysis] = useState<MatchAnalysis | null>(null);
+  const [fit, setFit] = useState<number | null>(initialAnalysis?.score ?? null);
+  // Full analyzer output — seeded from the Match tool's analysis so the
+  // actionable "Raise your score" section (checks, missing keywords,
+  // improvements) shows immediately, then refreshed by each Rescore.
+  const [analysis, setAnalysis] = useState<MatchAnalysis | null>(
+    initialAnalysis ?? null,
+  );
   const [scoreError, setScoreError] = useState<string | null>(null);
   const [scoring, startScore] = useTransition();
 
@@ -168,7 +185,8 @@ export default function AiTab({
     setAiError(null);
     setAiNote(null);
     setRunningId(id);
-    startEdit(async () => {
+    setEditing(true);
+    void (async () => {
       try {
         const src = sourceOverride ?? effectiveSource;
         const res = await aiEditResumeAction({
@@ -184,21 +202,30 @@ export default function AiTab({
         onDoc(res.doc);
         setAiNote(res.note);
         setInstruction("");
-        // Audit and rescore are independent of each other — run them together
-        // rather than chaining, so the whole action is one edit + one parallel
-        // wait instead of three slow model calls in series.
-        const [aud, scored] = await Promise.all([
-          auditResumeAction({ sourceText: src, doc: res.doc }),
-          thenRescore && jd.trim()
-            ? rescoreResumeAction({ doc: res.doc, jd })
-            : Promise.resolve(null),
-        ]);
-        if (aud.ok) onAudit(aud.audit);
-        if (scored && scored.ok) applyScores(scored.analysis);
+        // The fabrication audit is advisory and tolerant to staleness (findings
+        // that no longer match the doc are dropped), so run it in the BACKGROUND
+        // and let the editor free the moment the edit lands — otherwise a slow
+        // audit keeps the whole panel spinning long after your changes applied.
+        setAuditing(true);
+        void auditResumeAction({ sourceText: src, doc: res.doc })
+          .then((aud) => {
+            if (aud.ok) onAudit(aud.audit);
+          })
+          .finally(() => setAuditing(false));
+        // A rescore, when asked for (Fix all / improvements), stays awaited so
+        // the new score reflects this edit before the button stops spinning.
+        // A freeform edit skips it and just flags the score out of date.
+        if (thenRescore && jd.trim()) {
+          const scored = await rescoreResumeAction({ doc: res.doc, jd });
+          if (scored.ok) applyScores(scored.analysis);
+        } else {
+          setScoreStale(true);
+        }
       } finally {
         setRunningId(null);
+        setEditing(false);
       }
-    });
+    })();
   }
 
   // Add a missing keyword straight into the Skills section, dropped into the
@@ -308,7 +335,8 @@ export default function AiTab({
     setAiError(null);
     setAiNote(null);
     setRunningId("deep");
-    startEdit(async () => {
+    setEditing(true);
+    void (async () => {
       try {
         const titleRow = analysis?.rows.find((r) => r.label === "Job Title");
         const res = await alignResumeMatchAction({
@@ -342,8 +370,9 @@ export default function AiTab({
         if (scored.ok) applyScores(scored.analysis);
       } finally {
         setRunningId(null);
+        setEditing(false);
       }
-    });
+    })();
   }
 
   if (view === "ask") {
@@ -398,14 +427,20 @@ export default function AiTab({
           </div>
           {editing && (
             <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
-              Applying your edit under the same never-fabricate rules, then
-              re-auditing — ~20–40s.
+              Applying your edit under the same never-fabricate rules — ~20–40s.
             </p>
           )}
           {aiNote && !editing && (
             <p className="mt-1.5 flex items-start gap-1.5 text-[11px] font-medium text-brand-600 dark:text-brand-400">
               <Sparkles size={11} className="mt-0.5 shrink-0" />
               {aiNote}
+            </p>
+          )}
+          {auditing && !editing && (
+            <p className="mt-1.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+              <Loader2 size={11} className="shrink-0 animate-spin" />
+              Edit applied — re-checking it against your source in the
+              background. You can keep editing.
             </p>
           )}
           {aiError && (
@@ -575,27 +610,31 @@ export default function AiTab({
           {missingKw.addable.length > 0 && (
             <div className="mb-2.5">
               <p className="mb-1.5 text-[11px] font-bold text-muted-foreground">
-                Missing JD keywords your source supports — click to weave in
+                Missing JD keywords your source supports — click to add
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {missingKw.addable.map((k) => (
                   <button
                     key={k}
                     type="button"
-                    disabled={editing}
-                    onClick={() =>
-                      runAi(
-                        `Weave the JD keyword "${k}" (verbatim) into the resume wherever the source resume genuinely supports it — summary, skills, or a relevant bullet. If the source does not support it, change nothing.`,
-                        true,
-                      )
-                    }
+                    disabled={editing || addingKws.has(k)}
+                    onClick={() => addKeyword(k)}
+                    title="Add this keyword to the best-matching category in your Skills section"
                     className="inline-flex items-center gap-1 rounded-md bg-secondary px-2 py-1 text-[11px] font-bold text-muted-foreground transition-colors hover:bg-brand-500 hover:text-white disabled:opacity-50 cursor-pointer"
                   >
-                    <Plus size={10} />
+                    {addingKws.has(k) ? (
+                      <Loader2 size={10} className="animate-spin" />
+                    ) : (
+                      <Plus size={10} />
+                    )}
                     {k}
                   </button>
                 ))}
               </div>
+              <p className="mt-1 text-[10px] font-medium text-muted-foreground/70">
+                Adds are instant and stack — for a deeper rewrite that weaves
+                keywords into your bullets, use Fix all with AI.
+              </p>
             </div>
           )}
 
@@ -673,6 +712,9 @@ export default function AiTab({
             <h3 className="text-xs font-bold uppercase tracking-wider text-foreground">
               What changed
             </h3>
+            {auditing && (
+              <Loader2 size={12} className="animate-spin text-muted-foreground" />
+            )}
           </div>
           <p className="mb-3 text-xs font-medium leading-relaxed text-muted-foreground">
             {audit.summary}

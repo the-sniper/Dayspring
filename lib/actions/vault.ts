@@ -38,7 +38,7 @@ export async function addCredentialAction(input: {
   if (!input.site.trim() || !input.host.trim() || !input.username.trim()) {
     return { ok: false, error: "Site, host, and email are required." };
   }
-  const res = addCredential({
+  const res = await addCredential({
     site: input.site.trim(),
     host: input.host.trim(),
     username: input.username.trim(),
@@ -49,18 +49,18 @@ export async function addCredentialAction(input: {
 }
 
 export async function revealCredentialAction(
-  id: number,
+  id: string,
 ): Promise<{ ok: true; password: string } | { ok: false; error: string }> {
   if (!hasVaultKey()) return { ok: false, error: NO_KEY };
-  const password = revealCredential(id);
+  const password = await revealCredential(id);
   if (password === null) return { ok: false, error: "Not found" };
   return { ok: true, password };
 }
 
 export async function deleteCredentialAction(
-  id: number,
+  id: string,
 ): Promise<{ ok: true }> {
-  deleteCredential(id);
+  await deleteCredential(id);
   revalidatePath("/settings");
   return { ok: true };
 }

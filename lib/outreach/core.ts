@@ -1,9 +1,7 @@
 // Next-free outreach orchestration — actions, the daily script, and the MCP
 // server all call this layer.
-import { eq } from "drizzle-orm";
 import { draftNudge, draftOutreach } from "@/lib/claude/outreach";
-import { db } from "@/lib/db";
-import { companies, contacts, jobs, outreach } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { sendEmail } from "@/lib/integrations/gmail/client";
 import { getProfile } from "@/lib/jobs/score";
 import { latestCompanyBrief } from "@/lib/research/core";
@@ -19,69 +17,54 @@ function followUpDate(): string {
 type Result<T = unknown> = ({ ok: true } & T) | { ok: false; error: string };
 
 export async function createDraft(
-  contactId: number,
-  jobId: number,
-): Promise<Result<{ outreachId: number }>> {
-  const profile = getProfile();
+  contactId: string,
+  jobId: string,
+): Promise<Result<{ outreachId: string }>> {
+  const profile = await getProfile();
   if (!profile) return { ok: false, error: "No profile yet — paste your resume in Settings first." };
-  const contact = db.select().from(contacts).where(eq(contacts.id, contactId)).get();
+  const contact = await convex().query(api.contacts.getById, { id: contactId as never });
   if (!contact) return { ok: false, error: "Contact not found" };
-  const row = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, jobId))
-    .get();
-  if (!row) return { ok: false, error: "Job not found" };
+  const job = await convex().query(api.jobs.getWithCompany, { id: jobId as never });
+  if (!job) return { ok: false, error: "Job not found" };
 
-  const brief = latestCompanyBrief(row.job.companyId)?.brief ?? null;
+  const brief = (await latestCompanyBrief(job.companyId))?.brief ?? null;
 
   try {
     const draft = await draftOutreach(
       profile,
       {
-        title: row.job.title,
-        companyName: row.companyName,
-        location: row.job.location,
-        description: row.job.description,
+        title: job.title,
+        companyName: job.companyName,
+        location: job.location ?? null,
+        description: job.description,
       },
-      { name: contact.name, title: contact.title },
+      { name: contact.name, title: contact.title ?? null },
       brief,
     );
-    const res = db
-      .insert(outreach)
-      .values({
+    const outreachId = await convex().mutation(api.outreach.insert, {
+      doc: {
         contactId,
         jobId,
         channel: "email",
         subject: draft.subject,
         draft: draft.body,
         createdAt: new Date().toISOString(),
-      })
-      .run();
-    return { ok: true, outreachId: Number(res.lastInsertRowid) };
+      },
+    });
+    return { ok: true, outreachId };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Drafting failed" };
   }
 }
 
 export async function createNudgeDraft(
-  originalId: number,
-): Promise<Result<{ outreachId: number }>> {
-  const original = db.select().from(outreach).where(eq(outreach.id, originalId)).get();
+  originalId: string,
+): Promise<Result<{ outreachId: string }>> {
+  const original = await convex().query(api.outreach.getById, { id: originalId as never });
   if (!original?.sentAt) return { ok: false, error: "Original outreach not found or unsent" };
-  const contact = db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.id, original.contactId))
-    .get();
-  const row = original.jobId
-    ? db
-        .select({ title: jobs.title, companyName: companies.name })
-        .from(jobs)
-        .innerJoin(companies, eq(jobs.companyId, companies.id))
-        .where(eq(jobs.id, original.jobId))
-        .get()
+  const contact = await convex().query(api.contacts.getById, { id: original.contactId });
+  const job = original.jobId
+    ? await convex().query(api.jobs.getWithCompany, { id: original.jobId })
     : null;
   if (!contact) return { ok: false, error: "Contact not found" };
 
@@ -90,62 +73,55 @@ export async function createNudgeDraft(
       originalSubject: original.subject ?? "",
       originalBody: original.draft ?? "",
       contactName: contact.name,
-      jobTitle: row?.title ?? "the role",
-      companyName: row?.companyName ?? "the company",
+      jobTitle: job?.title ?? "the role",
+      companyName: job?.companyName ?? "the company",
     });
-    const res = db
-      .insert(outreach)
-      .values({
+    const outreachId = await convex().mutation(api.outreach.insert, {
+      doc: {
         contactId: original.contactId,
-        jobId: original.jobId,
+        jobId: original.jobId ?? undefined,
         channel: "email",
         subject: original.subject?.startsWith("Re:")
           ? original.subject
           : `Re: ${original.subject ?? ""}`,
         draft: nudge.body,
         // Pre-seed the thread so the send lands as a reply.
-        gmailThreadId: original.gmailThreadId,
+        gmailThreadId: original.gmailThreadId ?? undefined,
         createdAt: new Date().toISOString(),
-      })
-      .run();
-    return { ok: true, outreachId: Number(res.lastInsertRowid) };
+      },
+    });
+    return { ok: true, outreachId };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Nudge drafting failed" };
   }
 }
 
-export function updateDraft(id: number, subject: string, body: string): Result {
-  const row = db.select().from(outreach).where(eq(outreach.id, id)).get();
+export async function updateDraft(id: string, subject: string, body: string): Promise<Result> {
+  const row = await convex().query(api.outreach.getById, { id: id as never });
   if (!row) return { ok: false, error: "Not found" };
   if (row.sentAt) return { ok: false, error: "Already sent — drafts only." };
-  db.update(outreach).set({ subject, draft: body }).where(eq(outreach.id, id)).run();
+  await convex().mutation(api.outreach.patch, { id: id as never, patch: { subject, draft: body } });
   return { ok: true };
 }
 
-function markSentInternal(id: number, gmail?: { id: string; threadId: string }) {
-  const now = new Date().toISOString();
-  const row = db.select().from(outreach).where(eq(outreach.id, id)).get();
+async function markSentInternal(id: string, gmail?: { id: string; threadId: string }) {
+  const row = await convex().query(api.outreach.getById, { id: id as never });
   if (!row) return;
-  db.update(outreach)
-    .set({
-      sentAt: now,
-      followUpDue: followUpDate(),
-      gmailMessageId: gmail?.id ?? row.gmailMessageId,
-      gmailThreadId: gmail?.threadId ?? row.gmailThreadId,
-    })
-    .where(eq(outreach.id, id))
-    .run();
-  db.update(contacts)
-    .set({ outreachStatus: "sent" })
-    .where(eq(contacts.id, row.contactId))
-    .run();
+  const patch: Record<string, unknown> = { sentAt: new Date().toISOString(), followUpDue: followUpDate() };
+  if (gmail?.id) patch.gmailMessageId = gmail.id;
+  if (gmail?.threadId) patch.gmailThreadId = gmail.threadId;
+  await convex().mutation(api.outreach.patch, { id: id as never, patch });
+  await convex().mutation(api.contacts.patch, {
+    id: row.contactId,
+    patch: { outreachStatus: "sent" },
+  });
 }
 
-export async function sendOutreach(id: number): Promise<Result> {
-  const row = db.select().from(outreach).where(eq(outreach.id, id)).get();
+export async function sendOutreach(id: string): Promise<Result> {
+  const row = await convex().query(api.outreach.getById, { id: id as never });
   if (!row) return { ok: false, error: "Not found" };
   if (row.sentAt) return { ok: false, error: "Already sent." };
-  const contact = db.select().from(contacts).where(eq(contacts.id, row.contactId)).get();
+  const contact = await convex().query(api.contacts.getById, { id: row.contactId });
   if (!contact?.email) {
     return { ok: false, error: "Contact has no email — reveal one via Apollo first." };
   }
@@ -154,41 +130,41 @@ export async function sendOutreach(id: number): Promise<Result> {
       to: contact.email,
       subject: row.subject ?? "",
       body: row.draft ?? "",
-      threadId: row.gmailThreadId,
+      threadId: row.gmailThreadId ?? undefined,
     });
-    markSentInternal(id, sent);
+    await markSentInternal(id, sent);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Send failed" };
   }
 }
 
-export function markSentManually(id: number): Result {
-  const row = db.select().from(outreach).where(eq(outreach.id, id)).get();
+export async function markSentManually(id: string): Promise<Result> {
+  const row = await convex().query(api.outreach.getById, { id: id as never });
   if (!row) return { ok: false, error: "Not found" };
   if (row.sentAt) return { ok: false, error: "Already sent." };
-  markSentInternal(id);
+  await markSentInternal(id);
   return { ok: true };
 }
 
-export function markReplied(id: number): Result {
-  const row = db.select().from(outreach).where(eq(outreach.id, id)).get();
+export async function markReplied(id: string): Promise<Result> {
+  const row = await convex().query(api.outreach.getById, { id: id as never });
   if (!row) return { ok: false, error: "Not found" };
-  db.update(outreach)
-    .set({ repliedAt: new Date().toISOString(), followUpDue: null })
-    .where(eq(outreach.id, id))
-    .run();
-  db.update(contacts)
-    .set({ outreachStatus: "replied" })
-    .where(eq(contacts.id, row.contactId))
-    .run();
+  await convex().mutation(api.outreach.patch, {
+    id: id as never,
+    patch: { repliedAt: new Date().toISOString() },
+  });
+  await convex().mutation(api.contacts.patch, {
+    id: row.contactId,
+    patch: { outreachStatus: "replied" },
+  });
   return { ok: true };
 }
 
-export function deleteDraft(id: number): Result {
-  const row = db.select().from(outreach).where(eq(outreach.id, id)).get();
+export async function deleteDraft(id: string): Promise<Result> {
+  const row = await convex().query(api.outreach.getById, { id: id as never });
   if (!row) return { ok: false, error: "Not found" };
   if (row.sentAt) return { ok: false, error: "Sent records are kept — only drafts can be deleted." };
-  db.delete(outreach).where(eq(outreach.id, id)).run();
+  await convex().mutation(api.outreach.remove, { id: id as never });
   return { ok: true };
 }

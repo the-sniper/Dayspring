@@ -11,7 +11,7 @@ export default function ScoreJobButton({
   jobId,
   force,
 }: {
-  jobId: number;
+  jobId: string;
   force: boolean;
 }) {
   const [error, setError] = useState<string | null>(null);

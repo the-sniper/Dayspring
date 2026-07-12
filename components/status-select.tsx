@@ -11,7 +11,7 @@ export default function StatusSelect({
   status,
   statuses = KANBAN_STATUSES,
 }: {
-  jobId: number;
+  jobId: string;
   status: JobStatus;
   statuses?: readonly JobStatus[];
 }) {

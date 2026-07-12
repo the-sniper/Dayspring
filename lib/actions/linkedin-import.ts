@@ -23,7 +23,7 @@ export async function parseLinkedinAction(
     return { ok: false, error: "File too large (5 MB max)." };
   }
   const text = await file.text();
-  const { candidates, warnings } = linkedinCsvToCandidates(text);
+  const { candidates, warnings } = await linkedinCsvToCandidates(text);
   return { ok: true, candidates, warnings };
 }
 
@@ -35,7 +35,7 @@ export async function confirmLinkedinAction(
   if (!Array.isArray(candidates) || candidates.length === 0) {
     return { ok: false, error: "Nothing selected." };
   }
-  const res = confirmLinkedinImport(candidates);
+  const res = await confirmLinkedinImport(candidates);
   revalidatePath("/", "layout");
   return { ok: true, ...res };
 }

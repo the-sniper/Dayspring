@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { desc, eq } from "drizzle-orm";
 import { 
   ArrowLeft, 
   ExternalLink, 
@@ -30,15 +29,8 @@ import { getProfile } from "@/lib/jobs/score";
 import { latestGeneratedForJob, mastersCount, resumePdfForJob } from "@/lib/resumes/core";
 import { latestJobBrief } from "@/lib/research/core";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
-import { db } from "@/lib/db";
-import {
-  applications,
-  companies,
-  contacts,
-  jobs,
-  stageEvents,
-} from "@/lib/db/schema";
-import { JOB_STATUSES, ROLE_TYPES } from "@/lib/types";
+import { api, convex } from "@/lib/convex/server";
+import { JOB_STATUSES, ROLE_TYPES, type JobStatus, type RoleType } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -52,45 +44,55 @@ export default async function JobDetailPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: idRaw } = await params;
-  const id = Number(idRaw);
-  const row = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, id))
-    .get();
-  if (!row) notFound();
-  const { job, companyName } = row;
+  const id = idRaw;
+  const detail = await convex().query(api.jobs.detail, { id: id as never });
+  if (!detail || !detail.job) notFound();
+  // Convex stores optional columns as `undefined`; the UI (and its child props)
+  // expect `null` for "unset" and the narrow enum unions, so normalize here.
+  const jobDoc = detail.job;
+  const job = {
+    ...jobDoc,
+    status: jobDoc.status as JobStatus,
+    roleType: (jobDoc.roleType ?? null) as RoleType | null,
+    location: jobDoc.location ?? null,
+    matchScore: jobDoc.matchScore ?? null,
+    scoredAt: jobDoc.scoredAt ?? null,
+    fitSummary: jobDoc.fitSummary ?? null,
+    gapNotes: jobDoc.gapNotes ?? null,
+    tailoredBullets: jobDoc.tailoredBullets ?? null,
+    coverLetter: jobDoc.coverLetter ?? null,
+    tailoredAt: jobDoc.tailoredAt ?? null,
+    applyStatus: jobDoc.applyStatus ?? null,
+  };
+  const companyName = detail.company?.name ?? "";
+  const application = detail.application
+    ? {
+        ...detail.application,
+        resumeVersion: detail.application.resumeVersion ?? null,
+        submittedAt: detail.application.submittedAt ?? null,
+        nextAction: detail.application.nextAction ?? null,
+        nextActionDue: detail.application.nextActionDue ?? null,
+      }
+    : null;
+  const events = [...detail.events].sort((a, b) => b.at.localeCompare(a.at));
+  const companyContacts = [...detail.contacts].sort((a, b) =>
+    a.name.localeCompare(b.name),
+  );
 
-  const briefRow = latestJobBrief(job.id);
+  const [briefRow, profile, resumePdf, generated, mastersN] = await Promise.all([
+    latestJobBrief(job.id),
+    getProfile(),
+    resumePdfForJob(job.id),
+    latestGeneratedForJob(job.id),
+    mastersCount(),
+  ]);
   const jobBrief = briefRow
     ? { brief: briefRow.brief, sources: briefRow.sources ?? [] }
     : null;
 
-  const applyProfileReady = getProfile() !== null;
+  const applyProfileReady = profile !== null;
   // Tailored PDF → primary master PDF → static resumePath setting.
-  const applyResumeReady = resumePdfForJob(job.id) !== null;
-  const generated = latestGeneratedForJob(job.id);
-
-  const application = db
-    .select()
-    .from(applications)
-    .where(eq(applications.jobId, id))
-    .get();
-
-  const events = db
-    .select()
-    .from(stageEvents)
-    .where(eq(stageEvents.jobId, id))
-    .orderBy(desc(stageEvents.at))
-    .all();
-
-  const companyContacts = db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.companyId, job.companyId))
-    .orderBy(contacts.name)
-    .all();
+  const applyResumeReady = resumePdf !== null;
 
   return (
     <div className="mx-auto max-w-5xl stagger-load">
@@ -223,7 +225,7 @@ export default async function JobDetailPage({
                   }
                 : null
             }
-            mastersCount={mastersCount()}
+            mastersCount={mastersN}
             hasApiKey={!!process.env.ANTHROPIC_API_KEY}
           />
 

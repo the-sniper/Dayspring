@@ -42,11 +42,11 @@ import {
   SkillsCard,
 } from "@/components/profile-sections";
 import type { ConsolidatedDoc } from "@/lib/claude/consolidate";
-import type { ApplicationDefaults } from "@/lib/db/schema";
+import type { ApplicationDefaults } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export type ProfileView = {
-  id: number;
+  id: string;
   name: string;
   isDefault: boolean;
   fullName: string | null;
@@ -78,10 +78,10 @@ export default function ProfileStudio({
   primaryMaster,
   completeness,
 }: {
-  profiles: { id: number; name: string; isDefault: boolean }[];
+  profiles: { id: string; name: string; isDefault: boolean }[];
   active: ProfileView;
   mastersCount: number;
-  primaryMaster: { id: number; label: string; hasPdf: boolean } | null;
+  primaryMaster: { id: string; label: string; hasPdf: boolean } | null;
   completeness: number;
 }) {
   const [switching, startSwitch] = useTransition();
@@ -95,7 +95,7 @@ export default function ProfileStudio({
           disabled={switching}
           onChange={(e) =>
             startSwitch(async () => {
-              await setDefaultProfileAction(Number(e.target.value));
+              await setDefaultProfileAction(e.target.value);
               location.reload();
             })
           }
@@ -307,7 +307,7 @@ function ResumeCard({
   primaryMaster,
 }: {
   mastersCount: number;
-  primaryMaster: { id: number; label: string; hasPdf: boolean } | null;
+  primaryMaster: { id: string; label: string; hasPdf: boolean } | null;
 }) {
   return (
     <section className={card}>
@@ -446,7 +446,7 @@ function ConsolidateCard({ active, mastersCount }: { active: ProfileView; master
 }
 
 // ── Structured section cards (editable — components/profile-sections.tsx) ────
-function SectionCards({ doc, profileId }: { doc: ConsolidatedDoc | null; profileId: number }) {
+function SectionCards({ doc, profileId }: { doc: ConsolidatedDoc | null; profileId: string }) {
   if (!doc) {
     return (
       <section className={cn(card, "border-2 border-dashed bg-transparent shadow-none text-center")}>

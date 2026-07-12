@@ -1,14 +1,9 @@
 import fs from "node:fs";
-import path from "node:path";
-import { eq } from "drizzle-orm";
 import { 
   Settings, 
   UserCircle, 
   Cpu, 
-  Key, 
   Mail, 
-  Database, 
-  Zap,
   Info
 } from "lucide-react";
 import ApiKeysPanel, { type KeyRowView } from "@/components/api-keys-panel";
@@ -23,8 +18,9 @@ import { listMasters } from "@/lib/resumes/core";
 import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
 import { MODEL_CHEAP, MODEL_SCORE, hasApiKey } from "@/lib/claude/client";
-import { db } from "@/lib/db";
-import { profiles, settings } from "@/lib/db/schema";
+import { OPENAI_CHEAP, OPENAI_STANDARD, hasOpenAIKey } from "@/lib/ai/openai";
+import { api, convex } from "@/lib/convex/server";
+import { getSetting } from "@/lib/settings/store";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 import { getGmailConfig, hasGmailEnv } from "@/lib/integrations/gmail/client";
@@ -37,8 +33,14 @@ const KEY_ROWS: Omit<KeyRowView, "source" | "hasSaved">[] = [
   {
     name: "ANTHROPIC_API_KEY",
     label: "Anthropic",
-    purpose: "Scoring, tailoring, resumes, research, outreach drafts",
+    purpose: "Tailored resumes, PDF extraction, fabrication audit",
     getUrl: "https://console.anthropic.com/settings/keys",
+  },
+  {
+    name: "OPENAI_API_KEY",
+    label: "OpenAI",
+    purpose: "Cost tier — scoring, ranking, classification, cover letters, outreach (optional)",
+    getUrl: "https://platform.openai.com/api-keys",
   },
   {
     name: "APOLLO_API_KEY",
@@ -72,23 +74,21 @@ export default async function SettingsPage({
   searchParams: Promise<{ gmail?: string; gmailError?: string }>;
 }) {
   const { gmail: gmailOk, gmailError } = await searchParams;
-  const profile = db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, "profile"))
-    .get();
+  const [profileCount, masters, credentials] = await Promise.all([
+    convex().query(api.profiles.count, {}),
+    listMasters(),
+    listCredentials(),
+  ]);
+  const profileValue = getSetting("profile") ?? "";
   // Once a profile row exists, the Profile page owns this — the legacy
   // textarea would edit a dead settings blob.
-  const hasProfileRow = db.select().from(profiles).get() !== undefined;
+  const hasProfileRow = profileCount > 0;
   const hasKey = hasApiKey();
+  const hasOpenAI = hasOpenAIKey();
   const gmail = getGmailConfig();
-  const resumePath =
-    db.select().from(settings).where(eq(settings.key, "resumePath")).get()?.value ??
-    "";
+  const resumePath = getSetting("resumePath") ?? "";
   const resumeExists = resumePath ? fs.existsSync(resumePath) : false;
-  const dbPath =
-    process.env.DAYSPRING_DB_PATH ??
-    path.join(process.cwd(), "data", "dayspring.db");
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? "(not configured)";
 
   return (
     <div className="mx-auto max-w-4xl stagger-load">
@@ -143,12 +143,7 @@ export default async function SettingsPage({
                   <p className="text-sm font-medium text-muted-foreground leading-relaxed">
                     Paste your resume and specify your targets (role types, locations, visa needs, comp floor). The higher the quality of this text, the more accurate your match scores will be.
                   </p>
-                  <ProfileForm value={profile?.value ?? ""} />
-                  {profile?.updatedAt && (
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/50">
-                      Last updated {profile.updatedAt.slice(0, 16).replace("T", " ")}
-                    </p>
-                  )}
+                  <ProfileForm value={profileValue} />
                 </>
               )}
             </div>
@@ -163,7 +158,7 @@ export default async function SettingsPage({
           />
 
           <MasterResumesPanel
-            masters={listMasters().map((m) => ({
+            masters={masters.map((m) => ({
               id: m.id,
               label: m.label,
               content: m.content,
@@ -188,7 +183,7 @@ export default async function SettingsPage({
           <VaultPanel
             hasVaultKey={hasVaultKey()}
             hasMaster={hasMasterPassword()}
-            credentials={listCredentials()}
+            credentials={credentials}
           />
         </div>
 
@@ -214,6 +209,22 @@ export default async function SettingsPage({
                     Paste your <code className="text-rose-500">Anthropic</code> key in API Keys to enable scoring and AI parsing.
                   </p>
                 )}
+              </div>
+
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">OpenAI</span>
+                  {hasOpenAI ? (
+                    <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">Active</span>
+                  ) : (
+                    <span className="rounded-full bg-secondary px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-muted-foreground">Optional</span>
+                  )}
+                </div>
+                <p className="text-[10px] font-medium text-muted-foreground leading-normal">
+                  {hasOpenAI
+                    ? "Scoring, ranking, classification, cover letters, and outreach run on GPT-5.6 to cut cost. Claude handles resumes, extraction, and the audit."
+                    : "Add an OpenAI key to route scoring, classification, and outbound prose off Claude and lower spend. Falls back to Claude when absent."}
+                </p>
               </div>
 
               <div className="space-y-1.5">
@@ -298,18 +309,30 @@ export default async function SettingsPage({
               <div>
                 <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Database</span>
                 <p className="font-mono text-[10px] text-muted-foreground break-all bg-card p-2 rounded-lg border border-border">
-                  {dbPath}
+                  {convexUrl}
                 </p>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
                 <div>
                   <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Scoring</span>
-                  <p className="font-mono text-[10px] text-foreground font-bold">{MODEL_SCORE.split('-').slice(0, 2).join('-')}</p>
+                  <p className="font-mono text-[10px] text-foreground font-bold">
+                    {hasOpenAI ? OPENAI_STANDARD : MODEL_SCORE.split('-').slice(0, 2).join('-')}
+                  </p>
                 </div>
                 <div>
                   <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Parsing</span>
-                  <p className="font-mono text-[10px] text-foreground font-bold">{MODEL_CHEAP.split('-').slice(0, 2).join('-')}</p>
+                  <p className="font-mono text-[10px] text-foreground font-bold">
+                    {hasOpenAI ? OPENAI_CHEAP : MODEL_CHEAP.split('-').slice(0, 2).join('-')}
+                  </p>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Perfection</span>
+                  <p className="font-mono text-[10px] text-foreground font-bold">claude-opus</p>
+                </div>
+                <div>
+                  <span className="block text-[10px] font-bold text-muted-foreground uppercase tracking-widest mb-1">Audit</span>
+                  <p className="font-mono text-[10px] text-foreground font-bold">{MODEL_SCORE.split('-').slice(0, 2).join('-')}</p>
                 </div>
               </div>
             </div>

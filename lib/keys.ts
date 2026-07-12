@@ -3,13 +3,12 @@
 // encrypted settings row saved from Settings → API Keys. Values at rest are
 // AES-256-GCM sealed with the vault key (the launcher generates one on first
 // run), never plaintext.
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
+import { deleteSetting, getSetting, setSetting } from "@/lib/settings/store";
 import { decrypt, encrypt, hasVaultKey, type Sealed } from "@/lib/vault/crypto";
 
 export const SERVICE_KEYS = [
   "ANTHROPIC_API_KEY",
+  "OPENAI_API_KEY",
   "APOLLO_API_KEY",
   "HAPPENSTANCE_API_KEY",
   "GOOGLE_CLIENT_ID",
@@ -31,14 +30,10 @@ function cache(): Map<string, string | null> {
 function savedKey(name: ServiceKey): string | null {
   if (cache().has(name)) return cache().get(name)!;
   let value: string | null = null;
-  const row = db
-    .select()
-    .from(settings)
-    .where(eq(settings.key, `${ROW_PREFIX}${name}`))
-    .get();
-  if (row && hasVaultKey()) {
+  const raw = getSetting(`${ROW_PREFIX}${name}`);
+  if (raw && hasVaultKey()) {
     try {
-      value = decrypt(JSON.parse(row.value) as Sealed);
+      value = decrypt(JSON.parse(raw) as Sealed);
     } catch {
       value = null; // vault key changed → sealed value unreadable; treat as unset
     }
@@ -71,18 +66,11 @@ export function setKey(name: ServiceKey, value: string): void {
     );
   }
   const sealed = encrypt(value.trim());
-  const now = new Date().toISOString();
-  db.insert(settings)
-    .values({ key: `${ROW_PREFIX}${name}`, value: JSON.stringify(sealed), updatedAt: now })
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: { value: JSON.stringify(sealed), updatedAt: now },
-    })
-    .run();
+  setSetting(`${ROW_PREFIX}${name}`, JSON.stringify(sealed));
   cache().set(name, value.trim());
 }
 
 export function clearKey(name: ServiceKey): void {
-  db.delete(settings).where(eq(settings.key, `${ROW_PREFIX}${name}`)).run();
+  deleteSetting(`${ROW_PREFIX}${name}`);
   cache().set(name, null);
 }

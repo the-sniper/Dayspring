@@ -1,8 +1,6 @@
 // Morning digest assembly — pure data, no LLM. Shared by scripts/daily.ts
 // (emails it) and the MCP server's `digest` tool (returns it).
-import { and, desc, eq, gte, isNotNull, lte } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { applications, companies, jobs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { outreachDue, staleApplications, today } from "@/lib/outreach/due";
 import { KANBAN_STATUSES } from "@/lib/types";
 
@@ -13,43 +11,32 @@ export type RunInfo = {
   errors: string[];
 };
 
-export function assembleDigest(run?: RunInfo): { subject: string; text: string } {
-  const highFit = db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      matchScore: jobs.matchScore,
-      companyName: companies.name,
-    })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(eq(jobs.status, "new"), gte(jobs.matchScore, 70)))
-    .orderBy(desc(jobs.matchScore))
-    .limit(8)
-    .all();
+export async function assembleDigest(run?: RunInfo): Promise<{ subject: string; text: string }> {
+  const [highFit, activeJobs, countsRaw, allApps, due, stale] =
+    await Promise.all([
+      convex().query(api.jobs.topNewByScore, { limit: 8, minScore: 70 }),
+      convex().query(api.jobs.byStatuses, { statuses: [...KANBAN_STATUSES] }),
+      convex().query(api.jobs.statusCounts, {}),
+      convex().query(api.applications.listAll, {}),
+      outreachDue(),
+      staleApplications(),
+    ]);
 
-  const due = outreachDue();
-  const stale = staleApplications();
+  const jobById = new Map(activeJobs.map((j) => [String(j.id), j]));
+  const cutoff = today();
+  const nextActions = allApps
+    .filter((a) => a.nextActionDue && a.nextActionDue <= cutoff)
+    .map((a) => {
+      const job = jobById.get(String(a.jobId));
+      return {
+        title: job?.title ?? "",
+        companyName: job?.companyName ?? "",
+        nextAction: a.nextAction ?? null,
+        nextActionDue: a.nextActionDue ?? null,
+      };
+    });
 
-  const nextActions = db
-    .select({
-      title: jobs.title,
-      companyName: companies.name,
-      nextAction: applications.nextAction,
-      nextActionDue: applications.nextActionDue,
-    })
-    .from(applications)
-    .innerJoin(jobs, eq(applications.jobId, jobs.id))
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(
-      and(isNotNull(applications.nextActionDue), lte(applications.nextActionDue, today())),
-    )
-    .all();
-
-  const counts = new Map<string, number>();
-  for (const row of db.select({ status: jobs.status }).from(jobs).all()) {
-    counts.set(row.status, (counts.get(row.status) ?? 0) + 1);
-  }
+  const counts = new Map<string, number>(Object.entries(countsRaw));
 
   const lines: string[] = [];
   const decisions = highFit.length + due.length + nextActions.length;

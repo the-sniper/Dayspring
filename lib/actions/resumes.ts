@@ -1,10 +1,8 @@
 "use server";
 
 import path from "node:path";
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
-import { generatedResumes, jobs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { hasApiKey } from "@/lib/claude/client";
 import type { ResumeDocType } from "@/lib/claude/resume";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
@@ -77,7 +75,7 @@ export type ReparseResult =
     }
   | { ok: false; error: string };
 
-export async function reparseMasterAction(id: number): Promise<ReparseResult> {
+export async function reparseMasterAction(id: string): Promise<ReparseResult> {
   if (!hasApiKey()) {
     return { ok: false, error: "Parsing needs your Anthropic key (Settings → API Keys)." };
   }
@@ -91,11 +89,11 @@ export async function reparseMasterAction(id: number): Promise<ReparseResult> {
 }
 
 export async function updateMasterContentAction(
-  id: number,
+  id: string,
   content: string,
 ): Promise<{ ok: true; chars: number } | { ok: false; error: string }> {
   try {
-    updateMasterContent(id, content);
+    await updateMasterContent(id, content);
     revalidatePath("/settings");
     return { ok: true, chars: content.trim().length };
   } catch (err) {
@@ -104,15 +102,15 @@ export async function updateMasterContentAction(
 }
 
 export async function deleteMasterResumeAction(
-  id: number,
+  id: string,
 ): Promise<{ ok: true }> {
-  deleteMaster(id);
+  await deleteMaster(id);
   revalidatePath("/settings");
   return { ok: true };
 }
 
-export async function setPrimaryMasterAction(id: number): Promise<{ ok: true }> {
-  setPrimaryMaster(id);
+export async function setPrimaryMasterAction(id: string): Promise<{ ok: true }> {
+  await setPrimaryMaster(id);
   revalidatePath("/settings");
   return { ok: true };
 }
@@ -131,7 +129,7 @@ export type StudioPayload = {
 export type GenerateResumeResult =
   | {
       ok: true;
-      id: number;
+      id: string;
       tailoringNote: string;
       createdAt: string;
       studio: StudioPayload;
@@ -139,7 +137,7 @@ export type GenerateResumeResult =
   | { ok: false; error: string };
 
 export async function generateResumeAction(
-  jobId: number,
+  jobId: string,
 ): Promise<GenerateResumeResult> {
   if (!hasApiKey()) {
     return { ok: false, error: "Resume generation needs ANTHROPIC_API_KEY (see Settings)." };
@@ -171,13 +169,9 @@ export type LoadGeneratedResult =
 
 // Reopen the studio on a previously generated resume (stored doc/style/audit).
 export async function loadGeneratedResumeAction(
-  id: number,
+  id: string,
 ): Promise<LoadGeneratedResult> {
-  const row = db
-    .select()
-    .from(generatedResumes)
-    .where(eq(generatedResumes.id, id))
-    .get();
+  const row = await convex().query(api.resumes.getGenerated, { id: id as never });
   if (!row) return { ok: false, error: "Generation not found." };
 
   let doc: ResumeDocType;
@@ -192,8 +186,11 @@ export async function loadGeneratedResumeAction(
   } catch {
     audit = null;
   }
-  const job = db.select().from(jobs).where(eq(jobs.id, row.jobId)).get();
-  const sourceText = listMasters()
+  const [job, masters] = await Promise.all([
+    convex().query(api.jobs.getWithCompany, { id: row.jobId }),
+    listMasters(),
+  ]);
+  const sourceText = masters
     .map((m) => `=== MASTER RESUME: ${m.label} ===\n${m.content}`)
     .join("\n\n");
 
@@ -210,36 +207,32 @@ export async function loadGeneratedResumeAction(
 }
 
 export type SaveGeneratedResult =
-  | { ok: true; id: number }
+  | { ok: true; id: string }
   | { ok: false; error: string };
 
 // Persist studio edits: doc + style JSON, plus a re-rendered PDF at the same
 // path so apply-assist keeps attaching the current version.
 export async function saveGeneratedResumeAction(
-  id: number,
+  id: string,
   doc: ResumeDocType,
   style: ResumeStyle,
 ): Promise<SaveGeneratedResult> {
-  const row = db
-    .select()
-    .from(generatedResumes)
-    .where(eq(generatedResumes.id, id))
-    .get();
+  const row = await convex().query(api.resumes.getGenerated, { id: id as never });
   if (!row) return { ok: false, error: "Generation not found." };
 
   try {
     const pdfPath =
       row.pdfPath ?? path.join(process.cwd(), "data", "resumes", `resume-${id}.pdf`);
     await writeResumePdf(doc, normalizeStyle(style), pdfPath);
-    db.update(generatedResumes)
-      .set({
+    await convex().mutation(api.resumes.patchGenerated, {
+      id: id as never,
+      patch: {
         content: JSON.stringify(doc),
         style: JSON.stringify(style),
         pdfPath,
         tailoringNote: doc.tailoring_note,
-      })
-      .where(eq(generatedResumes.id, id))
-      .run();
+      },
+    });
     revalidatePath(`/jobs/${row.jobId}`);
     return { ok: true, id };
   } catch (err) {

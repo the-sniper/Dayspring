@@ -1,21 +1,22 @@
 // Idempotent seed: watched companies (one per ATS, small boards verified
-// live 2026-07-05) + a placeholder profile row. Safe to re-run any time.
+// live 2026-07-05) + a placeholder profile setting. Safe to re-run any time.
 export {}; // module scope — dynamic-import-only files are otherwise global scripts
 
 async function main() {
-  // Dynamic imports so loadLocalEnv runs before lib/db reads DAYSPRING_DB_PATH.
+  // Dynamic imports so loadLocalEnv runs before the Convex client reads its URL.
   const { loadLocalEnv } = await import("../lib/env");
   loadLocalEnv();
-  const { db } = await import("../lib/db");
-  const { companies, settings } = await import("../lib/db/schema");
+  const { api, convex } = await import("../lib/convex/server");
+  const { getSetting, setSetting } = await import("../lib/settings/store");
 
   const now = new Date().toISOString();
 
-  const seedCompanies: (typeof companies.$inferInsert)[] = [
+  const seedCompanies = [
     {
       name: "Vercel",
       domain: "vercel.com",
       roleTypes: ["FE", "FS", "BE"],
+      visaSponsor: false,
       source: "seed",
       atsType: "greenhouse",
       atsSlug: "vercel",
@@ -25,6 +26,7 @@ async function main() {
       name: "Mistral",
       domain: "mistral.ai",
       roleTypes: ["BE", "DATA", "FS"],
+      visaSponsor: false,
       source: "seed",
       atsType: "lever",
       atsSlug: "mistral",
@@ -34,6 +36,7 @@ async function main() {
       name: "Linear",
       domain: "linear.app",
       roleTypes: ["FE", "FS", "BE"],
+      visaSponsor: false,
       source: "seed",
       atsType: "ashby",
       atsSlug: "linear",
@@ -43,25 +46,25 @@ async function main() {
 
   let added = 0;
   for (const c of seedCompanies) {
-    const res = db.insert(companies).values(c).onConflictDoNothing().run();
-    added += res.changes;
+    const existing = await convex().query(api.companies.getByName, { name: c.name });
+    if (existing) continue;
+    await convex().mutation(api.companies.create, { doc: c });
+    added++;
   }
 
-  const profileRes = db
-    .insert(settings)
-    .values({
-      key: "profile",
-      value:
-        "REPLACE ME: paste your resume and preferences (role types, locations, visa needs, comp floor) in Settings.",
-      updatedAt: now,
-    })
-    .onConflictDoNothing()
-    .run();
+  let profileCreated = false;
+  if (getSetting("profile") === null) {
+    setSetting(
+      "profile",
+      "REPLACE ME: paste your resume and preferences (role types, locations, visa needs, comp floor) in Settings.",
+    );
+    profileCreated = true;
+  }
 
   console.log(
     `seed: ${added}/${seedCompanies.length} companies added` +
       `${added < seedCompanies.length ? " (rest already present)" : ""}, ` +
-      `profile row ${profileRes.changes ? "created" : "already present"}`,
+      `profile setting ${profileCreated ? "created" : "already present"}`,
   );
 }
 

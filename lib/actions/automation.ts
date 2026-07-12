@@ -3,10 +3,8 @@
 import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
+import { getSetting } from "@/lib/settings/store";
 
 const run = promisify(execFile);
 
@@ -27,9 +25,7 @@ export async function dailyRunStatusAction(): Promise<DailyRunStatus> {
   } catch {
     installed = false;
   }
-  const lastRun =
-    db.select().from(settings).where(eq(settings.key, "lastDailyRun")).get()?.value ??
-    null;
+  const lastRun = getSetting("lastDailyRun");
   return { installed, lastRun };
 }
 

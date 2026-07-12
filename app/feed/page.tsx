@@ -1,15 +1,4 @@
 import Link from "next/link";
-import {
-  and,
-  desc,
-  eq,
-  gte,
-  isNotNull,
-  isNull,
-  or,
-  type SQL,
-  sql,
-} from "drizzle-orm";
 import { ArrowUpRight, Filter, Check, X } from "lucide-react";
 import ErrorBanner from "@/components/error-banner";
 import FeedFilters, { type FeedFilterValues } from "@/components/feed-filters";
@@ -21,8 +10,7 @@ import CompanyLogo from "@/components/company-logo";
 import Pagination from "@/components/pagination";
 import PageHeader from "@/components/page-header";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
-import { db } from "@/lib/db";
-import { companies, jobs, settings } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { MIN_JD_CHARS } from "@/lib/jobs/score";
 import { formatSalary } from "@/lib/jobs/salary";
 import { toLocationOptions } from "@/lib/jobs/location";
@@ -70,24 +58,24 @@ export default async function FeedPage({
   const showIgnored = sp.ignored === "1";
   const status = showIgnored ? ("ignored" as const) : ("new" as const);
 
-  const roleFilter: RoleType | "untyped" | null =
-    sp.role === "untyped"
-      ? "untyped"
-      : (ROLE_TYPES as readonly string[]).includes(sp.role ?? "")
-        ? (sp.role as RoleType)
-        : null;
-  const workplace: WorkplaceType | "" = (
-    WORKPLACE_TYPES as readonly string[]
-  ).includes(sp.workplace ?? "")
-    ? (sp.workplace as WorkplaceType)
-    : "";
-  const employment: EmploymentType | "" = (
-    EMPLOYMENT_TYPES as readonly string[]
-  ).includes(sp.employment ?? "")
-    ? (sp.employment as EmploymentType)
-    : "";
+  // These filters accept multiple comma-separated values.
+  const parseCsv = (v?: string) =>
+    (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+
+  const roleSel = parseCsv(sp.role);
+  const roleTypes = roleSel.filter((r): r is RoleType =>
+    (ROLE_TYPES as readonly string[]).includes(r),
+  );
+  const roleUntyped = roleSel.includes("untyped");
+  const workplaceSel = parseCsv(sp.workplace).filter((w): w is WorkplaceType =>
+    (WORKPLACE_TYPES as readonly string[]).includes(w),
+  );
+  const employmentSel = parseCsv(sp.employment).filter(
+    (e): e is EmploymentType =>
+      (EMPLOYMENT_TYPES as readonly string[]).includes(e),
+  );
+  const locSel = parseCsv(sp.loc);
   const q = (sp.q ?? "").trim();
-  const loc = (sp.loc ?? "").trim();
   const minSalary = posNum(sp.salary);
   const postedDays = posNum(sp.posted);
   const minScore = posNum(sp.score);
@@ -100,132 +88,41 @@ export default async function FeedPage({
     ? new Date(Date.now() - postedDays * 86_400_000).toISOString()
     : null;
 
-  const conditions: (SQL | undefined)[] = [
-    eq(jobs.status, status),
-    or(isNull(jobs.isUs), eq(jobs.isUs, true)),
-    roleFilter === "untyped"
-      ? isNull(jobs.roleType)
-      : roleFilter
-        ? eq(jobs.roleType, roleFilter)
-        : undefined,
-    workplace ? eq(jobs.workplaceType, workplace) : undefined,
-    employment ? eq(jobs.employmentType, employment) : undefined,
-    q
-      ? or(
-          sql`lower(${jobs.title}) like ${"%" + q.toLowerCase() + "%"}`,
-          sql`lower(${companies.name}) like ${"%" + q.toLowerCase() + "%"}`,
-        )
-      : undefined,
-    loc
-      ? sql`lower(coalesce(${jobs.location}, '')) like ${"%" + loc.toLowerCase() + "%"}`
-      : undefined,
-    minSalary
-      ? sql`coalesce(${jobs.salaryMax}, ${jobs.salaryMin}) >= ${minSalary}`
-      : undefined,
-    postedCutoff
-      ? sql`coalesce(${jobs.postedAt}, ${jobs.createdAt}) >= ${postedCutoff}`
-      : undefined,
-    minScore ? gte(jobs.matchScore, minScore) : undefined,
-  ];
+  const profile = await convex().query(api.profiles.getDefault, {});
+  const profileUpdatedAt = profile?.updatedAt ?? null;
 
-  const orderBy =
-    sort === "newest"
-      ? [desc(sql`coalesce(${jobs.postedAt}, ${jobs.createdAt})`)]
-      : sort === "salary"
-        ? [
-            sql`${jobs.salaryMax} is null`,
-            desc(jobs.salaryMax),
-            desc(jobs.createdAt),
-          ]
-        : sort === "score"
-          ? [
-              sql`${jobs.matchScore} is null`,
-              desc(jobs.matchScore),
-              desc(jobs.createdAt),
-            ]
-          :             [
-              sql`${jobs.matchScore} is null`,
-              desc(jobs.matchScore),
-              desc(jobs.createdAt),
-            ];
+  const [feedResult, scorable, staleScores, locationValues] = await Promise.all([
+    convex().query(api.jobs.feed, {
+      status,
+      roleTypes,
+      roleUntyped,
+      workplace: workplaceSel,
+      employment: employmentSel,
+      q,
+      locs: locSel,
+      minSalary,
+      postedCutoff,
+      minScore,
+      sort,
+      page,
+      pageSize: PAGE_SIZE,
+    }),
+    convex().query(api.jobs.scorableCount, { minJdChars: MIN_JD_CHARS }),
+    convex().query(api.jobs.staleScoreCount, { profileUpdatedAt }),
+    convex().query(api.jobs.locationValues, {}),
+  ]);
 
-  const totalCount = db
-    .select({ n: sql<number>`count(*)` })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(...conditions))
-    .get()?.n ?? 0;
-
-  const rows = db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      roleType: jobs.roleType,
-      location: jobs.location,
-      workplaceType: jobs.workplaceType,
-      salaryMin: jobs.salaryMin,
-      salaryMax: jobs.salaryMax,
-      salaryCurrency: jobs.salaryCurrency,
-      matchScore: jobs.matchScore,
-      postedAt: jobs.postedAt,
-      companyName: companies.name,
-    })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(and(...conditions))
-    .orderBy(...orderBy)
-    .limit(PAGE_SIZE)
-    .offset((page - 1) * PAGE_SIZE)
-    .all();
-
+  const rows = feedResult.rows;
+  const totalCount = feedResult.total;
   const unscored = rows.filter((r) => r.matchScore === null).length;
-
-  const scorable =
-    db
-      .select({ n: sql<number>`count(*)` })
-      .from(jobs)
-      .where(
-        and(
-          isNull(jobs.matchScore),
-          sql`${jobs.status} in ('new','wishlist')`,
-          sql`length(${jobs.description}) >= ${MIN_JD_CHARS}`,
-        ),
-      )
-      .get()?.n ?? 0;
-
-  const profileUpdatedAt =
-    db.select().from(settings).where(eq(settings.key, "profile")).get()
-      ?.updatedAt ?? null;
-  const staleScores = profileUpdatedAt
-    ? (db
-        .select({ n: sql<number>`count(*)` })
-        .from(jobs)
-        .where(
-          and(isNotNull(jobs.scoredAt), sql`${jobs.scoredAt} < ${profileUpdatedAt}`),
-        )
-        .get()?.n ?? 0)
-    : 0;
-
-  const locationOptions = toLocationOptions(
-    db
-      .selectDistinct({ location: jobs.location })
-      .from(jobs)
-      .where(
-        and(
-          or(isNull(jobs.isUs), eq(jobs.isUs, true)),
-          isNotNull(jobs.location),
-        ),
-      )
-      .all()
-      .map((r) => r.location),
-  );
+  const locationOptions = toLocationOptions(locationValues);
 
   const filterValues: FeedFilterValues = {
     q,
-    role: roleFilter ?? "",
-    workplace,
-    employment,
-    loc,
+    role: [...roleTypes, ...(roleUntyped ? ["untyped"] : [])].join(","),
+    workplace: workplaceSel.join(","),
+    employment: employmentSel.join(","),
+    loc: locSel.join(","),
     salary: minSalary ? String(minSalary) : "",
     posted: postedDays ? String(postedDays) : "",
     score: minScore ? String(minScore) : "",
@@ -325,7 +222,7 @@ export default async function FeedPage({
                   <div className="flex flex-col gap-1">
                     {j.workplaceType && (
                       <span className="w-fit rounded-md bg-stone-100 px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-stone-500 dark:bg-stone-800 dark:text-stone-400">
-                        {WORKPLACE_TYPE_LABELS[j.workplaceType]}
+                        {WORKPLACE_TYPE_LABELS[j.workplaceType as keyof typeof WORKPLACE_TYPE_LABELS]}
                       </span>
                     )}
                     <span className="truncate font-medium text-muted-foreground">

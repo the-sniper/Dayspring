@@ -27,7 +27,7 @@ export default function NetworkFinder({
   hasKey,
   seedQuery,
 }: {
-  companyId: number | null;
+  companyId: string | null;
   hasKey: boolean;
   seedQuery?: string;
 }) {
@@ -174,7 +174,7 @@ function SaveButton({
   person,
   alreadySaved,
 }: {
-  companyId: number | null;
+  companyId: string | null;
   person: HappenstancePerson;
   alreadySaved: boolean;
 }) {

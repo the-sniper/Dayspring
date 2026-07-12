@@ -12,7 +12,7 @@ import {
 const NO_KEY = "Scoring needs ANTHROPIC_API_KEY in .env.local (see Settings).";
 
 export async function scoreJobAction(
-  jobId: number,
+  jobId: string,
   force = false,
 ): Promise<ScoreOneResult> {
   if (!hasApiKey()) return { ok: false, error: NO_KEY };

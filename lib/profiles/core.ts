@@ -1,11 +1,53 @@
 // Next-free profile core (M27). One default profile drives scoring, tailoring,
 // and apply autofill; several can exist for different tracks ("SWE", "ML").
-import { desc, eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { profiles, settings, type ApplicationDefaults } from "@/lib/db/schema";
 import type { ConsolidatedDoc } from "@/lib/claude/consolidate";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
+import { getSetting } from "@/lib/settings/store";
+import type { ApplicationDefaults } from "@/lib/types";
 
-export type ProfileRow = typeof profiles.$inferSelect;
+export type ProfileRow = {
+  id: string;
+  name: string;
+  isDefault: boolean;
+  fullName: string | null;
+  headline: string | null;
+  summary: string | null;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  linkedin: string | null;
+  github: string | null;
+  website: string | null;
+  content: string;
+  doc: unknown | null;
+  defaults: ApplicationDefaults | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+// Normalize a raw Convex profile doc into the app's ProfileRow (missing
+// optionals → null; _id → id).
+function toRow(p: Record<string, unknown> & { id: string }): ProfileRow {
+  return {
+    id: p.id,
+    name: (p.name as string) ?? "",
+    isDefault: !!p.isDefault,
+    fullName: (p.fullName as string) ?? null,
+    headline: (p.headline as string) ?? null,
+    summary: (p.summary as string) ?? null,
+    email: (p.email as string) ?? null,
+    phone: (p.phone as string) ?? null,
+    location: (p.location as string) ?? null,
+    linkedin: (p.linkedin as string) ?? null,
+    github: (p.github as string) ?? null,
+    website: (p.website as string) ?? null,
+    content: (p.content as string) ?? "",
+    doc: (p.doc as unknown) ?? null,
+    defaults: (p.defaults as ApplicationDefaults) ?? null,
+    createdAt: (p.createdAt as string) ?? "",
+    updatedAt: (p.updatedAt as string) ?? "",
+  };
+}
 
 export const EMPTY_DEFAULTS: ApplicationDefaults = {
   visaType: null,
@@ -29,41 +71,46 @@ export const EMPTY_DEFAULTS: ApplicationDefaults = {
   additionalInfo: null,
 };
 
-export function listProfiles(): ProfileRow[] {
-  return db.select().from(profiles).orderBy(desc(profiles.isDefault), profiles.name).all();
+export async function listProfiles(): Promise<ProfileRow[]> {
+  const rows = await convex().query(api.profiles.list, {});
+  return rows
+    .map(toRow)
+    .sort((a, b) =>
+      a.isDefault === b.isDefault ? a.name.localeCompare(b.name) : a.isDefault ? -1 : 1,
+    );
 }
 
 // The default profile — seeded from the legacy settings.profile blob the
 // first time anything asks for it (so existing installs migrate themselves).
-export function getDefaultProfile(): ProfileRow | null {
-  const row = db.select().from(profiles).where(eq(profiles.isDefault, true)).get();
-  if (row) return row;
-  const any = db.select().from(profiles).orderBy(profiles.id).get();
-  if (any) {
-    // Rows exist but none default (shouldn't happen) — repair.
-    db.update(profiles).set({ isDefault: true }).where(eq(profiles.id, any.id)).run();
-    return { ...any, isDefault: true };
+export async function getDefaultProfile(): Promise<ProfileRow | null> {
+  const row = await convex().query(api.profiles.getDefault, {});
+  if (row) {
+    if (!row.isDefault) {
+      // Rows exist but none default (shouldn't happen) — repair.
+      await convex().mutation(api.profiles.setDefault, { id: row.id as never });
+      return toRow({ ...row, isDefault: true });
+    }
+    return toRow(row);
   }
   return seedFromLegacy();
 }
 
-function seedFromLegacy(): ProfileRow | null {
-  const legacy =
-    db.select().from(settings).where(eq(settings.key, "profile")).get()?.value ?? "";
+async function seedFromLegacy(): Promise<ProfileRow | null> {
+  const legacy = getSetting("profile") ?? "";
   if (!legacy.trim() || legacy.startsWith("REPLACE ME")) return null;
   const now = new Date().toISOString();
-  const res = db
-    .insert(profiles)
-    .values({
+  const id = await convex().mutation(api.profiles.insert, {
+    doc: {
       name: "Default",
       isDefault: true,
       content: legacy,
       defaults: EMPTY_DEFAULTS,
       createdAt: now,
       updatedAt: now,
-    })
-    .run();
-  return db.select().from(profiles).where(eq(profiles.id, Number(res.lastInsertRowid))).get() ?? null;
+    },
+  });
+  const created = await convex().query(api.profiles.getById, { id });
+  return created ? toRow({ ...created, id: created._id }) : null;
 }
 
 // The text the AI pipeline consumes: corpus + an explicit preferences block
@@ -92,18 +139,16 @@ export function profileText(p: ProfileRow): string {
   return `${p.content.trim()}${prefs}`;
 }
 
-export function setDefaultProfile(id: number): void {
-  db.update(profiles).set({ isDefault: false }).run();
-  db.update(profiles).set({ isDefault: true }).where(eq(profiles.id, id)).run();
+export async function setDefaultProfile(id: string): Promise<void> {
+  await convex().mutation(api.profiles.setDefault, { id: id as never });
 }
 
 // New profiles start as a copy of the current default — tweak from there.
-export function createProfile(name: string): number {
-  const base = getDefaultProfile();
+export async function createProfile(name: string): Promise<string> {
+  const base = await getDefaultProfile();
   const now = new Date().toISOString();
-  const res = db
-    .insert(profiles)
-    .values({
+  return await convex().mutation(api.profiles.insert, {
+    doc: cleanDoc({
       name: name.trim() || "Untitled",
       isDefault: false,
       fullName: base?.fullName ?? null,
@@ -120,21 +165,22 @@ export function createProfile(name: string): number {
       defaults: base?.defaults ?? EMPTY_DEFAULTS,
       createdAt: now,
       updatedAt: now,
-    })
-    .run();
-  return Number(res.lastInsertRowid);
+    }),
+  });
 }
 
-export function deleteProfile(id: number): { ok: true } | { ok: false; error: string } {
-  const row = db.select().from(profiles).where(eq(profiles.id, id)).get();
+export async function deleteProfile(
+  id: string,
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const row = await convex().query(api.profiles.getById, { id: id as never });
   if (!row) return { ok: false, error: "Profile not found." };
   if (row.isDefault) return { ok: false, error: "Make another profile default first." };
-  db.delete(profiles).where(eq(profiles.id, id)).run();
+  await convex().mutation(api.profiles.remove, { id: id as never });
   return { ok: true };
 }
 
-export function updateProfile(
-  id: number,
+export async function updateProfile(
+  id: string,
   patch: Partial<
     Pick<
       ProfileRow,
@@ -153,11 +199,11 @@ export function updateProfile(
       | "defaults"
     >
   >,
-): void {
-  db.update(profiles)
-    .set({ ...patch, updatedAt: new Date().toISOString() })
-    .where(eq(profiles.id, id))
-    .run();
+): Promise<void> {
+  await convex().mutation(api.profiles.patch, {
+    id: id as never,
+    patch: cleanDoc({ ...patch, updatedAt: new Date().toISOString() }),
+  });
 }
 
 // ── Legacy-doc migration (M29) ───────────────────────────────────────────────

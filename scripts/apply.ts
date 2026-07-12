@@ -87,12 +87,9 @@ type Deps = {
 };
 
 async function ensureTosAck(host: string): Promise<boolean> {
-  const { db } = await import("../lib/db");
-  const { settings } = await import("../lib/db/schema");
-  const { eq } = await import("drizzle-orm");
+  const { getSetting, setSetting } = await import("../lib/settings/store");
   const tosKey = `tos:${host}`;
-  const already = db.select().from(settings).where(eq(settings.key, tosKey)).get();
-  if (already) return true;
+  if (getSetting(tosKey) !== null) return true;
 
   console.log(`\n⚠  FIRST RUN against ${host}`);
   console.log(`   Automating form-fill / submit on a third-party ATS can violate its`);
@@ -104,21 +101,18 @@ async function ensureTosAck(host: string): Promise<boolean> {
     console.log("   Not acknowledged — skipping this job.");
     return false;
   }
-  db.insert(settings)
-    .values({ key: tosKey, value: new Date().toISOString(), updatedAt: new Date().toISOString() })
-    .onConflictDoNothing()
-    .run();
+  setSetting(tosKey, new Date().toISOString());
   return true;
 }
 
 async function applyOneJob(
   page: Page,
-  jobId: number,
+  jobId: string,
   deps: Deps,
 ): Promise<"submitted" | "manual" | "skipped" | "abandoned" | "error"> {
   const { loadApplyContext, setApplyStatus, appendApplyLog } = deps;
 
-  const loaded = loadApplyContext(jobId);
+  const loaded = await loadApplyContext(jobId);
   if (!loaded.ok) {
     console.error(`\n✗ Job ${jobId}: ${loaded.error}`);
     return "error";
@@ -147,7 +141,7 @@ async function applyOneJob(
     `   Tailored materials: bullets ${ctx.job.tailoredBullets ? "✓" : "—"}, cover letter ${ctx.job.coverLetter ? "✓" : "—"}`,
   );
 
-  setApplyStatus(jobId, "in_progress", `apply-assist opened (${ats})`);
+  await setApplyStatus(jobId, "in_progress", `apply-assist opened (${ats})`);
   await page.goto(ctx.job.url!, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
   if (ats === "workday") {
@@ -159,7 +153,7 @@ async function applyOneJob(
     if (res.skipped.length) {
       console.log(`   – not found (fill manually if present): ${res.skipped.join(", ")}`);
     }
-    appendApplyLog(jobId, `autofilled: ${res.filled.join(", ")} [resume: ${ctx.resumeSource ?? "none"}]`);
+    await appendApplyLog(jobId, `autofilled: ${res.filled.join(", ")} [resume: ${ctx.resumeSource ?? "none"}]`);
   }
 
   // THE review gate — the human approves; the tool submits.
@@ -178,17 +172,17 @@ async function applyOneJob(
       console.log(`     Click it yourself, then confirm below.`);
       const manual = await prompt(`     Type 'done' if you submitted, anything else to abandon: `);
       if (manual.toLowerCase() !== "done") {
-        setApplyStatus(jobId, "abandoned", "no submit button; user did not submit");
+        await setApplyStatus(jobId, "abandoned", "no submit button; user did not submit");
         return "abandoned";
       }
       const { setJobStatusCore } = await import("../lib/jobs/transition");
-      setJobStatusCore(jobId, "applied");
-      setApplyStatus(jobId, "submitted", "human submitted manually → applied");
+      await setJobStatusCore(jobId, "applied");
+      await setApplyStatus(jobId, "submitted", "human submitted manually → applied");
       console.log(`   ✅ Recorded as applied.`);
       return "manual";
     }
 
-    appendApplyLog(jobId, `tool clicked submit (${clicked.how}) after human approval`);
+    await appendApplyLog(jobId, `tool clicked submit (${clicked.how}) after human approval`);
     console.log(`   🖱  Clicked Submit (${clicked.how}). Watching for confirmation…`);
     const confirmed = await detectConfirmation(page);
     if (confirmed) {
@@ -197,33 +191,33 @@ async function applyOneJob(
       console.log(`   ? No clear confirmation appeared within 15s.`);
       const looks = await prompt(`     Does the page show it went through? [y/N] `);
       if (looks.toLowerCase() !== "y") {
-        setApplyStatus(jobId, "abandoned", "submit clicked but unconfirmed — check manually");
+        await setApplyStatus(jobId, "abandoned", "submit clicked but unconfirmed — check manually");
         console.log(`   Recorded as NOT submitted — verify on the site.`);
         return "abandoned";
       }
     }
     const { setJobStatusCore } = await import("../lib/jobs/transition");
-    setJobStatusCore(jobId, "applied"); // auto-creates the application row
-    setApplyStatus(jobId, "submitted", `approved → tool submitted${confirmed ? ` (${confirmed})` : ""}`);
+    await setJobStatusCore(jobId, "applied"); // auto-creates the application row
+    await setApplyStatus(jobId, "submitted", `approved → tool submitted${confirmed ? ` (${confirmed})` : ""}`);
     console.log(`   ✅ Recorded as applied. Nice.`);
     return "submitted";
   }
 
   if (answer === "done") {
     const { setJobStatusCore } = await import("../lib/jobs/transition");
-    setJobStatusCore(jobId, "applied");
-    setApplyStatus(jobId, "submitted", "human confirmed manual submit → applied");
+    await setJobStatusCore(jobId, "applied");
+    await setApplyStatus(jobId, "submitted", "human confirmed manual submit → applied");
     console.log(`   ✅ Recorded as applied.`);
     return "manual";
   }
 
   if (answer === "skip") {
-    setApplyStatus(jobId, "abandoned", "skipped at review gate");
+    await setApplyStatus(jobId, "abandoned", "skipped at review gate");
     console.log(`   Skipped — pipeline status unchanged.`);
     return "skipped";
   }
 
-  setApplyStatus(jobId, "abandoned", "closed at review gate without submit");
+  await setApplyStatus(jobId, "abandoned", "closed at review gate without submit");
   console.log(`   Recorded as not submitted. Pipeline status unchanged.`);
   return "abandoned";
 }
@@ -235,8 +229,8 @@ async function runWorkdayAssist(
   page: Page,
   host: string,
   email: string | null,
-  appendApplyLog: (jobId: number, line: string) => void,
-  jobId: number,
+  appendApplyLog: (jobId: string, line: string) => Promise<void>,
+  jobId: string,
 ) {
   void page;
   const { credentialForHost, getMasterPassword, addCredential, hasMasterPassword } =
@@ -251,12 +245,12 @@ async function runWorkdayAssist(
     return;
   }
 
-  const existing = credentialForHost(host);
+  const existing = await credentialForHost(host);
   if (existing) {
     console.log(`\n   🔑 Existing ${host} account: ${existing.username}`);
     console.log(`      Password: ${existing.password}`);
     console.log(`      → Sign in with these in the browser.`);
-    appendApplyLog(jobId, `surfaced vaulted credential for ${host}`);
+    await appendApplyLog(jobId, `surfaced vaulted credential for ${host}`);
   } else {
     const master = getMasterPassword()!;
     const username = email ?? (await prompt(`\n   Email to register with: `));
@@ -265,9 +259,9 @@ async function runWorkdayAssist(
     console.log(`      Password: ${master}   (your master password)`);
     const store = await prompt(`\n   After you submit the signup form, press Enter to store this credential… `);
     void store;
-    const res = addCredential({ site: `Workday — ${host.split(".")[0]}`, host, username });
+    const res = await addCredential({ site: `Workday — ${host.split(".")[0]}`, host, username });
     console.log(res.ok ? `      ✓ Credential vaulted.` : `      (not stored: ${res.error})`);
-    appendApplyLog(jobId, `workday signup credential ${res.ok ? "vaulted" : "not vaulted"}`);
+    await appendApplyLog(jobId, `workday signup credential ${res.ok ? "vaulted" : "not vaulted"}`);
   }
 
   // Auto-OTP.
@@ -291,7 +285,7 @@ async function runWorkdayAssist(
 // ── Main: one browser session, N jobs ────────────────────────────────────────
 
 async function main() {
-  const jobIds = process.argv.slice(2).map(Number).filter((n) => Number.isFinite(n));
+  const jobIds = process.argv.slice(2).map((s) => s.trim()).filter(Boolean);
   if (jobIds.length === 0) {
     console.error("Usage: npm run apply -- <jobId> [jobId2 …]");
     process.exit(1);
@@ -328,7 +322,7 @@ async function main() {
         tally[outcome] = (tally[outcome] ?? 0) + 1;
       } catch (err) {
         tally.error = (tally.error ?? 0) + 1;
-        appendApplyLog(jobId, `error: ${err instanceof Error ? err.message : String(err)}`);
+        await appendApplyLog(jobId, `error: ${err instanceof Error ? err.message : String(err)}`);
         console.error(`\n   ✗ Job ${jobId}: ${err instanceof Error ? err.message : err}`);
       } finally {
         // Keep the last page open until the user releases the browser below.

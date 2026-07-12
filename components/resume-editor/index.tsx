@@ -23,6 +23,7 @@ import {
   Check,
 } from "lucide-react";
 import type { ResumeDocType } from "@/lib/claude/resume";
+import type { MatchAnalysis } from "@/lib/claude/resume-match";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
 import { buildHighlights } from "@/lib/resumes/audit-types";
 import type { ResumeStyle } from "@/lib/resumes/style";
@@ -42,9 +43,12 @@ export type ResumeEditorProps = {
   jd: string;
   // Present in the per-job context — enables Save (persist + re-render the
   // PDF apply-assist attaches). Match-tool sessions are transient: null.
-  resumeId?: number | null;
+  resumeId?: string | null;
   filename?: string;
   initialScore?: number | null;
+  // Full analysis from the Match tool so the studio's Optimize tab shows the
+  // score + "Raise your score" panel immediately (not only after a Rescore).
+  initialAnalysis?: MatchAnalysis | null;
   onClose: () => void;
   onSaved?: () => void;
 };
@@ -307,6 +311,7 @@ export default function ResumeEditor(props: ResumeEditorProps) {
                 jd={props.jd}
                 sourceText={props.sourceText}
                 initialScore={props.initialScore ?? null}
+                initialAnalysis={props.initialAnalysis ?? null}
                 onDoc={update}
                 onAudit={setAudit}
               />

@@ -18,8 +18,7 @@ async function main() {
     "../lib/integrations/gmail/client"
   );
   const { assembleDigest } = await import("../lib/digest");
-  const { db } = await import("../lib/db");
-  const { settings } = await import("../lib/db/schema");
+  const { setSetting } = await import("../lib/settings/store");
 
   const errors: string[] = [];
   console.log(`[${new Date().toISOString()}] daily run starting`);
@@ -57,15 +56,8 @@ async function main() {
   }
 
   // 4. Digest
-  const digest = assembleDigest({ added, scored, repliesFound, errors });
-  const now = new Date().toISOString();
-  db.insert(settings)
-    .values({ key: "lastDailyRun", value: now, updatedAt: now })
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: { value: now, updatedAt: now },
-    })
-    .run();
+  const digest = await assembleDigest({ added, scored, repliesFound, errors });
+  setSetting("lastDailyRun", new Date().toISOString());
 
   const email = getGmailConfig()?.email;
   if (hasGmail() && email) {

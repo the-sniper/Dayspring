@@ -52,7 +52,7 @@ export default function ResearchButton({
   existing,
 }: {
   subjectType: "job" | "company";
-  id: number;
+  id: string;
   existing: Brief | null;
 }) {
   const [brief, setBrief] = useState<Brief | null>(existing);

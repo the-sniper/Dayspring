@@ -4,7 +4,8 @@
 // by the same "never fabricate" rules as lib/claude/resume.ts.
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, MODEL_SCORE, MODEL_PREMIUM } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
+import { getClient, MODEL_PREMIUM } from "@/lib/claude/client";
 import { ResumeDoc, type ResumeDocType } from "@/lib/claude/resume";
 
 // ── 1. Analyze ───────────────────────────────────────────────────────────────
@@ -114,30 +115,25 @@ export async function analyzeMatch(
   resumeText: string,
   jd: string,
 ): Promise<{ analysis: MatchAnalysis; tokens: { input: number; output: number } }> {
-  let response;
+  let result;
   try {
-    response = await getClient().messages.parse({
-      model: MODEL_SCORE,
-      max_tokens: 16_000, // headroom for reasoning + the JSON (two scores + checks); too low truncates the JSON mid-string
-      system: [
-        { type: "text", text: ANALYZE_RUBRIC },
-        {
-          type: "text",
-          text: `CANDIDATE RESUME:\n\n${resumeText.slice(0, 20_000)}`,
-          cache_control: { type: "ephemeral" },
-        },
-      ],
-      messages: [
-        { role: "user", content: `JOB DESCRIPTION:\n\n${jd.slice(0, 12_000)}` },
-      ],
-      output_config: { format: zodOutputFormat(MatchResult) },
+    result = await structuredComplete({
+      tier: "standard",
+      schema: MatchResult,
+      schemaName: "resume_match",
+      // Headroom for reasoning + the JSON (two scores + checks); too low
+      // truncates the JSON mid-string.
+      maxTokens: 16_000,
+      system: ANALYZE_RUBRIC,
+      cache: `CANDIDATE RESUME:\n\n${resumeText.slice(0, 20_000)}`,
+      user: `JOB DESCRIPTION:\n\n${jd.slice(0, 12_000)}`,
     });
   } catch (err) {
-    // The SDK parses the model's text as JSON; a truncated response (hit
-    // max_tokens mid-string) surfaces here as an opaque "Unterminated string"
-    // parse error. Translate it into something the user can act on.
+    // The SDK parses the model's text as JSON; a truncated response (hit the
+    // output limit mid-string) surfaces here as an opaque parse error.
+    // Translate it into something the user can act on.
     const msg = err instanceof Error ? err.message : String(err);
-    if (/Unterminated string|Failed to parse structured output/i.test(msg)) {
+    if (/Unterminated string|Failed to parse|incomplete|max_output_tokens/i.test(msg)) {
       throw new Error(
         "The analysis response was too long to complete. Try a shorter job description or resume, then run it again.",
       );
@@ -145,10 +141,7 @@ export async function analyzeMatch(
     throw err;
   }
 
-  if (!response.parsed_output) {
-    throw new Error(`Resume match analysis failed (stop_reason: ${response.stop_reason})`);
-  }
-  const r = response.parsed_output;
+  const r = result.data;
   const analysis: MatchAnalysis = {
     score: Math.max(0, Math.min(100, Math.round(r.score))),
     atsScore: Math.max(0, Math.min(100, Math.round(r.ats_score))),
@@ -168,7 +161,7 @@ export async function analyzeMatch(
     weaknesses: r.weaknesses.slice(0, 5),
     improvements: r.improvements.slice(0, 6),
   };
-  return { analysis, tokens: sumTokens(response.usage) };
+  return { analysis, tokens: result.usage };
 }
 
 // ── 2. Align (regenerate) ────────────────────────────────────────────────────

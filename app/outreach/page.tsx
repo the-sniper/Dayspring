@@ -1,34 +1,28 @@
 import Link from "next/link";
-import { desc, eq } from "drizzle-orm";
 import { Send, Inbox, Clock, CheckCircle2, PartyPopper } from "lucide-react";
 import CheckRepliesButton from "@/components/check-replies-button";
 import OutreachEditor from "@/components/outreach-editor";
 import PageHeader from "@/components/page-header";
 import { markRepliedAction } from "@/lib/actions/outreach";
 import NudgeButton from "@/components/nudge-button";
-import { db } from "@/lib/db";
-import { companies, contacts, jobs, outreach } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { hasGmail } from "@/lib/integrations/gmail/client";
 
 export const dynamic = "force-dynamic";
 
 export default async function OutreachPage() {
-  const rows = db
-    .select({
-      o: outreach,
-      contactName: contacts.name,
-      contactTitle: contacts.title,
-      contactEmail: contacts.email,
-      jobTitle: jobs.title,
-      companyName: companies.name,
-      jobId: jobs.id,
-    })
-    .from(outreach)
-    .innerJoin(contacts, eq(outreach.contactId, contacts.id))
-    .leftJoin(jobs, eq(outreach.jobId, jobs.id))
-    .leftJoin(companies, eq(jobs.companyId, companies.id))
-    .orderBy(desc(outreach.createdAt))
-    .all();
+  const queue = await convex().query(api.outreach.queue, {});
+  const rows = queue
+    .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+    .map((r) => ({
+      o: r,
+      contactName: r.contact?.name ?? "(unknown)",
+      contactTitle: r.contact?.title ?? null,
+      contactEmail: r.contact?.email ?? null,
+      jobTitle: r.job?.title ?? null,
+      companyName: r.company?.name ?? null,
+      jobId: r.job?.id ?? null,
+    }));
 
   const gmail = hasGmail();
   const today = new Date().toISOString().slice(0, 10);

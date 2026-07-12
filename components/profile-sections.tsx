@@ -228,7 +228,7 @@ function EditModal({
 
 // ── Shared per-section state: draft list + selection + save plumbing ─────────
 function useSectionModal<T>(
-  profileId: number,
+  profileId: string,
   doc: ConsolidatedDoc,
   pick: (d: ConsolidatedDoc) => T[],
   put: (d: ConsolidatedDoc, v: T[]) => ConsolidatedDoc,
@@ -326,7 +326,7 @@ function CardShell({
 }
 
 // ── Experience ────────────────────────────────────────────────────────────────
-export function ExperienceCard({ profileId, doc }: { profileId: number; doc: ConsolidatedDoc }) {
+export function ExperienceCard({ profileId, doc }: { profileId: string; doc: ConsolidatedDoc }) {
   const m = useSectionModal<Role>(
     profileId,
     doc,
@@ -409,7 +409,7 @@ export function ExperienceCard({ profileId, doc }: { profileId: number; doc: Con
 }
 
 // ── Skills ────────────────────────────────────────────────────────────────────
-export function SkillsCard({ profileId, doc }: { profileId: number; doc: ConsolidatedDoc }) {
+export function SkillsCard({ profileId, doc }: { profileId: string; doc: ConsolidatedDoc }) {
   const m = useSectionModal<SkillGroup>(
     profileId,
     doc,
@@ -476,7 +476,7 @@ export function SkillsCard({ profileId, doc }: { profileId: number; doc: Consoli
 }
 
 // ── Education ─────────────────────────────────────────────────────────────────
-export function EducationCard({ profileId, doc }: { profileId: number; doc: ConsolidatedDoc }) {
+export function EducationCard({ profileId, doc }: { profileId: string; doc: ConsolidatedDoc }) {
   const m = useSectionModal<Edu>(
     profileId,
     doc,
@@ -560,7 +560,7 @@ export function EducationCard({ profileId, doc }: { profileId: number; doc: Cons
 }
 
 // ── Certifications ───────────────────────────────────────────────────────────
-export function CertificationsCard({ profileId, doc }: { profileId: number; doc: ConsolidatedDoc }) {
+export function CertificationsCard({ profileId, doc }: { profileId: string; doc: ConsolidatedDoc }) {
   const m = useSectionModal<Cert>(
     profileId,
     doc,
@@ -645,7 +645,7 @@ export function CertificationsCard({ profileId, doc }: { profileId: number; doc:
 }
 
 // ── Projects ─────────────────────────────────────────────────────────────────
-export function ProjectsCard({ profileId, doc }: { profileId: number; doc: ConsolidatedDoc }) {
+export function ProjectsCard({ profileId, doc }: { profileId: string; doc: ConsolidatedDoc }) {
   const m = useSectionModal<Project>(
     profileId,
     doc,

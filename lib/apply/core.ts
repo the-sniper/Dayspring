@@ -1,22 +1,21 @@
 // Next-free apply-assist context — read by scripts/apply.ts (the attended CLI).
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { companies, jobs, type ApplicationDefaults } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { extractFields, type ApplicantFields } from "@/lib/apply/fields";
 import { getProfile } from "@/lib/jobs/score";
 import { getDefaultProfile } from "@/lib/profiles/core";
 import { latestJobBrief } from "@/lib/research/core";
 import { resumePdfForJob } from "@/lib/resumes/core";
+import type { ApplicationDefaults } from "@/lib/types";
 
 export type ApplyStatus = "in_progress" | "submitted" | "abandoned";
 
 export type ApplyContext = {
   job: {
-    id: number;
+    id: string;
     title: string;
     url: string | null;
     source: string;
-    companyId: number;
+    companyId: string;
     companyName: string;
     tailoredBullets: string[] | null;
     coverLetter: string | null;
@@ -31,27 +30,22 @@ export type ApplyContext = {
   briefSummary: string | null;
 };
 
-export function loadApplyContext(
-  jobId: number,
-): { ok: true; ctx: ApplyContext } | { ok: false; error: string } {
-  const profile = getProfile();
+export async function loadApplyContext(
+  jobId: string,
+): Promise<{ ok: true; ctx: ApplyContext } | { ok: false; error: string }> {
+  const profile = await getProfile();
   if (!profile) {
     return { ok: false, error: "No profile in Settings — apply-assist fills from it." };
   }
-  const row = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, jobId))
-    .get();
-  if (!row) return { ok: false, error: "Job not found" };
-  if (!row.job.url) return { ok: false, error: "Job has no application URL." };
+  const job = await convex().query(api.jobs.getWithCompany, { id: jobId as never });
+  if (!job) return { ok: false, error: "Job not found" };
+  if (!job.url) return { ok: false, error: "Job has no application URL." };
 
-  const resume = resumePdfForJob(jobId);
+  const resume = await resumePdfForJob(jobId);
 
   // Structured profile columns beat regex extraction; regex fills the gaps
   // for anything the user hasn't set on the profile page yet.
-  const p = getDefaultProfile();
+  const p = await getDefaultProfile();
   const regex = extractFields(profile);
   const fields: ApplicantFields = {
     fullName: p?.fullName ?? regex.fullName,
@@ -65,44 +59,45 @@ export function loadApplyContext(
     location: p?.location ?? regex.location,
   };
 
+  const brief = (await latestJobBrief(jobId))?.brief ?? null;
   return {
     ok: true,
     ctx: {
       job: {
-        id: row.job.id,
-        title: row.job.title,
-        url: row.job.url,
-        source: row.job.source,
-        companyId: row.job.companyId,
-        companyName: row.companyName,
-        tailoredBullets: row.job.tailoredBullets,
-        coverLetter: row.job.coverLetter,
+        id: job.id,
+        title: job.title,
+        url: job.url,
+        source: job.source,
+        companyId: job.companyId,
+        companyName: job.companyName,
+        tailoredBullets: job.tailoredBullets ?? null,
+        coverLetter: job.coverLetter ?? null,
       },
       fields,
       defaults: p?.defaults ?? null,
       resumePath: resume?.path ?? null,
       resumeSource: resume?.source ?? null,
-      briefSummary: latestJobBrief(jobId)?.brief ?? null,
+      briefSummary: brief,
     },
   };
 }
 
-export function setApplyStatus(
-  jobId: number,
+export async function setApplyStatus(
+  jobId: string,
   status: ApplyStatus,
   logLine?: string,
-): void {
-  const job = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
+): Promise<void> {
+  const job = await convex().query(api.jobs.getById, { id: jobId as never });
   const log = [...(job?.applyLog ?? [])];
   if (logLine) log.push(`${new Date().toISOString().slice(11, 19)} ${logLine}`);
-  db.update(jobs)
-    .set({ applyStatus: status, applyLog: log, updatedAt: new Date().toISOString() })
-    .where(eq(jobs.id, jobId))
-    .run();
+  await convex().mutation(api.jobs.patch, {
+    id: jobId as never,
+    patch: { applyStatus: status, applyLog: log, updatedAt: new Date().toISOString() },
+  });
 }
 
-export function appendApplyLog(jobId: number, logLine: string): void {
-  const job = db.select().from(jobs).where(eq(jobs.id, jobId)).get();
+export async function appendApplyLog(jobId: string, logLine: string): Promise<void> {
+  const job = await convex().query(api.jobs.getById, { id: jobId as never });
   const log = [...(job?.applyLog ?? []), `${new Date().toISOString().slice(11, 19)} ${logLine}`];
-  db.update(jobs).set({ applyLog: log }).where(eq(jobs.id, jobId)).run();
+  await convex().mutation(api.jobs.patch, { id: jobId as never, patch: { applyLog: log } });
 }

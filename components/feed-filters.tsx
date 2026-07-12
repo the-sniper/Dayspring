@@ -2,8 +2,8 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Search, MapPin, Briefcase, DollarSign, Calendar, Star, SlidersHorizontal, X } from "lucide-react";
-import Combobox from "@/components/combobox";
+import { Search, MapPin, Briefcase, DollarSign, Calendar, Star, X } from "lucide-react";
+import MultiSelect, { type MultiSelectOption } from "@/components/multi-select";
 import {
   EMPLOYMENT_TYPE_LABELS,
   EMPLOYMENT_TYPES,
@@ -13,6 +13,22 @@ import {
   WORKPLACE_TYPES,
 } from "@/lib/types";
 import { cn } from "@/lib/utils";
+
+// Filters that hold multiple comma-separated values in the URL.
+const csv = (v: string): string[] => (v ? v.split(",").filter(Boolean) : []);
+
+const ROLE_OPTIONS: MultiSelectOption[] = [
+  ...ROLE_TYPES.map((r) => ({ value: r, label: ROLE_TYPE_LABELS[r] })),
+  { value: "untyped", label: "Untyped" },
+];
+const WORKPLACE_OPTIONS: MultiSelectOption[] = WORKPLACE_TYPES.map((w) => ({
+  value: w,
+  label: WORKPLACE_TYPE_LABELS[w],
+}));
+const EMPLOYMENT_OPTIONS: MultiSelectOption[] = EMPLOYMENT_TYPES.map((t) => ({
+  value: t,
+  label: EMPLOYMENT_TYPE_LABELS[t],
+}));
 
 export type FeedFilterValues = {
   q: string;
@@ -77,6 +93,8 @@ export default function FeedFilters({
       if (value) params.set(key, value);
       else params.delete(key);
     }
+    // Any filter change resets to the first page of results.
+    if (!("page" in patch)) params.delete("page");
     const qs = params.toString();
     router.push(qs ? `/feed?${qs}` : "/feed");
   }
@@ -118,68 +136,46 @@ export default function FeedFilters({
 
         <div>
           <span className={labelCls}><MapPin size={12} /> Location</span>
-          <Combobox
-            value={values.loc}
-            options={locationOptions}
+          <MultiSelect
+            selected={csv(values.loc)}
+            options={locationOptions.map((o) => ({ value: o, label: o }))}
             placeholder="Any location"
-            onChange={(loc) => apply({ loc })}
+            searchable
+            allowCustom
+            onChange={(next) => apply({ loc: next.join(",") })}
           />
         </div>
 
         <div>
           <span className={labelCls}><Briefcase size={12} /> Role</span>
-          <div className="relative">
-            <select
-              value={values.role}
-              onChange={(e) => apply({ role: e.target.value })}
-              className={selectCls}
-            >
-              <option value="">Any role</option>
-              {ROLE_TYPES.map((r) => (
-                <option key={r} value={r}>
-                  {ROLE_TYPE_LABELS[r]}
-                </option>
-              ))}
-              <option value="untyped">Untyped</option>
-            </select>
-            <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground">
-              <SlidersHorizontal size={14} />
-            </div>
-          </div>
+          <MultiSelect
+            selected={csv(values.role)}
+            options={ROLE_OPTIONS}
+            placeholder="Any role"
+            onChange={(next) => apply({ role: next.join(",") })}
+          />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
         <div>
           <span className={labelCls}>Workplace</span>
-          <select
-            value={values.workplace}
-            onChange={(e) => apply({ workplace: e.target.value })}
-            className={selectCls}
-          >
-            <option value="">Any</option>
-            {WORKPLACE_TYPES.map((w) => (
-              <option key={w} value={w}>
-                {WORKPLACE_TYPE_LABELS[w]}
-              </option>
-            ))}
-          </select>
+          <MultiSelect
+            selected={csv(values.workplace)}
+            options={WORKPLACE_OPTIONS}
+            placeholder="Any"
+            onChange={(next) => apply({ workplace: next.join(",") })}
+          />
         </div>
 
         <div>
           <span className={labelCls}>Job type</span>
-          <select
-            value={values.employment}
-            onChange={(e) => apply({ employment: e.target.value })}
-            className={selectCls}
-          >
-            <option value="">Any</option>
-            {EMPLOYMENT_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {EMPLOYMENT_TYPE_LABELS[t]}
-              </option>
-            ))}
-          </select>
+          <MultiSelect
+            selected={csv(values.employment)}
+            options={EMPLOYMENT_OPTIONS}
+            placeholder="Any"
+            onChange={(next) => apply({ employment: next.join(",") })}
+          />
         </div>
 
         <div>

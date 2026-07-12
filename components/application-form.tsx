@@ -7,7 +7,7 @@ export default function ApplicationForm({
   jobId,
   values,
 }: {
-  jobId: number;
+  jobId: string;
   values: {
     resumeVersion: string | null;
     submittedAt: string | null;

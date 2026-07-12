@@ -1,12 +1,8 @@
 import Link from "next/link";
-import { eq, inArray } from "drizzle-orm";
 import { 
   KanbanSquare, 
   Plus, 
-  Search, 
-  MoreVertical, 
   ArrowUpRight,
-  Inbox,
   Layout
 } from "lucide-react";
 import ErrorBanner from "@/components/error-banner";
@@ -15,8 +11,7 @@ import ScoreBadge from "@/components/score-badge";
 import StatusSelect from "@/components/status-select";
 import CompanyLogo from "@/components/company-logo";
 import PageHeader from "@/components/page-header";
-import { db } from "@/lib/db";
-import { companies, jobs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { KANBAN_STATUSES, type JobStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -37,31 +32,29 @@ export default async function BoardPage({
   searchParams: Promise<{ error?: string }>;
 }) {
   const { error } = await searchParams;
-  const rows = db
-    .select({
-      id: jobs.id,
-      title: jobs.title,
-      status: jobs.status,
-      matchScore: jobs.matchScore,
-      companyName: companies.name,
-    })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(inArray(jobs.status, [...KANBAN_STATUSES]))
-    .orderBy(jobs.updatedAt)
-    .all();
+  const [kanbanJobs, allCompanies] = await Promise.all([
+    convex().query(api.jobs.byStatuses, { statuses: [...KANBAN_STATUSES] }),
+    convex().query(api.companies.listAll, {}),
+  ]);
+
+  const rows = kanbanJobs
+    .sort((a, b) => (a.updatedAt ?? "").localeCompare(b.updatedAt ?? ""))
+    .map((j) => ({
+      id: j.id,
+      title: j.title,
+      status: j.status as JobStatus,
+      matchScore: j.matchScore ?? null,
+      companyName: j.companyName,
+    }));
 
   const byStatus = new Map<JobStatus, typeof rows>(
     KANBAN_STATUSES.map((s) => [s, []]),
   );
   for (const r of rows) byStatus.get(r.status)?.push(r);
 
-  const companyNames = db
-    .select({ name: companies.name })
-    .from(companies)
-    .orderBy(companies.name)
-    .all()
-    .map((c) => c.name);
+  const companyNames = allCompanies
+    .map((c) => c.name)
+    .sort((a, b) => a.localeCompare(b));
 
   return (
     <div className="mx-auto max-w-[1400px]">

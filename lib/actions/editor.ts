@@ -2,9 +2,10 @@
 
 // Studio actions shared by both entry points (per-job Resume Studio and the
 // Resume Match tool): Edit-with-AI (re-audited every pass) and rescoring.
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, hasApiKey, MODEL_CHEAP } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
+import { hasOpenAIKey } from "@/lib/ai/openai";
+import { hasApiKey } from "@/lib/claude/client";
 import { editResume, type ResumeDocType } from "@/lib/claude/resume";
 import { auditResumeDoc } from "@/lib/claude/resume-audit";
 import { analyzeMatch, type MatchAnalysis } from "@/lib/claude/resume-match";
@@ -100,9 +101,10 @@ function docToText(doc: ResumeDocType): string {
   return lines.join("\n");
 }
 
-// Pick the best Skills-section bucket for a single keyword. Fast + cheap
-// (Haiku) so adding a skill feels instant. Returns an existing group name when
-// one fits, otherwise a concise conventional new group name.
+// Pick the best Skills-section bucket for a single keyword. Fast + cheap (routes
+// to the OpenAI cost tier when available, else Claude Haiku) so adding a skill
+// feels instant. Returns an existing group name when one fits, otherwise a
+// concise conventional new group name.
 const SkillCategory = z.object({ group: z.string() });
 
 export type CategorizeSkillResult =
@@ -113,30 +115,26 @@ export async function categorizeSkillAction(input: {
   keyword: string;
   groups: string[];
 }): Promise<CategorizeSkillResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!hasApiKey() && !hasOpenAIKey()) return { ok: false, error: NO_KEY };
   const keyword = input.keyword?.trim();
   if (!keyword) return { ok: false, error: "No keyword provided." };
   const groups = (input.groups ?? []).map((g) => g.trim()).filter(Boolean);
   try {
-    const response = await getClient().messages.parse({
-      model: MODEL_CHEAP,
-      max_tokens: 200,
+    const { data } = await structuredComplete({
+      tier: "cheap",
+      schema: SkillCategory,
+      schemaName: "skill_category",
+      maxTokens: 200,
       system:
         `You place ONE skill into the best category bucket of a resume's Skills section. ` +
         `Given the skill and the candidate's EXISTING group names, return the name of the existing group it best belongs to — copied EXACTLY. ` +
         `Only if none is a reasonable fit, return a concise, conventional new group name (e.g. "Programming Languages", "Cloud & DevOps", "Tools & Platforms", "Methodologies"). ` +
         `Return just the group name.`,
-      messages: [
-        {
-          role: "user",
-          content: `SKILL: ${keyword}\n\nEXISTING GROUPS:\n${
-            groups.length ? groups.map((g) => `- ${g}`).join("\n") : "(none yet)"
-          }`,
-        },
-      ],
-      output_config: { format: zodOutputFormat(SkillCategory) },
+      user: `SKILL: ${keyword}\n\nEXISTING GROUPS:\n${
+        groups.length ? groups.map((g) => `- ${g}`).join("\n") : "(none yet)"
+      }`,
     });
-    const group = response.parsed_output?.group?.trim();
+    const group = data.group?.trim();
     return { ok: true, group: group || groups[0] || "Skills" };
   } catch (err) {
     // Non-fatal: fall back to the first existing group client-side.

@@ -3,7 +3,7 @@
 export {}; // module scope — dynamic-import-only files are otherwise global scripts
 
 async function main() {
-  // Dynamic imports so loadLocalEnv runs before lib/db reads DAYSPRING_DB_PATH.
+  // Dynamic imports so loadLocalEnv runs before the Convex client reads its URL.
   const { loadLocalEnv } = await import("../lib/env");
   loadLocalEnv();
   const { pullAllJobs } = await import("../lib/jobs/pull");

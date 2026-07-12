@@ -1,6 +1,5 @@
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, MODEL_CHEAP } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
 
 // Turn a plain-English "find new people" query into Apollo people-search
 // parameters. Never-fabricate: only extract locations/titles the query implies;
@@ -33,16 +32,13 @@ HARD RULES: Only extract what the query states or clearly implies. Never invent 
 export async function queryToApolloParams(
   query: string,
 ): Promise<ApolloQueryParams> {
-  const response = await getClient().messages.parse({
-    model: MODEL_CHEAP,
-    max_tokens: 1000,
+  const { data } = await structuredComplete({
+    tier: "cheap",
+    schema: Params,
+    schemaName: "apollo_query_params",
+    maxTokens: 1000,
     system: SYSTEM,
-    messages: [{ role: "user", content: query }],
-    output_config: { format: zodOutputFormat(Params) },
+    user: query,
   });
-
-  if (!response.parsed_output) {
-    throw new Error(`Couldn't parse that query (stop: ${response.stop_reason})`);
-  }
-  return response.parsed_output;
+  return data;
 }

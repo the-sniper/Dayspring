@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { count, eq } from "drizzle-orm";
 import {
   ArrowLeft,
   Building2,
@@ -20,12 +19,11 @@ import {
   deleteCompanyAction,
   updateCompanyAction,
 } from "@/lib/actions/companies";
-import { db } from "@/lib/db";
-import { companies, contacts, jobs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
 import { latestCompanyBrief } from "@/lib/research/core";
-import type { RoleType } from "@/lib/types";
+import type { AtsType, RoleType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -52,37 +50,38 @@ export default async function CompanyEditPage({
 }) {
   const { id: idRaw } = await params;
   const { error } = await searchParams;
-  const id = Number(idRaw);
-  const company = db.select().from(companies).where(eq(companies.id, id)).get();
-  if (!company) notFound();
+  const id = idRaw;
+  const companyDoc = await convex().query(api.companies.getById, { id: id as never });
+  if (!companyDoc) notFound();
+  const company = {
+    ...companyDoc,
+    id: companyDoc._id,
+    atsType: (companyDoc.atsType ?? null) as AtsType | null,
+    roleTypes: (companyDoc.roleTypes ?? null) as RoleType[] | null,
+  };
 
-  const cBriefRow = latestCompanyBrief(id);
+  const cBriefRow = await latestCompanyBrief(id);
   const companyBrief = cBriefRow
     ? { brief: cBriefRow.brief, sources: cBriefRow.sources ?? [] }
     : null;
 
-  const jobCount =
-    db
-      .select({ n: count() })
-      .from(jobs)
-      .where(eq(jobs.companyId, id))
-      .get()?.n ?? 0;
+  const [jobCount, savedContactsRaw] = await Promise.all([
+    convex().query(api.companies.jobCount, { id: id as never }),
+    convex().query(api.contacts.byCompany, { companyId: id as never }),
+  ]);
 
-  const savedContacts = db
-    .select({
-      id: contacts.id,
-      name: contacts.name,
-      title: contacts.title,
-      email: contacts.email,
-      linkedin: contacts.linkedin,
-      photoUrl: contacts.photoUrl,
-      emailStatus: contacts.emailStatus,
-      outreachStatus: contacts.outreachStatus,
-    })
-    .from(contacts)
-    .where(eq(contacts.companyId, id))
-    .orderBy(contacts.name)
-    .all();
+  const savedContacts = savedContactsRaw
+    .map((c) => ({
+      id: c.id,
+      name: c.name,
+      title: c.title ?? null,
+      email: c.email ?? null,
+      linkedin: c.linkedin ?? null,
+      photoUrl: c.photoUrl ?? null,
+      emailStatus: c.emailStatus ?? null,
+      outreachStatus: c.outreachStatus,
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
   return (
     <div className="mx-auto max-w-5xl">

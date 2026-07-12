@@ -1,6 +1,5 @@
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, MODEL_PREMIUM } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
 import type { JobForScoring } from "@/lib/claude/score";
 
 const TailorResult = z.object({
@@ -33,40 +32,19 @@ export async function tailorJob(
   const briefBlock = brief
     ? `\n\nCOMPANY RESEARCH (accurate facts about the employer — you may reference these; do not invent beyond them):\n${brief.slice(0, 4000)}`
     : "";
-  const response = await getClient().messages.parse({
-    model: MODEL_PREMIUM,
-    max_tokens: 12_000,
-    // Opus 4.8 runs WITHOUT thinking when the field is omitted — set it.
-    thinking: { type: "adaptive" },
-    system: [
-      { type: "text", text: RULES },
-      {
-        type: "text",
-        text: `CANDIDATE PROFILE:\n\n${profile}`,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [
-      {
-        role: "user",
-        content: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${job.description.slice(0, 12_000)}${briefBlock}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(TailorResult) },
+  const { data, usage } = await structuredComplete({
+    tier: "premium",
+    schema: TailorResult,
+    schemaName: "tailored_materials",
+    maxTokens: 12_000,
+    system: RULES,
+    cache: `CANDIDATE PROFILE:\n\n${profile}`,
+    user: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${job.description.slice(0, 12_000)}${briefBlock}`,
   });
 
-  if (!response.parsed_output) {
-    throw new Error(`Tailoring failed (stop_reason: ${response.stop_reason})`);
-  }
   return {
-    bullets: response.parsed_output.bullets.slice(0, 5),
-    coverLetter: response.parsed_output.cover_letter,
-    tokens: {
-      input:
-        response.usage.input_tokens +
-        (response.usage.cache_read_input_tokens ?? 0) +
-        (response.usage.cache_creation_input_tokens ?? 0),
-      output: response.usage.output_tokens,
-    },
+    bullets: data.bullets.slice(0, 5),
+    coverLetter: data.cover_letter,
+    tokens: usage,
   };
 }

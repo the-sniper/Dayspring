@@ -1,41 +1,34 @@
 // Next-free vault operations — actions, apply.ts, and workday-signup all use
 // this. The ONE master password (Tsenta-style): set once, reused for every
 // generated site account.
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { settings, siteCredentials } from "@/lib/db/schema";
+//
+// Master password lives in the local settings store (machine-local secret,
+// never sent to Convex). Site-credential rows live in Convex (passwords are
+// AES-256-GCM sealed at rest).
+import { api, convex } from "@/lib/convex/server";
+import { getSetting, setSetting } from "@/lib/settings/store";
 import { decrypt, encrypt, hasVaultKey, type Sealed } from "@/lib/vault/crypto";
 
 const MASTER_KEY = "masterPasswordEnc";
 
 export function hasMasterPassword(): boolean {
-  return (
-    hasVaultKey() &&
-    !!db.select().from(settings).where(eq(settings.key, MASTER_KEY)).get()
-  );
+  return hasVaultKey() && getSetting(MASTER_KEY) !== null;
 }
 
 export function setMasterPassword(password: string): void {
   if (!password) throw new Error("Password required");
   const sealed = encrypt(password);
-  const now = new Date().toISOString();
-  db.insert(settings)
-    .values({ key: MASTER_KEY, value: JSON.stringify(sealed), updatedAt: now })
-    .onConflictDoUpdate({
-      target: settings.key,
-      set: { value: JSON.stringify(sealed), updatedAt: now },
-    })
-    .run();
+  setSetting(MASTER_KEY, JSON.stringify(sealed));
 }
 
 export function getMasterPassword(): string | null {
-  const row = db.select().from(settings).where(eq(settings.key, MASTER_KEY)).get();
-  if (!row) return null;
-  return decrypt(JSON.parse(row.value) as Sealed);
+  const raw = getSetting(MASTER_KEY);
+  if (!raw) return null;
+  return decrypt(JSON.parse(raw) as Sealed);
 }
 
 export type CredentialRow = {
-  id: number;
+  id: string;
   site: string;
   host: string;
   username: string;
@@ -44,71 +37,68 @@ export type CredentialRow = {
   notes: string | null;
 };
 
-export function listCredentials(): CredentialRow[] {
-  return db
-    .select({
-      id: siteCredentials.id,
-      site: siteCredentials.site,
-      host: siteCredentials.host,
-      username: siteCredentials.username,
-      createdAt: siteCredentials.createdAt,
-      lastUsedAt: siteCredentials.lastUsedAt,
-      notes: siteCredentials.notes,
-    })
-    .from(siteCredentials)
-    .orderBy(siteCredentials.site)
-    .all();
+export async function listCredentials(): Promise<CredentialRow[]> {
+  const rows = await convex().query(api.vault.list, {});
+  return rows
+    .map((r) => ({
+      id: r.id,
+      site: r.site,
+      host: r.host,
+      username: r.username,
+      createdAt: r.createdAt,
+      lastUsedAt: r.lastUsedAt ?? null,
+      notes: r.notes ?? null,
+    }))
+    .sort((a, b) => a.site.localeCompare(b.site));
 }
 
 // Store a credential. Password defaults to the master password (uniform, as
 // the user chose) but can be overridden per site.
-export function addCredential(args: {
+export async function addCredential(args: {
   site: string;
   host: string;
   username: string;
   password?: string;
   notes?: string;
-}): { ok: true; id: number } | { ok: false; error: string } {
+}): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const password = args.password ?? getMasterPassword();
   if (!password) {
     return { ok: false, error: "Set a master password first." };
   }
   const sealed = encrypt(password);
   try {
-    const res = db
-      .insert(siteCredentials)
-      .values({
+    const res = await convex().mutation(api.vault.add, {
+      doc: {
         site: args.site,
         host: args.host,
         username: args.username,
         passwordEnc: sealed.cipherText,
         iv: sealed.iv,
         authTag: sealed.authTag,
-        notes: args.notes ?? null,
+        notes: args.notes ?? undefined,
         createdAt: new Date().toISOString(),
-      })
-      .onConflictDoNothing()
-      .run();
-    if (res.changes === 0) {
+      },
+    });
+    if (!res.inserted) {
       return { ok: false, error: "A credential for that host + email already exists." };
     }
-    return { ok: true, id: Number(res.lastInsertRowid) };
+    return { ok: true, id: res.id };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Failed to store" };
   }
 }
 
-export function revealCredential(id: number): string | null {
-  const row = db.select().from(siteCredentials).where(eq(siteCredentials.id, id)).get();
+export async function revealCredential(id: string): Promise<string | null> {
+  const row = await convex().query(api.vault.getById, { id: id as never });
   if (!row) return null;
   return decrypt({ iv: row.iv, authTag: row.authTag, cipherText: row.passwordEnc });
 }
 
 // For apply-assist: find an existing account for a host (any username).
-export function credentialForHost(
+export async function credentialForHost(
   host: string,
-): { username: string; password: string } | null {
-  const row = db.select().from(siteCredentials).where(eq(siteCredentials.host, host)).get();
+): Promise<{ username: string; password: string } | null> {
+  const row = await convex().query(api.vault.byHost, { host });
   if (!row) return null;
   return {
     username: row.username,
@@ -116,13 +106,13 @@ export function credentialForHost(
   };
 }
 
-export function markCredentialUsed(id: number): void {
-  db.update(siteCredentials)
-    .set({ lastUsedAt: new Date().toISOString() })
-    .where(eq(siteCredentials.id, id))
-    .run();
+export async function markCredentialUsed(id: string): Promise<void> {
+  await convex().mutation(api.vault.touch, {
+    id: id as never,
+    lastUsedAt: new Date().toISOString(),
+  });
 }
 
-export function deleteCredential(id: number): void {
-  db.delete(siteCredentials).where(eq(siteCredentials.id, id)).run();
+export async function deleteCredential(id: string): Promise<void> {
+  await convex().mutation(api.vault.remove, { id: id as never });
 }

@@ -54,11 +54,15 @@ if [ ! -d node_modules ]; then
   npm install --no-fund --no-audit >> "$LOG" 2>&1
 fi
 
+# Push the Convex schema + functions and generate the client (idempotent).
+# `convex dev --once` also creates a local anonymous deployment on first run
+# and writes CONVEX_DEPLOYMENT / NEXT_PUBLIC_CONVEX_URL into .env.local.
 FRESH_DB=0
-[ -f data/dayspring.db ] || FRESH_DB=1
-npm run db:push >> "$LOG" 2>&1
+grep -q '^CONVEX_DEPLOYMENT=' .env.local 2>/dev/null || FRESH_DB=1
+npx convex dev --once >> "$LOG" 2>&1
 if [ "$FRESH_DB" = "1" ]; then
   npm run seed >> "$LOG" 2>&1 || true
+  npm run seed:catalog >> "$LOG" 2>&1 || true
 fi
 
 if [ ! -f .next/BUILD_ID ]; then

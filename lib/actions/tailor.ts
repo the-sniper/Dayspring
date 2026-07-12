@@ -1,58 +1,51 @@
 "use server";
 
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { hasApiKey } from "@/lib/claude/client";
 import { tailorJob } from "@/lib/claude/tailor";
-import { db } from "@/lib/db";
-import { companies, jobs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 import { getProfile, MIN_JD_CHARS } from "@/lib/jobs/score";
 import { latestCompanyBrief } from "@/lib/research/core";
 
 export async function tailorJobAction(
-  jobId: number,
+  jobId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!hasApiKey()) {
     return { ok: false, error: "Needs ANTHROPIC_API_KEY in .env.local (see Settings)." };
   }
-  const profile = getProfile();
+  const profile = await getProfile();
   if (!profile) {
     return { ok: false, error: "No profile yet — paste your resume in Settings first." };
   }
-  const row = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, jobId))
-    .get();
-  if (!row) return { ok: false, error: "Job not found" };
-  if (row.job.description.length < MIN_JD_CHARS) {
+  const job = await convex().query(api.jobs.getWithCompany, { id: jobId as never });
+  if (!job) return { ok: false, error: "Job not found" };
+  if (job.description.length < MIN_JD_CHARS) {
     return { ok: false, error: "Insufficient JD — add a description before tailoring." };
   }
 
   // Thread the latest research brief for this company (if any) into tailoring.
-  const brief = latestCompanyBrief(row.job.companyId)?.brief ?? null;
+  const brief = (await latestCompanyBrief(job.companyId))?.brief ?? null;
 
   try {
     const res = await tailorJob(
       profile,
       {
-        title: row.job.title,
-        companyName: row.companyName,
-        location: row.job.location,
-        description: row.job.description,
+        title: job.title,
+        companyName: job.companyName,
+        location: job.location ?? null,
+        description: job.description,
       },
       brief,
     );
-    db.update(jobs)
-      .set({
+    await convex().mutation(api.jobs.patch, {
+      id: jobId as never,
+      patch: {
         tailoredBullets: res.bullets,
         coverLetter: res.coverLetter,
         tailoredAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
-      })
-      .where(eq(jobs.id, jobId))
-      .run();
+      },
+    });
     revalidatePath(`/jobs/${jobId}`);
     return { ok: true };
   } catch (err) {

@@ -1,9 +1,7 @@
 "use server";
 
-import { eq, inArray } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { db } from "@/lib/db";
-import { contacts } from "@/lib/db/schema";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
 import {
   getUsage,
   hasHappenstanceKey,
@@ -42,14 +40,7 @@ export async function searchNetworkAction(
     ]);
     const ids = people.map((p) => p.happenstanceId);
     const saved = new Set(
-      ids.length
-        ? db
-            .select({ id: contacts.happenstanceId })
-            .from(contacts)
-            .where(inArray(contacts.happenstanceId, ids))
-            .all()
-            .map((c) => c.id)
-        : [],
+      ids.length ? await convex().query(api.contacts.byHappenstanceIds, { ids }) : [],
     );
     return {
       ok: true,
@@ -63,14 +54,14 @@ export async function searchNetworkAction(
 }
 
 export async function saveNetworkContactAction(
-  companyId: number | null,
+  companyId: string | null,
   person: HappenstancePerson,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!person.happenstanceId || !person.name) {
     return { ok: false, error: "Invalid contact data" };
   }
-  db.insert(contacts)
-    .values({
+  await convex().mutation(api.contacts.save, {
+    doc: cleanDoc({
       companyId: companyId ?? null,
       name: person.name,
       title: person.title,
@@ -80,10 +71,10 @@ export async function saveNetworkContactAction(
       happenstanceId: person.happenstanceId,
       summary: person.summary,
       mutuals: person.mutuals.length ? person.mutuals : null,
+      outreachStatus: "none",
       createdAt: new Date().toISOString(),
-    })
-    .onConflictDoNothing()
-    .run();
+    }),
+  });
   revalidatePath("/", "layout");
   return { ok: true };
 }
@@ -93,14 +84,10 @@ export type ResearchContactResult =
   | { ok: false; error: string };
 
 export async function researchNetworkContactAction(
-  contactId: number,
+  contactId: string,
 ): Promise<ResearchContactResult> {
   if (!hasHappenstanceKey()) return { ok: false, error: NO_KEY };
-  const contact = db
-    .select()
-    .from(contacts)
-    .where(eq(contacts.id, contactId))
-    .get();
+  const contact = await convex().query(api.contacts.getById, { id: contactId as never });
   if (!contact) return { ok: false, error: "Contact not found" };
 
   const description = [
@@ -114,10 +101,10 @@ export async function researchNetworkContactAction(
   try {
     const profile = await researchPerson({ description });
     if (profile.summary) {
-      db.update(contacts)
-        .set({ summary: profile.summary })
-        .where(eq(contacts.id, contactId))
-        .run();
+      await convex().mutation(api.contacts.patch, {
+        id: contactId as never,
+        patch: { summary: profile.summary },
+      });
       revalidatePath("/", "layout");
     }
     return { ok: true, summary: profile.summary, url: profile.url };

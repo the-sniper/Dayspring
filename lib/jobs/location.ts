@@ -12,6 +12,19 @@ const US_STATE_CODES =
   "AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC";
 const STATE_CODE_RE = new RegExp(`,\\s*(${US_STATE_CODES})\\b`);
 
+// Full US state names (plus DC). Shared by US detection and the city filter,
+// which drops bare state names from the location dropdown.
+const STATE_NAMES = [
+  "alabama","alaska","arizona","arkansas","california","colorado","connecticut",
+  "delaware","florida","georgia","hawaii","idaho","illinois","indiana","iowa","kansas",
+  "kentucky","louisiana","maine","maryland","massachusetts","michigan","minnesota",
+  "mississippi","missouri","montana","nebraska","nevada","new hampshire",
+  "new jersey","new mexico","new york","north carolina","north dakota","ohio",
+  "oklahoma","oregon","pennsylvania","rhode island","south carolina","south dakota",
+  "tennessee","texas","utah","vermont","virginia","west virginia",
+  "wisconsin","wyoming","district of columbia",
+];
+
 // Unambiguously-US tokens: full country names, unambiguous state names, and
 // major US metros. Deliberately omits names that also exist abroad (Cambridge,
 // Birmingham, Manchester, Georgia, Washington-the-country-no, San Jose CR…).
@@ -109,10 +122,63 @@ export function isUsLocation(raw: string | null | undefined): boolean | null {
   return null; // e.g. "Remote", "Global", or an unrecognized city
 }
 
+// Street-address suffixes: a token ending in one of these is a street line
+// ("1007 South Congress Ave", "110 Albany Turnpike"), not a city.
+const STREET_SUFFIX_RE =
+  /\b(st|street|ave|avenue|blvd|boulevard|rd|road|way|dr|drive|ln|lane|ct|court|pl|place|pkwy|parkway|hwy|highway|sq|square|ste|suite|fl|floor|fwy|freeway|loop|trail|trl|terrace|ter|circle|cir|turnpike|tpke|plaza|plz|expressway|expy|route|rte|crossing|xing|walk|row|alley|path|pike|mall)\.?$/i;
+
+// Case-insensitive so Title-case codes ("Ca", "Tx") are caught too.
+const STATE_CODE_ONLY_RE = new RegExp(`^(${US_STATE_CODES})$`, "i");
+const STATE_NAME_SET = new Set(STATE_NAMES);
+// Building/suite/unit fragments that ride along in an address ("Suite 111").
+const UNIT_PREFIX_RE = /^(suite|ste|space|unit|apt|apartment|bldg|building|floor|room|lobby|mailstop|ms)\b/i;
+
+// Country / region / catch-all tokens that are never a city, plus common
+// placeholder junk ("N/A", "HQ", "Add ALL locations here") that shows up in
+// real ATS postings.
+const NON_CITY_TOKENS = new Set([
+  "us","u.s.","u.s.a","usa","united states","us based","us-based","america",
+  "north america","uk","u.k.","gb","eu","europe","emea","apac","latam","anz",
+  "mena","benelux","dach","nordics","asia","asia pacific","africa","oceania",
+  "middle east","south america","central america","latin america","global",
+  "worldwide","anywhere","various","various locations","multiple locations",
+  "remote","hybrid","on-site","onsite",
+  // placeholder / junk values
+  "n/a","na","n.a.","tbd","tba","hq","headquarters","unknown","none","null",
+  "confidential","add all locations here","other","various us locations","chi",
+  "location","namer","apjc","greater china","bay area","tri-state area",
+  // Canadian provinces / territories (regions, not cities)
+  "alberta","ontario","quebec","québec","british columbia","manitoba",
+  "saskatchewan","nova scotia","new brunswick","newfoundland and labrador",
+  "prince edward island","yukon","nunavut","northwest territories",
+]);
+
+// A comma-split token is a "city" if it isn't a street line, ZIP, bare state
+// code/name, county, a country/region label, an acronym, or placeholder junk.
+// Deliberately permissive otherwise so unrecognized (incl. international) city
+// names still surface.
+function isCityLike(token: string): boolean {
+  if (!token || token.length < 2 || token.length > 40) return false;
+  // Real city names are Title/mixed case; an absence of any lowercase letter
+  // means an acronym or placeholder ("SF", "NYC", "NAMER", "LOCATION", "D.C").
+  if (!/[a-z]/.test(token)) return false;
+  const lower = token.toLowerCase();
+  if (NON_CITY_TOKENS.has(lower)) return false;
+  // Any digit ⇒ street number, ZIP, suite, or office code — not a city name.
+  if (/\d/.test(token)) return false;
+  if (STATE_CODE_ONLY_RE.test(token)) return false; // "CA", "Ca", "NY"
+  if (STATE_NAME_SET.has(lower)) return false;
+  if (UNIT_PREFIX_RE.test(token) || token.startsWith("#")) return false;
+  if (/\bcounty\b/i.test(token)) return false;
+  if (STREET_SUFFIX_RE.test(token)) return false;
+  return true;
+}
+
 // Turns the messy raw ATS location strings ("Hybrid - San Francisco, New York
-// City, Austin") into a clean, deduped, sorted list of individual place tokens
-// ("Austin", "New York City", "San Francisco") for the location dropdown. The
-// feed filter still does a substring match, so any token matches its rows.
+// City, Austin" or "1007 South Congress Ave, Austin, TX 78704") into a clean,
+// deduped, sorted list of city names for the location dropdown — street lines,
+// ZIPs, states, and counties are dropped. The feed filter still does a
+// substring match, so any city token matches its rows.
 export function toLocationOptions(raw: (string | null | undefined)[]): string[] {
   const set = new Set<string>();
   for (const value of raw) {
@@ -122,11 +188,11 @@ export function toLocationOptions(raw: (string | null | undefined)[]): string[] 
       /^\s*(remote|hybrid|on-?site|in[- ]office)\s*[-–—:]\s*/i,
       "",
     );
-    for (const part of body.split(/[,/;]/)) {
+    // Split on separators + " - " office labels ("San Francisco - SF9"), but
+    // not intra-word hyphens ("Winston-Salem"), which have no surrounding space.
+    for (const part of body.split(/[,/;]|\s[-–—]\s/)) {
       const token = part.trim().replace(/\s+/g, " ");
-      if (token && token.length <= 40 && !/^(remote|hybrid|on-?site)$/i.test(token)) {
-        set.add(token);
-      }
+      if (isCityLike(token)) set.add(token);
     }
   }
   return [...set].sort((a, b) => a.localeCompare(b));

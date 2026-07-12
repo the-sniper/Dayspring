@@ -1,5 +1,34 @@
 import { z } from "zod";
 
+// Application autofill defaults (formerly in lib/db/schema). All nullable —
+// null = "user hasn't decided", never guessed. Stored as JSON on the profile.
+export type ApplicationDefaults = {
+  // Work authorization
+  visaType: string | null;
+  optStatus: string | null;
+  authorizedToWork: boolean | null;
+  needsSponsorship: boolean | null;
+  // Work preferences
+  expectedSalary: string | null;
+  expectedHourlyRate: string | null;
+  inPersonOk: boolean | null;
+  canRelocate: boolean | null;
+  startImmediately: boolean | null;
+  hasReliableTransportation: boolean | null;
+  needsAccommodations: boolean | null;
+  // Background
+  workedForCompanyBefore: boolean | null;
+  hasGovClearance: boolean | null;
+  hasGovTies: boolean | null;
+  // Diversity, Equity & Inclusion (voluntary self-ID)
+  gender: string | null;
+  ethnicity: string | null;
+  veteran: boolean | null;
+  disability: boolean | null;
+  // Free-text notes for anything the structured fields don't cover.
+  additionalInfo: string | null;
+};
+
 export const ROLE_TYPES = ["FDE", "FE", "BE", "FS", "DATA"] as const;
 export type RoleType = (typeof ROLE_TYPES)[number];
 

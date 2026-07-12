@@ -25,7 +25,7 @@ const ResumeEditor = dynamic(() => import("@/components/resume-editor"), {
 });
 
 type Generated = {
-  id: number;
+  id: string;
   tailoringNote: string | null;
   createdAt: string;
 } | null;
@@ -39,7 +39,7 @@ export default function ResumeStudio({
   mastersCount,
   hasApiKey,
 }: {
-  jobId: number;
+  jobId: string;
   initial: Generated;
   mastersCount: number;
   hasApiKey: boolean;
@@ -48,7 +48,7 @@ export default function ResumeStudio({
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const [studio, setStudio] = useState<StudioPayload | null>(null);
-  const [studioId, setStudioId] = useState<number | null>(null);
+  const [studioId, setStudioId] = useState<string | null>(null);
   const [opening, startOpen] = useTransition();
 
   const ready = mastersCount > 0 && hasApiKey;

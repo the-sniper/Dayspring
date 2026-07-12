@@ -1,30 +1,42 @@
 // Next-free research-brief orchestration — actions, MCP, and the tailor/
 // outreach injectors all read through here.
-import { desc, eq } from "drizzle-orm";
 import { generateBrief } from "@/lib/claude/research";
-import { db } from "@/lib/db";
-import { companies, jobs, researchBriefs } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 
-export type BriefRow = typeof researchBriefs.$inferSelect;
+export type BriefRow = {
+  id: string;
+  jobId: string | null;
+  companyId: string | null;
+  kind: string;
+  brief: string;
+  sources: { title: string; url: string }[] | null;
+  model: string | null;
+  createdAt: string;
+};
 
 // Latest brief for a company (from either a company brief or a job brief that
 // carried this companyId). Used to thread research into tailoring + outreach.
-export function latestCompanyBrief(companyId: number): BriefRow | undefined {
-  return db
-    .select()
-    .from(researchBriefs)
-    .where(eq(researchBriefs.companyId, companyId))
-    .orderBy(desc(researchBriefs.createdAt))
-    .get();
+export async function latestCompanyBrief(companyId: string): Promise<BriefRow | undefined> {
+  const row = await convex().query(api.research.latestForCompany, { companyId: companyId as never });
+  return row ? normalize(row) : undefined;
 }
 
-export function latestJobBrief(jobId: number): BriefRow | undefined {
-  return db
-    .select()
-    .from(researchBriefs)
-    .where(eq(researchBriefs.jobId, jobId))
-    .orderBy(desc(researchBriefs.createdAt))
-    .get();
+export async function latestJobBrief(jobId: string): Promise<BriefRow | undefined> {
+  const row = await convex().query(api.research.latestForJob, { jobId: jobId as never });
+  return row ? normalize(row) : undefined;
+}
+
+function normalize(r: Record<string, unknown> & { id: string }): BriefRow {
+  return {
+    id: r.id,
+    jobId: (r.jobId as string) ?? null,
+    companyId: (r.companyId as string) ?? null,
+    kind: r.kind as string,
+    brief: r.brief as string,
+    sources: (r.sources as { title: string; url: string }[]) ?? null,
+    model: (r.model as string) ?? null,
+    createdAt: r.createdAt as string,
+  };
 }
 
 type BriefResult =
@@ -32,14 +44,10 @@ type BriefResult =
   | { ok: false; error: string };
 
 export async function briefForCompany(
-  companyId: number,
+  companyId: string,
   deep = false,
 ): Promise<BriefResult> {
-  const company = db
-    .select()
-    .from(companies)
-    .where(eq(companies.id, companyId))
-    .get();
+  const company = await convex().query(api.companies.getById, { id: companyId as never });
   if (!company) return { ok: false, error: "Company not found" };
 
   try {
@@ -49,16 +57,16 @@ export async function briefForCompany(
         "The candidate is deciding whether to apply and how to tailor their application. They want current, specific facts to reference — funding, what the company builds, recent news, and interview intel.",
       deep,
     });
-    db.insert(researchBriefs)
-      .values({
+    await convex().mutation(api.research.insert, {
+      doc: {
         companyId,
         kind: "company",
         brief: res.brief,
         sources: res.sources,
         model: res.model,
         createdAt: new Date().toISOString(),
-      })
-      .run();
+      },
+    });
     return { ok: true, brief: res.brief, sources: res.sources };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Research failed" };
@@ -66,34 +74,29 @@ export async function briefForCompany(
 }
 
 export async function briefForJob(
-  jobId: number,
+  jobId: string,
   deep = false,
 ): Promise<BriefResult> {
-  const row = db
-    .select({ job: jobs, companyName: companies.name, domain: companies.domain })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, jobId))
-    .get();
-  if (!row) return { ok: false, error: "Job not found" };
+  const job = await convex().query(api.jobs.getWithCompany, { id: jobId as never });
+  if (!job) return { ok: false, error: "Job not found" };
 
   try {
     const res = await generateBrief({
-      subject: `Role: ${row.job.title} at ${row.companyName}${row.domain ? ` (${row.domain})` : ""}`,
-      context: `The candidate is evaluating this specific role and will tailor their application to it. Job description excerpt:\n${row.job.description.slice(0, 2000)}`,
+      subject: `Role: ${job.title} at ${job.companyName}${job.companyDomain ? ` (${job.companyDomain})` : ""}`,
+      context: `The candidate is evaluating this specific role and will tailor their application to it. Job description excerpt:\n${job.description.slice(0, 2000)}`,
       deep,
     });
-    db.insert(researchBriefs)
-      .values({
+    await convex().mutation(api.research.insert, {
+      doc: {
         jobId,
-        companyId: row.job.companyId, // carry company so outreach can reuse
+        companyId: job.companyId, // carry company so outreach can reuse
         kind: "job",
         brief: res.brief,
         sources: res.sources,
         model: res.model,
         createdAt: new Date().toISOString(),
-      })
-      .run();
+      },
+    });
     return { ok: true, brief: res.brief, sources: res.sources };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : "Research failed" };

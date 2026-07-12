@@ -1,9 +1,7 @@
 // Next-free resume-factory core — used by actions, apply-assist, and scripts.
 import fs from "node:fs";
 import path from "node:path";
-import { desc, eq, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { companies, generatedResumes, jobs, masterResumes, settings } from "@/lib/db/schema";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
 import {
   extractResumeVerified,
   generateResume,
@@ -16,12 +14,13 @@ import { latestJobBrief } from "@/lib/research/core";
 import { RESUMES_DIR } from "@/lib/resumes/render";
 import { writeResumePdf } from "@/lib/resumes/pdf";
 import { DEFAULT_STYLE } from "@/lib/resumes/style";
+import { getSetting, setSetting } from "@/lib/settings/store";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
 
 const MASTERS_DIR = path.join(RESUMES_DIR, "masters");
 
 export type MasterResumeRow = {
-  id: number;
+  id: string;
   label: string;
   content: string;
   sourceFile: string | null;
@@ -30,12 +29,25 @@ export type MasterResumeRow = {
   updatedAt: string;
 };
 
-export function listMasters(): MasterResumeRow[] {
-  return db.select().from(masterResumes).orderBy(desc(masterResumes.isPrimary), masterResumes.label).all();
+export async function listMasters(): Promise<MasterResumeRow[]> {
+  const rows = await convex().query(api.resumes.listMasters, {});
+  return rows
+    .map((m) => ({
+      id: m.id,
+      label: m.label,
+      content: m.content,
+      sourceFile: m.sourceFile ?? null,
+      isPrimary: !!m.isPrimary,
+      createdAt: m.createdAt,
+      updatedAt: m.updatedAt,
+    }))
+    .sort((a, b) =>
+      a.isPrimary === b.isPrimary ? a.label.localeCompare(b.label) : a.isPrimary ? -1 : 1,
+    );
 }
 
-export function mastersCount(): number {
-  return db.select({ n: sql<number>`count(*)` }).from(masterResumes).get()?.n ?? 0;
+export async function mastersCount(): Promise<number> {
+  return await convex().query(api.resumes.mastersCount, {});
 }
 
 function slugify(s: string): string {
@@ -43,7 +55,7 @@ function slugify(s: string): string {
 }
 
 export type IngestResult = {
-  id: number;
+  id: string;
   label: string;
   chars: number;
   seededProfile: boolean;
@@ -84,21 +96,20 @@ export async function ingestMasterFile(args: {
   }
 
   const now = new Date().toISOString();
-  const first = mastersCount() === 0;
-  const res = db
-    .insert(masterResumes)
-    .values({
+  const first = (await mastersCount()) === 0;
+  const id = await convex().mutation(api.resumes.insertMaster, {
+    doc: cleanDoc({
       label,
       content,
       sourceFile,
       isPrimary: first, // first upload becomes the primary automatically
       createdAt: now,
       updatedAt: now,
-    })
-    .run();
+    }),
+  });
 
   return {
-    id: Number(res.lastInsertRowid),
+    id,
     label,
     chars: content.length,
     seededProfile: maybeSeedProfile(content),
@@ -110,13 +121,13 @@ export async function ingestMasterFile(args: {
 // predates a parser upgrade, or the human wants another pass. Updates ONLY
 // this master's content; the scoring profile is never touched (it may carry
 // user-written preferences).
-export async function reparseMaster(id: number): Promise<{
+export async function reparseMaster(id: string): Promise<{
   label: string;
   chars: number;
   content: string;
   parse: NonNullable<IngestResult["parse"]>;
 }> {
-  const row = db.select().from(masterResumes).where(eq(masterResumes.id, id)).get();
+  const row = await convex().query(api.resumes.getMaster, { id: id as never });
   if (!row) throw new Error("Master resume not found.");
   if (!row.sourceFile?.endsWith(".pdf") || !fs.existsSync(row.sourceFile)) {
     throw new Error("No stored PDF for this master — re-parse applies to PDF uploads.");
@@ -124,10 +135,10 @@ export async function reparseMaster(id: number): Promise<{
   const parsed = await extractResumeVerified(
     fs.readFileSync(row.sourceFile).toString("base64"),
   );
-  db.update(masterResumes)
-    .set({ content: parsed.markdown, updatedAt: new Date().toISOString() })
-    .where(eq(masterResumes.id, id))
-    .run();
+  await convex().mutation(api.resumes.patchMaster, {
+    id: id as never,
+    patch: { content: parsed.markdown, updatedAt: new Date().toISOString() },
+  });
   return {
     label: row.label,
     chars: parsed.markdown.length,
@@ -137,23 +148,22 @@ export async function reparseMaster(id: number): Promise<{
 }
 
 // Human fix-up of a parse — the final quality backstop. Content only.
-export function updateMasterContent(id: number, content: string): void {
+export async function updateMasterContent(id: string, content: string): Promise<void> {
   const clean = content.trim();
   if (!clean) throw new Error("Content can't be empty.");
-  const res = db
-    .update(masterResumes)
-    .set({ content: clean, updatedAt: new Date().toISOString() })
-    .where(eq(masterResumes.id, id))
-    .run();
-  if (res.changes === 0) throw new Error("Master resume not found.");
+  const row = await convex().query(api.resumes.getMaster, { id: id as never });
+  if (!row) throw new Error("Master resume not found.");
+  await convex().mutation(api.resumes.patchMaster, {
+    id: id as never,
+    patch: { content: clean, updatedAt: new Date().toISOString() },
+  });
 }
 
 // If the scoring profile is still the seed stub, replace it with the master
 // content + a preferences scaffold — one upload unlocks scoring/tailoring.
 function maybeSeedProfile(content: string): boolean {
-  const row = db.select().from(settings).where(eq(settings.key, "profile")).get();
-  if (row && !row.value.startsWith("REPLACE ME")) return false;
-  const now = new Date().toISOString();
+  const existing = getSetting("profile");
+  if (existing && !existing.startsWith("REPLACE ME")) return false;
   const value = `${content}
 
 ---
@@ -162,60 +172,52 @@ PREFERENCES (edit these in Settings — scoring reads them):
 - Locations:
 - Visa / work authorization:
 - Salary floor:`;
-  db.insert(settings)
-    .values({ key: "profile", value, updatedAt: now })
-    .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } })
-    .run();
+  setSetting("profile", value);
   return true;
 }
 
-export function deleteMaster(id: number): void {
-  const row = db.select().from(masterResumes).where(eq(masterResumes.id, id)).get();
+export async function deleteMaster(id: string): Promise<void> {
+  const row = await convex().query(api.resumes.getMaster, { id: id as never });
   if (!row) return;
   // Only remove files we put in our own masters dir.
   if (row.sourceFile && row.sourceFile.startsWith(MASTERS_DIR) && fs.existsSync(row.sourceFile)) {
     fs.rmSync(row.sourceFile);
   }
-  db.delete(masterResumes).where(eq(masterResumes.id, id)).run();
+  await convex().mutation(api.resumes.removeMaster, { id: id as never });
 }
 
-export function setPrimaryMaster(id: number): void {
-  db.update(masterResumes).set({ isPrimary: false }).run();
-  db.update(masterResumes).set({ isPrimary: true }).where(eq(masterResumes.id, id)).run();
+export async function setPrimaryMaster(id: string): Promise<void> {
+  await convex().mutation(api.resumes.setPrimaryMaster, { id: id as never });
 }
 
 export type GeneratedResumeRow = {
-  id: number;
-  jobId: number;
+  id: string;
+  jobId: string;
   pdfPath: string | null;
   tailoringNote: string | null;
   model: string | null;
   createdAt: string;
 };
 
-export function latestGeneratedForJob(jobId: number): GeneratedResumeRow | null {
-  const row = db
-    .select({
-      id: generatedResumes.id,
-      jobId: generatedResumes.jobId,
-      pdfPath: generatedResumes.pdfPath,
-      tailoringNote: generatedResumes.tailoringNote,
-      model: generatedResumes.model,
-      createdAt: generatedResumes.createdAt,
-    })
-    .from(generatedResumes)
-    .where(eq(generatedResumes.jobId, jobId))
-    .orderBy(desc(generatedResumes.createdAt), desc(generatedResumes.id))
-    .get();
-  return row ?? null;
+export async function latestGeneratedForJob(jobId: string): Promise<GeneratedResumeRow | null> {
+  const row = await convex().query(api.resumes.latestForJob, { jobId: jobId as never });
+  if (!row) return null;
+  return {
+    id: row.id,
+    jobId: String(row.jobId),
+    pdfPath: row.pdfPath ?? null,
+    tailoringNote: row.tailoringNote ?? null,
+    model: row.model ?? null,
+    createdAt: row.createdAt,
+  };
 }
 
 // Generate + audit + render a tailored resume for a job. Regenerate = new row
 // (history kept). The latest research brief rides along as employer context.
 // The fabrication audit compares the output against the full master corpus and
 // is stored on the row so the studio can show highlights on later opens.
-export async function generateForJob(jobId: number): Promise<{
-  id: number;
+export async function generateForJob(jobId: string): Promise<{
+  id: string;
   pdfPath: string;
   tailoringNote: string;
   doc: ResumeDocType;
@@ -223,30 +225,26 @@ export async function generateForJob(jobId: number): Promise<{
   sourceText: string;
   jd: string;
 }> {
-  const masters = listMasters();
+  const masters = await listMasters();
   if (masters.length === 0) {
     throw new Error("Upload a master resume in Settings first.");
   }
-  const row = db
-    .select({ job: jobs, companyName: companies.name })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .where(eq(jobs.id, jobId))
-    .get();
-  if (!row) throw new Error("Job not found");
-  if (!row.job.description?.trim()) {
+  const job = await convex().query(api.jobs.getWithCompany, { id: jobId as never });
+  if (!job) throw new Error("Job not found");
+  if (!job.description?.trim()) {
     throw new Error("This job has no description to tailor against — paste one in Edit Details.");
   }
 
+  const brief = (await latestJobBrief(jobId))?.brief;
   const { doc } = await generateResume(
     masters.map((m) => ({ label: m.label, content: m.content })),
     {
-      title: row.job.title,
-      companyName: row.companyName,
-      location: row.job.location,
-      description: row.job.description,
+      title: job.title,
+      companyName: job.companyName,
+      location: job.location ?? null,
+      description: job.description,
     },
-    latestJobBrief(jobId)?.brief,
+    brief,
   );
 
   const sourceText = masters
@@ -263,13 +261,12 @@ export async function generateForJob(jobId: number): Promise<{
 
   const pdfPath = path.join(
     RESUMES_DIR,
-    `job-${jobId}-${slugify(row.companyName)}-${slugify(row.job.title)}-${Date.now()}.pdf`,
+    `job-${jobId}-${slugify(job.companyName)}-${slugify(job.title)}-${Date.now()}.pdf`,
   );
   await writeResumePdf(doc, DEFAULT_STYLE, pdfPath);
 
-  const res = db
-    .insert(generatedResumes)
-    .values({
+  const id = await convex().mutation(api.resumes.insertGenerated, {
+    doc: cleanDoc({
       jobId,
       content: JSON.stringify(doc),
       pdfPath,
@@ -278,36 +275,35 @@ export async function generateForJob(jobId: number): Promise<{
       tailoringNote: doc.tailoring_note,
       model: MODEL_PREMIUM,
       createdAt: new Date().toISOString(),
-    })
-    .run();
+    }),
+  });
 
   return {
-    id: Number(res.lastInsertRowid),
+    id,
     pdfPath,
     tailoringNote: doc.tailoring_note,
     doc,
     audit,
     sourceText,
-    jd: row.job.description,
+    jd: job.description,
   };
 }
 
 // Resume resolution for apply-assist: tailored PDF for this job → primary
 // master's original PDF → the static resumePath setting.
-export function resumePdfForJob(jobId: number): {
+export async function resumePdfForJob(jobId: string): Promise<{
   path: string;
   source: "tailored" | "master" | "settings";
-} | null {
-  const gen = latestGeneratedForJob(jobId);
+} | null> {
+  const gen = await latestGeneratedForJob(jobId);
   if (gen?.pdfPath && fs.existsSync(gen.pdfPath)) {
     return { path: gen.pdfPath, source: "tailored" };
   }
-  const primary = listMasters().find((m) => m.isPrimary && m.sourceFile?.endsWith(".pdf"));
+  const primary = (await listMasters()).find((m) => m.isPrimary && m.sourceFile?.endsWith(".pdf"));
   if (primary?.sourceFile && fs.existsSync(primary.sourceFile)) {
     return { path: primary.sourceFile, source: "master" };
   }
-  const setting =
-    db.select().from(settings).where(eq(settings.key, "resumePath")).get()?.value ?? null;
+  const setting = getSetting("resumePath");
   if (setting && fs.existsSync(setting)) return { path: setting, source: "settings" };
   return null;
 }

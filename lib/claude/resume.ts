@@ -1,5 +1,6 @@
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
+import { structuredComplete } from "@/lib/ai/complete";
 import { getClient, MODEL_PREMIUM } from "@/lib/claude/client";
 
 // ── 1. Master-resume ingestion (verified) ────────────────────────────────────
@@ -242,30 +243,21 @@ export async function editResume(input: {
   const jdBlock = input.jd
     ? `\n\nTARGET JOB DESCRIPTION (context for keyword choices):\n${input.jd.slice(0, 8000)}`
     : "";
-  const response = await getClient().messages.parse({
-    model: MODEL_PREMIUM,
-    max_tokens: 16_000,
-    thinking: { type: "adaptive" },
-    system: [
-      { type: "text", text: EDIT_RULES },
-      {
-        type: "text",
-        text: `SOURCE RESUME:\n\n${input.sourceText.slice(0, 60_000)}`,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [
-      {
-        role: "user",
-        content: `CURRENT RESUME DOCUMENT (JSON):\n${JSON.stringify(input.doc)}${jdBlock}\n\nINSTRUCTION:\n${input.instruction.slice(0, 2000)}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(ResumeDoc) },
+  // Interactive, incremental edit — applies ONE instruction and preserves the
+  // rest. Routed to the fast premium tier (OpenAI GPT-5.6 when available, Opus
+  // fallback) so the studio responds in seconds, not the 1–2 min an Opus +
+  // extended-thinking pass took. Full resume BUILDS (generate/align) stay on
+  // Opus below, where the deeper reasoning earns its latency.
+  const { data } = await structuredComplete({
+    tier: "premium",
+    schema: ResumeDoc,
+    schemaName: "resume_edit",
+    maxTokens: 16_000,
+    system: EDIT_RULES,
+    cache: `SOURCE RESUME:\n\n${input.sourceText.slice(0, 60_000)}`,
+    user: `CURRENT RESUME DOCUMENT (JSON):\n${JSON.stringify(input.doc)}${jdBlock}\n\nINSTRUCTION:\n${input.instruction.slice(0, 2000)}`,
   });
-  if (!response.parsed_output) {
-    throw new Error(`Resume edit failed (stop_reason: ${response.stop_reason})`);
-  }
-  return { doc: response.parsed_output };
+  return { doc: data };
 }
 
 export async function generateResume(

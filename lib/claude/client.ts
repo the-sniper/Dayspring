@@ -1,14 +1,19 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getKey } from "@/lib/keys";
 
-// Model picks (checked against the claude-api reference 2026-07-05):
-// scoring gets Sonnet — fit judgment drives which jobs get pursued; parsing
-// and title classification are mechanical extraction a human reviews, so the
-// cheap tier is plenty. Opus 4.8 is reserved for the future tailoring pass.
+// Model picks (checked against the claude-api reference 2026-07-05).
+//
+// Provider split: when an OpenAI key is present, the analytical/mechanical tiers
+// (scoring, ranking, classification, extraction) route to GPT-5.6 via lib/ai to
+// cut cost — see lib/ai/complete.ts. These Claude tiers are the FALLBACK for
+// those tasks (used when no OpenAI key), and remain the primary path for the
+// fabrication audit (MODEL_SCORE = Sonnet), which stays on Claude for safety.
 export const MODEL_SCORE = "claude-sonnet-5";
 export const MODEL_CHEAP = "claude-haiku-4-5";
-// Tailored bullets, cover letters, outreach drafts — the words that reach
-// humans. Low volume, always user-triggered, worth the premium tier.
+// The perfection tier — tailored resume documents, PDF fidelity extraction, and
+// consolidation: the source of truth, always Claude Opus. Also the FALLBACK
+// (with extended thinking) for the "premium" prose tier in lib/ai (cover
+// letters, outreach, nudges) when no OpenAI key is set.
 export const MODEL_PREMIUM = "claude-opus-4-8";
 
 export function hasApiKey(): boolean {

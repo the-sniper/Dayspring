@@ -1,8 +1,7 @@
 // In-app Gmail connect, step 2: exchange the code, store the refresh token +
 // connected address (same settings rows the CLI flow used), bounce to Settings.
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
+import { setSetting } from "@/lib/settings/store";
 import { exchangeCode } from "@/lib/integrations/gmail/oauth";
 import { getKey } from "@/lib/keys";
 
@@ -50,16 +49,8 @@ export async function GET(req: Request) {
     emailAddress?: string;
   };
 
-  const now = new Date().toISOString();
-  for (const [key, value] of [
-    ["gmailRefreshToken", refreshToken!],
-    ["gmailEmail", profile.emailAddress ?? ""],
-  ] as const) {
-    db.insert(settings)
-      .values({ key, value, updatedAt: now })
-      .onConflictDoUpdate({ target: settings.key, set: { value, updatedAt: now } })
-      .run();
-  }
+  setSetting("gmailRefreshToken", refreshToken!);
+  setSetting("gmailEmail", profile.emailAddress ?? "");
 
   redirect(`/settings?gmail=connected${profile.emailAddress ? `+as+${encodeURIComponent(profile.emailAddress)}` : ""}`);
 }

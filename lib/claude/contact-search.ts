@@ -1,6 +1,5 @@
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, MODEL_SCORE } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
 
 // Semantic "ask" search over the user's own contacts. The data is thin
 // (LinkedIn CSV = name / title / company only), so the model ranks by role +
@@ -10,7 +9,7 @@ import { getClient, MODEL_SCORE } from "@/lib/claude/client";
 const AskResult = z.object({
   matches: z.array(
     z.object({
-      id: z.number(),
+      id: z.number(), // row index into the prompt list (see askContacts)
       reason: z.string(), // one line, grounded in title/company
     }),
   ),
@@ -18,7 +17,7 @@ const AskResult = z.object({
 });
 
 export type ContactForAsk = {
-  id: number;
+  id: string;
   name: string;
   title: string | null;
   detail: string | null; // notes/company blob
@@ -39,28 +38,28 @@ HARD RULES:
 export async function askContacts(
   query: string,
   contacts: ContactForAsk[],
-): Promise<{ matches: { id: number; reason: string }[]; caveat: string | null }> {
-  // Cap the prompt for very large address books (most recent first).
+): Promise<{ matches: { id: string; reason: string }[]; caveat: string | null }> {
+  // Cap the prompt for very large address books (most recent first). Contacts
+  // are addressed by row INDEX in the prompt (Convex ids are long opaque
+  // strings — cheaper and less error-prone for the model to echo an index).
   const capped = contacts.slice(0, 2000);
   const list = capped
-    .map((c) => `${c.id}|${c.name}|${c.title ?? ""}|${c.detail ?? ""}`)
+    .map((c, i) => `${i}|${c.name}|${c.title ?? ""}|${c.detail ?? ""}`)
     .join("\n");
 
-  const response = await getClient().messages.parse({
-    model: MODEL_SCORE,
-    max_tokens: 8000,
+  const { data } = await structuredComplete({
+    tier: "standard",
+    schema: AskResult,
+    schemaName: "contact_matches",
+    maxTokens: 8000,
     system: RULES,
-    messages: [
-      {
-        role: "user",
-        content: `QUERY: ${query}\n\nCONTACTS (id|name|title|detail):\n${list}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(AskResult) },
+    user: `QUERY: ${query}\n\nCONTACTS (id|name|title|detail):\n${list}`,
   });
-
-  if (!response.parsed_output) {
-    throw new Error(`Contact search failed (stop_reason: ${response.stop_reason})`);
-  }
-  return response.parsed_output;
+  const matches = data.matches
+    .map((m) => {
+      const row = capped[m.id];
+      return row ? { id: row.id, reason: m.reason } : null;
+    })
+    .filter((m): m is { id: string; reason: string } => m !== null);
+  return { matches, caveat: data.caveat };
 }

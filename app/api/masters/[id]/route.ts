@@ -2,19 +2,16 @@
 // the profile page's Download button. Local single-user app, no auth layer.
 import fs from "node:fs";
 import path from "node:path";
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { masterResumes } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const { id: idRaw } = await params;
-  const id = Number(idRaw);
-  if (!Number.isFinite(id)) return new Response("Bad id", { status: 400 });
+  const { id } = await params;
+  if (!id) return new Response("Bad id", { status: 400 });
 
-  const row = db.select().from(masterResumes).where(eq(masterResumes.id, id)).get();
+  const row = await convex().query(api.resumes.getMaster, { id: id as never });
   if (!row?.sourceFile || !fs.existsSync(row.sourceFile)) {
     return new Response("No stored file for this master", { status: 404 });
   }

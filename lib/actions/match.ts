@@ -69,12 +69,11 @@ export async function analyzeResumeMatchAction(
         } — analysis is based on the extracted text.`;
       }
     } else {
-      const [kind, idRaw] = source.split(":");
-      const id = Number(idRaw);
-      if ((kind !== "profile" && kind !== "master") || !Number.isFinite(id)) {
+      const [kind, id] = source.split(":");
+      if ((kind !== "profile" && kind !== "master") || !id) {
         return { ok: false, error: "Choose a resume to analyze." };
       }
-      const resolved = resolveResumeText({ kind, id } as ResumeSource);
+      const resolved = await resolveResumeText({ kind, id } as ResumeSource);
       if (!resolved) return { ok: false, error: "That resume could not be found." };
       resumeText = resolved.text;
       resumeLabel = resolved.label;

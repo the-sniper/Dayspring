@@ -12,7 +12,7 @@ export type ResearchActionResult =
 
 export async function researchAction(
   subjectType: "job" | "company",
-  id: number,
+  id: string,
   deep = false,
 ): Promise<ResearchActionResult> {
   if (!hasApiKey()) return { ok: false, error: NO_KEY };

@@ -1,6 +1,5 @@
-import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { z } from "zod";
-import { getClient, MODEL_PREMIUM } from "@/lib/claude/client";
+import { structuredComplete } from "@/lib/ai/complete";
 import type { JobForScoring } from "@/lib/claude/score";
 
 const DraftResult = z.object({ subject: z.string(), body: z.string() });
@@ -31,30 +30,16 @@ export async function draftOutreach(
   const briefBlock = brief
     ? `\n\nCOMPANY RESEARCH (real facts you may reference for a specific hook; do not invent beyond them):\n${brief.slice(0, 3000)}`
     : "";
-  const response = await getClient().messages.parse({
-    model: MODEL_PREMIUM,
-    max_tokens: 8000,
-    thinking: { type: "adaptive" },
-    system: [
-      { type: "text", text: DRAFT_RULES },
-      {
-        type: "text",
-        text: `CANDIDATE PROFILE:\n\n${profile}`,
-        cache_control: { type: "ephemeral" },
-      },
-    ],
-    messages: [
-      {
-        role: "user",
-        content: `CONTACT: ${contact.name}${contact.title ? ` — ${contact.title}` : ""}\n\nJOB\nTitle: ${job.title}\nCompany: ${job.companyName}\n\nDESCRIPTION:\n${job.description.slice(0, 8000)}${briefBlock}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(DraftResult) },
+  const { data } = await structuredComplete({
+    tier: "premium",
+    schema: DraftResult,
+    schemaName: "outreach_draft",
+    maxTokens: 8000,
+    system: DRAFT_RULES,
+    cache: `CANDIDATE PROFILE:\n\n${profile}`,
+    user: `CONTACT: ${contact.name}${contact.title ? ` — ${contact.title}` : ""}\n\nJOB\nTitle: ${job.title}\nCompany: ${job.companyName}\n\nDESCRIPTION:\n${job.description.slice(0, 8000)}${briefBlock}`,
   });
-  if (!response.parsed_output) {
-    throw new Error(`Outreach drafting failed (stop_reason: ${response.stop_reason})`);
-  }
-  return response.parsed_output;
+  return data;
 }
 
 export async function draftNudge(args: {
@@ -64,21 +49,13 @@ export async function draftNudge(args: {
   jobTitle: string;
   companyName: string;
 }): Promise<{ body: string }> {
-  const response = await getClient().messages.parse({
-    model: MODEL_PREMIUM,
-    max_tokens: 4000,
-    thinking: { type: "adaptive" },
+  const { data } = await structuredComplete({
+    tier: "premium",
+    schema: NudgeResult,
+    schemaName: "outreach_nudge",
+    maxTokens: 4000,
     system: NUDGE_RULES,
-    messages: [
-      {
-        role: "user",
-        content: `The original email below to ${args.contactName} about the ${args.jobTitle} role at ${args.companyName} got no reply. Write the bump.\n\nORIGINAL (subject: ${args.originalSubject}):\n${args.originalBody}`,
-      },
-    ],
-    output_config: { format: zodOutputFormat(NudgeResult) },
+    user: `The original email below to ${args.contactName} about the ${args.jobTitle} role at ${args.companyName} got no reply. Write the bump.\n\nORIGINAL (subject: ${args.originalSubject}):\n${args.originalBody}`,
   });
-  if (!response.parsed_output) {
-    throw new Error(`Nudge drafting failed (stop_reason: ${response.stop_reason})`);
-  }
-  return response.parsed_output;
+  return data;
 }

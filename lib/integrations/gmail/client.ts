@@ -1,17 +1,9 @@
-import { eq } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { settings } from "@/lib/db/schema";
 import { htmlToText } from "@/lib/html";
 import { getKey } from "@/lib/keys";
+import { getSetting } from "@/lib/settings/store";
 import { refreshAccessToken } from "./oauth";
 
 const API = "https://gmail.googleapis.com/gmail/v1/users/me";
-
-function getSetting(key: string): string | null {
-  return (
-    db.select().from(settings).where(eq(settings.key, key)).get()?.value ?? null
-  );
-}
 
 export type GmailConfig = {
   clientId: string;

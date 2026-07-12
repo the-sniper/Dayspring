@@ -37,10 +37,10 @@ const ResumeEditor = dynamic(() => import("@/components/resume-editor"), {
   ssr: false,
 });
 
-type ProfileOpt = { id: number; name: string; isDefault: boolean };
-type MasterOpt = { id: number; label: string; isPrimary: boolean };
+type ProfileOpt = { id: string; name: string; isDefault: boolean };
+type MasterOpt = { id: string; label: string; isPrimary: boolean };
 type SavedJob = {
-  id: number;
+  id: string;
   title: string;
   companyName: string | null;
   description: string;
@@ -806,6 +806,7 @@ export default function ResumeMatch({
           resumeId={null}
           filename={`aligned-${resumeLabel || "resume"}`}
           initialScore={analysis?.atsScore ?? null}
+          initialAnalysis={analysis}
           onClose={() => setStudioOpen(false)}
         />
       )}

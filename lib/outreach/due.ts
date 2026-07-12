@@ -1,61 +1,69 @@
-import { and, eq, isNotNull, isNull, lte, sql } from "drizzle-orm";
-import { db } from "@/lib/db";
-import { applications, companies, contacts, jobs, outreach } from "@/lib/db/schema";
+import { api, convex } from "@/lib/convex/server";
 
 export function today(): string {
   return new Date().toISOString().slice(0, 10);
 }
 
+export type OutreachDueRow = {
+  id: string;
+  subject: string | null;
+  followUpDue: string | null;
+  sentAt: string | null;
+  contactName: string | null;
+  companyName: string | null;
+  jobId: string | null;
+  jobTitle: string | null;
+};
+
 // Sent outreach with no reply whose follow-up date has arrived.
-export function outreachDue() {
-  return db
-    .select({
-      id: outreach.id,
-      subject: outreach.subject,
-      followUpDue: outreach.followUpDue,
-      sentAt: outreach.sentAt,
-      contactName: contacts.name,
-      companyName: companies.name,
-      jobId: jobs.id,
-      jobTitle: jobs.title,
-    })
-    .from(outreach)
-    .innerJoin(contacts, eq(outreach.contactId, contacts.id))
-    .leftJoin(jobs, eq(outreach.jobId, jobs.id))
-    .leftJoin(companies, eq(jobs.companyId, companies.id))
-    .where(
-      and(
-        isNotNull(outreach.sentAt),
-        isNull(outreach.repliedAt),
-        isNotNull(outreach.followUpDue),
-        lte(outreach.followUpDue, today()),
-      ),
+export async function outreachDue(): Promise<OutreachDueRow[]> {
+  const rows = await convex().query(api.outreach.queue, {});
+  const cutoff = today();
+  return rows
+    .filter(
+      (o) =>
+        o.sentAt && !o.repliedAt && o.followUpDue && o.followUpDue <= cutoff,
     )
-    .orderBy(outreach.followUpDue)
-    .all();
+    .map((o) => ({
+      id: o.id,
+      subject: o.subject ?? null,
+      followUpDue: o.followUpDue ?? null,
+      sentAt: o.sentAt ?? null,
+      contactName: o.contact?.name ?? null,
+      companyName: o.company?.name ?? null,
+      jobId: o.job?.id ?? null,
+      jobTitle: o.job?.title ?? null,
+    }))
+    .sort((a, b) => (a.followUpDue ?? "").localeCompare(b.followUpDue ?? ""));
 }
+
+export type StaleApplicationRow = {
+  jobId: string;
+  title: string;
+  companyName: string;
+  updatedAt: string;
+};
 
 // Applications that went quiet: applied 10+ days ago, no status movement,
 // nothing queued in next actions.
-export function staleApplications(days = 10) {
+export async function staleApplications(days = 10): Promise<StaleApplicationRow[]> {
   const cutoff = new Date(Date.now() - days * 86_400_000).toISOString();
-  return db
-    .select({
-      jobId: jobs.id,
-      title: jobs.title,
-      companyName: companies.name,
-      updatedAt: jobs.updatedAt,
+  const [jobs, applications] = await Promise.all([
+    convex().query(api.jobs.byStatuses, { statuses: ["applied"] }),
+    convex().query(api.applications.listAll, {}),
+  ]);
+  const appByJob = new Map(applications.map((a) => [String(a.jobId), a]));
+  return jobs
+    .filter((j) => {
+      if (j.updatedAt >= cutoff) return false;
+      const app = appByJob.get(String(j.id));
+      return !app?.nextAction;
     })
-    .from(jobs)
-    .innerJoin(companies, eq(jobs.companyId, companies.id))
-    .leftJoin(applications, eq(applications.jobId, jobs.id))
-    .where(
-      and(
-        eq(jobs.status, "applied"),
-        sql`${jobs.updatedAt} < ${cutoff}`,
-        isNull(applications.nextAction),
-      ),
-    )
-    .orderBy(jobs.updatedAt)
-    .all();
+    .map((j) => ({
+      jobId: j.id,
+      title: j.title,
+      companyName: j.companyName,
+      updatedAt: j.updatedAt,
+    }))
+    .sort((a, b) => a.updatedAt.localeCompare(b.updatedAt));
 }

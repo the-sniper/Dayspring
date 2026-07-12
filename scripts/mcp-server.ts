@@ -16,9 +16,7 @@ async function main() {
   );
   const { z } = await import("zod");
 
-  const { db } = await import("../lib/db");
-  const { companies, contacts, jobs, outreach } = await import("../lib/db/schema");
-  const { and, desc, eq, gte, sql } = await import("drizzle-orm");
+  const { api, convex } = await import("../lib/convex/server");
   const { JOB_STATUSES, ROLE_TYPES } = await import("../lib/types");
 
   const server = new McpServer({ name: "dayspring", version: "1.0.0" });
@@ -69,28 +67,12 @@ async function main() {
       },
     },
     async ({ status, roleType, minScore, limit }) => {
-      const rows = db
-        .select({
-          id: jobs.id,
-          title: jobs.title,
-          company: companies.name,
-          status: jobs.status,
-          roleType: jobs.roleType,
-          score: jobs.matchScore,
-          location: jobs.location,
-        })
-        .from(jobs)
-        .innerJoin(companies, eq(jobs.companyId, companies.id))
-        .where(
-          and(
-            status ? eq(jobs.status, status) : undefined,
-            roleType ? eq(jobs.roleType, roleType) : undefined,
-            minScore !== undefined ? gte(jobs.matchScore, minScore) : undefined,
-          ),
-        )
-        .orderBy(sql`${jobs.matchScore} is null`, desc(jobs.matchScore))
-        .limit(Math.min(limit ?? 20, 100))
-        .all();
+      const rows = await convex().query(api.jobs.briefList, {
+        status: status ?? null,
+        roleType: roleType ?? null,
+        minScore: minScore ?? null,
+        limit: limit ?? 20,
+      });
       return text(rows);
     },
   );
@@ -100,31 +82,28 @@ async function main() {
     {
       description:
         "Full detail for one job: description, score, gaps, fit summary, tailored materials, and saved contacts at the company.",
-      inputSchema: { id: z.number() },
+      inputSchema: { id: z.string() },
     },
     async ({ id }) => {
-      const row = db
-        .select({ job: jobs, company: companies.name, companyId: companies.id })
-        .from(jobs)
-        .innerJoin(companies, eq(jobs.companyId, companies.id))
-        .where(eq(jobs.id, id))
-        .get();
+      const row = await convex().query(api.jobs.getWithCompany, {
+        id: id as never,
+      });
       if (!row) return text({ error: "job not found" });
-      const jobContacts = db
-        .select({
-          id: contacts.id,
-          name: contacts.name,
-          title: contacts.title,
-          email: contacts.email,
-          outreachStatus: contacts.outreachStatus,
+      const jobContacts = (
+        await convex().query(api.contacts.byCompany, {
+          companyId: row.companyId as never,
         })
-        .from(contacts)
-        .where(eq(contacts.companyId, row.companyId))
-        .all();
+      ).map((c) => ({
+        id: c.id,
+        name: c.name,
+        title: c.title,
+        email: c.email,
+        outreachStatus: c.outreachStatus,
+      }));
       return text({
-        ...row.job,
-        company: row.company,
-        description: row.job.description.slice(0, 4000),
+        ...row,
+        company: row.companyName,
+        description: (row.description ?? "").slice(0, 4000),
         contacts: jobContacts,
       });
     },
@@ -135,11 +114,11 @@ async function main() {
     {
       description:
         "Move a job through the pipeline (new/ignored/wishlist/applied/screen/interview/offer/rejected). Logs a stage event; first move into applied creates the application record.",
-      inputSchema: { id: z.number(), status: z.enum(JOB_STATUSES) },
+      inputSchema: { id: z.string(), status: z.enum(JOB_STATUSES) },
     },
     async ({ id, status }) => {
       const { setJobStatusCore } = await import("../lib/jobs/transition");
-      return text(setJobStatusCore(id, status));
+      return text(await setJobStatusCore(id, status));
     },
   );
 
@@ -149,16 +128,14 @@ async function main() {
       description:
         "Search Apollo for people at a tracked company (by company id). Costs zero credits and reveals no emails — pure preview. Saving/enriching happens in the UI.",
       inputSchema: {
-        companyId: z.number(),
+        companyId: z.string(),
         titles: z.array(z.string()).optional(),
       },
     },
     async ({ companyId, titles }) => {
-      const company = db
-        .select()
-        .from(companies)
-        .where(eq(companies.id, companyId))
-        .get();
+      const company = await convex().query(api.companies.getById, {
+        id: companyId as never,
+      });
       if (!company) return text({ error: "company not found" });
       if (!company.domain) return text({ error: "company has no domain set" });
       const { searchPeople } = await import("../lib/integrations/apollo/search");
@@ -178,20 +155,19 @@ async function main() {
     {
       description:
         "Draft a warm outreach email (Claude Opus) from a saved contact id + job id. The draft lands in the Outreach queue for human review — this tool cannot send.",
-      inputSchema: { contactId: z.number(), jobId: z.number() },
+      inputSchema: { contactId: z.string(), jobId: z.string() },
     },
     async ({ contactId, jobId }) => {
       const { createDraft } = await import("../lib/outreach/core");
       const res = await createDraft(contactId, jobId);
       if (!res.ok) return text(res);
-      const row = db
-        .select({ subject: outreach.subject, draft: outreach.draft })
-        .from(outreach)
-        .where(eq(outreach.id, res.outreachId))
-        .get();
+      const row = await convex().query(api.outreach.getById, {
+        id: res.outreachId as never,
+      });
       return text({
         ...res,
-        ...row,
+        subject: row?.subject,
+        draft: row?.draft,
         note: "Draft saved — review and send from http://localhost:3000/outreach",
       });
     },
@@ -204,19 +180,16 @@ async function main() {
         "Current outreach state: drafts awaiting approval, sent awaiting reply (with follow-up due dates), and replied.",
     },
     async () => {
-      const rows = db
-        .select({
-          id: outreach.id,
-          subject: outreach.subject,
-          sentAt: outreach.sentAt,
-          repliedAt: outreach.repliedAt,
-          followUpDue: outreach.followUpDue,
-          contact: contacts.name,
-        })
-        .from(outreach)
-        .innerJoin(contacts, eq(outreach.contactId, contacts.id))
-        .orderBy(desc(outreach.createdAt))
-        .all();
+      const rows = (await convex().query(api.outreach.queue, {}))
+        .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))
+        .map((r) => ({
+          id: r.id,
+          subject: r.subject,
+          sentAt: r.sentAt,
+          repliedAt: r.repliedAt,
+          followUpDue: r.followUpDue,
+          contact: r.contact?.name ?? null,
+        }));
       return text({
         drafts: rows.filter((r) => !r.sentAt),
         awaitingReply: rows.filter((r) => r.sentAt && !r.repliedAt),
@@ -245,7 +218,7 @@ async function main() {
     },
     async () => {
       const { assembleDigest } = await import("../lib/digest");
-      return text(assembleDigest().text);
+      return text((await assembleDigest()).text);
     },
   );
 
@@ -297,7 +270,7 @@ async function main() {
         "Generate a cited web-research brief on a job or company (funding, news, tech, interview intel). Uses Claude web search — costs Anthropic tokens only. Stored and reused by tailoring + outreach.",
       inputSchema: {
         subjectType: z.enum(["job", "company"]),
-        id: z.number(),
+        id: z.string(),
         deep: z.boolean().optional(),
       },
     },

@@ -1,10 +1,8 @@
 "use server";
 
-import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
-import { db } from "@/lib/db";
-import { applications, jobs, outreach, stageEvents } from "@/lib/db/schema";
+import { api, cleanDoc, convex } from "@/lib/convex/server";
 import { createJobCore } from "@/lib/jobs/create";
 import { deriveJobMeta } from "@/lib/jobs/derive";
 import { setJobStatusCore } from "@/lib/jobs/transition";
@@ -22,7 +20,7 @@ export async function createJobAction(formData: FormData) {
     redirect(`/board?error=${encodeURIComponent("Company and title are required")}`);
   }
   const roleTypeRaw = String(formData.get("roleType") ?? "");
-  const res = createJobCore({
+  const res = await createJobCore({
     companyName,
     title,
     url: String(formData.get("url") ?? ""),
@@ -41,44 +39,41 @@ export async function createJobAction(formData: FormData) {
   redirect(`/jobs/${res.jobId}`);
 }
 
-export async function setJobStatusAction(jobId: number, to: JobStatus) {
+export async function setJobStatusAction(jobId: string, to: JobStatus) {
   if (!(JOB_STATUSES as readonly string[]).includes(to)) {
     return { ok: false as const, error: "Invalid status" };
   }
-  const res = setJobStatusCore(jobId, to);
+  const res = await setJobStatusCore(jobId, to);
   revalidatePath("/", "layout");
   return res;
 }
 
 // Void-returning wrappers so server components can bind them as form actions.
-export async function promoteJobAction(jobId: number) {
-  setJobStatusCore(jobId, "wishlist");
+export async function promoteJobAction(jobId: string) {
+  await setJobStatusCore(jobId, "wishlist");
   revalidatePath("/", "layout");
 }
 
-export async function ignoreJobAction(jobId: number) {
-  setJobStatusCore(jobId, "ignored");
+export async function ignoreJobAction(jobId: string) {
+  await setJobStatusCore(jobId, "ignored");
   revalidatePath("/", "layout");
 }
 
-export async function updateJobAction(jobId: number, formData: FormData) {
+export async function updateJobAction(jobId: string, formData: FormData) {
   const roleTypeRaw = String(formData.get("roleType") ?? "");
   const title = String(formData.get("title") ?? "").trim();
   const location = String(formData.get("location") ?? "").trim() || null;
   const description = String(formData.get("description") ?? "");
   // Re-derive filterable metadata whenever location/description change.
-  const existing = db
-    .select({ title: jobs.title })
-    .from(jobs)
-    .where(eq(jobs.id, jobId))
-    .get();
+  const existing = await convex().query(api.jobs.getById, { id: jobId as never });
   const meta = deriveJobMeta({
     title: title || existing?.title || "",
     location,
     description,
   });
-  db.update(jobs)
-    .set({
+  await convex().mutation(api.jobs.patch, {
+    id: jobId as never,
+    patch: cleanDoc({
       roleType: (ROLE_TYPES as readonly string[]).includes(roleTypeRaw)
         ? (roleTypeRaw as RoleType)
         : null,
@@ -92,38 +87,33 @@ export async function updateJobAction(jobId: number, formData: FormData) {
       salaryCurrency: meta.salaryCurrency,
       description,
       updatedAt: new Date().toISOString(),
-    })
-    .where(eq(jobs.id, jobId))
-    .run();
+    }),
+  });
   revalidatePath(`/jobs/${jobId}`);
   redirect(`/jobs/${jobId}`);
 }
 
 export async function updateApplicationAction(
-  jobId: number,
+  jobId: string,
   formData: FormData,
 ) {
-  db.update(applications)
-    .set({
-      resumeVersion: String(formData.get("resumeVersion") ?? "").trim() || null,
-      nextAction: String(formData.get("nextAction") ?? "").trim() || null,
-      nextActionDue:
-        String(formData.get("nextActionDue") ?? "").trim() || null,
+  // Empty string is the "cleared" state (falsy everywhere it's read); Convex
+  // can't delete optional fields over HTTP, so we store "" instead of null.
+  await convex().mutation(api.applications.patchByJob, {
+    jobId: jobId as never,
+    patch: {
+      resumeVersion: String(formData.get("resumeVersion") ?? "").trim(),
+      nextAction: String(formData.get("nextAction") ?? "").trim(),
+      nextActionDue: String(formData.get("nextActionDue") ?? "").trim(),
       updatedAt: new Date().toISOString(),
-    })
-    .where(eq(applications.jobId, jobId))
-    .run();
+    },
+  });
   revalidatePath("/", "layout");
   redirect(`/jobs/${jobId}`);
 }
 
-export async function deleteJobAction(jobId: number) {
-  db.transaction((tx) => {
-    tx.delete(stageEvents).where(eq(stageEvents.jobId, jobId)).run();
-    tx.delete(applications).where(eq(applications.jobId, jobId)).run();
-    tx.delete(outreach).where(eq(outreach.jobId, jobId)).run();
-    tx.delete(jobs).where(eq(jobs.id, jobId)).run();
-  });
+export async function deleteJobAction(jobId: string) {
+  await convex().mutation(api.jobs.deleteCascade, { id: jobId as never });
   revalidatePath("/", "layout");
   redirect("/board");
 }

@@ -7,8 +7,8 @@
 export {}; // module scope — dynamic-import-only files are otherwise global scripts
 
 async function main() {
-  const { loadLocalEnv } = await import("../lib/env");
-  loadLocalEnv();
+  const { prepareCli } = await import("../lib/env");
+  await prepareCli();
   const { api, convex } = await import("../lib/convex/server");
   const { COMPANY_CATALOG } = await import("../lib/integrations/ats/catalog");
 

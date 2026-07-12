@@ -1,3 +1,4 @@
+import { authTables } from "@convex-dev/auth/server";
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
@@ -6,8 +7,16 @@ import { v } from "convex/values";
 // become v.optional(...) (absent when unset); timestamps stay ISO-8601 strings
 // so existing slice/compare logic keeps working. Integer PKs are replaced by
 // Convex string _id; FK columns are v.id("<table>").
+//
+// MULTI-USER: every app table carries `userId` and every function scopes reads
+// and writes to the signed-in user (see getAuthUserId in each module). The
+// field is optional only so pre-auth rows still validate — new rows always set
+// it, and user-scoped index reads never return legacy rows without it.
 export default defineSchema({
+  ...authTables,
+
   companies: defineTable({
+    userId: v.optional(v.id("users")),
     name: v.string(),
     domain: v.optional(v.string()),
     roleTypes: v.optional(v.array(v.string())),
@@ -19,9 +28,12 @@ export default defineSchema({
     atsHost: v.optional(v.string()),
     atsSite: v.optional(v.string()),
     createdAt: v.string(),
-  }).index("by_name", ["name"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_name", ["userId", "name"]),
 
   jobs: defineTable({
+    userId: v.optional(v.id("users")),
     companyId: v.id("companies"),
     title: v.string(),
     roleType: v.optional(v.string()),
@@ -58,23 +70,26 @@ export default defineSchema({
     createdAt: v.string(),
     updatedAt: v.string(),
   })
-    .index("by_status", ["status"])
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user_dedupe", ["userId", "dedupeKey"])
+    .index("by_user_source_external", ["userId", "source", "externalId"])
     .index("by_company", ["companyId"])
-    .index("by_is_us", ["isUs"])
-    .index("by_dedupe_key", ["dedupeKey"])
-    .index("by_source_external_id", ["source", "externalId"])
     .searchIndex("search_title", {
       searchField: "title",
-      filterFields: ["status", "isUs"],
+      filterFields: ["userId", "status", "isUs"],
     }),
 
   // 1:1 with jobs — the big JD text, split off so job-row scans stay small.
+  // Ownership derives from the parent job; every access goes through a job
+  // the caller already owns.
   jobDescriptions: defineTable({
     jobId: v.id("jobs"),
     text: v.string(),
   }).index("by_job", ["jobId"]),
 
   applications: defineTable({
+    userId: v.optional(v.id("users")),
     jobId: v.id("jobs"),
     resumeVersion: v.optional(v.string()),
     submittedAt: v.optional(v.string()),
@@ -82,18 +97,22 @@ export default defineSchema({
     nextActionDue: v.optional(v.string()),
     createdAt: v.string(),
     updatedAt: v.string(),
-  }).index("by_job", ["jobId"]),
+  })
+    .index("by_job", ["jobId"])
+    .index("by_user", ["userId"]),
 
   stageEvents: defineTable({
+    userId: v.optional(v.id("users")),
     jobId: v.id("jobs"),
     fromStatus: v.optional(v.string()),
     toStatus: v.string(),
     at: v.string(),
   })
     .index("by_job", ["jobId"])
-    .index("by_at", ["at"]),
+    .index("by_user_at", ["userId", "at"]),
 
   contacts: defineTable({
+    userId: v.optional(v.id("users")),
     companyId: v.optional(v.id("companies")),
     name: v.string(),
     title: v.optional(v.string()),
@@ -111,11 +130,13 @@ export default defineSchema({
     outreachStatus: v.string(),
     createdAt: v.string(),
   })
+    .index("by_user", ["userId"])
     .index("by_company", ["companyId"])
-    .index("by_apollo_id", ["apolloId"])
-    .index("by_happenstance_id", ["happenstanceId"]),
+    .index("by_user_apollo", ["userId", "apolloId"])
+    .index("by_user_happenstance", ["userId", "happenstanceId"]),
 
   outreach: defineTable({
+    userId: v.optional(v.id("users")),
     contactId: v.id("contacts"),
     jobId: v.optional(v.id("jobs")),
     channel: v.optional(v.string()),
@@ -128,10 +149,12 @@ export default defineSchema({
     gmailMessageId: v.optional(v.string()),
     createdAt: v.string(),
   })
+    .index("by_user", ["userId"])
     .index("by_contact", ["contactId"])
     .index("by_job", ["jobId"]),
 
   researchBriefs: defineTable({
+    userId: v.optional(v.id("users")),
     jobId: v.optional(v.id("jobs")),
     companyId: v.optional(v.id("companies")),
     kind: v.string(),
@@ -146,6 +169,7 @@ export default defineSchema({
     .index("by_company", ["companyId"]),
 
   siteCredentials: defineTable({
+    userId: v.optional(v.id("users")),
     site: v.string(),
     host: v.string(),
     username: v.string(),
@@ -155,9 +179,12 @@ export default defineSchema({
     createdAt: v.string(),
     lastUsedAt: v.optional(v.string()),
     notes: v.optional(v.string()),
-  }).index("by_host_username", ["host", "username"]),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_host", ["userId", "host"]),
 
   masterResumes: defineTable({
+    userId: v.optional(v.id("users")),
     label: v.string(),
     content: v.string(),
     // Legacy local-disk path (pre-hosting); new uploads store the original PDF
@@ -167,9 +194,10 @@ export default defineSchema({
     isPrimary: v.boolean(),
     createdAt: v.string(),
     updatedAt: v.string(),
-  }),
+  }).index("by_user", ["userId"]),
 
   generatedResumes: defineTable({
+    userId: v.optional(v.id("users")),
     jobId: v.id("jobs"),
     content: v.string(),
     // Legacy local-disk path (pre-hosting); new renders store the PDF in
@@ -185,6 +213,7 @@ export default defineSchema({
   }).index("by_job", ["jobId"]),
 
   profiles: defineTable({
+    userId: v.optional(v.id("users")),
     name: v.string(),
     isDefault: v.boolean(),
     fullName: v.optional(v.string()),
@@ -201,15 +230,16 @@ export default defineSchema({
     defaults: v.optional(v.any()),
     createdAt: v.string(),
     updatedAt: v.string(),
-  }),
+  }).index("by_user", ["userId"]),
+
   // Key-value settings (profile blob, Gmail tokens, sealed API keys, ToS acks,
-  // lastDailyRun). Sensitive values are AES-256-GCM sealed by their callers
-  // (lib/keys.ts, lib/vault) BEFORE landing here — Convex only ever stores
-  // opaque ciphertext for those rows. Hosted deployments (read-only disk) need
-  // this in the cloud; DAYSPRING_VAULT_KEY stays in env and never leaves it.
+  // lastDailyRun) — per user. Sensitive values are AES-256-GCM sealed by their
+  // callers (lib/keys.ts, lib/vault) BEFORE landing here — Convex only ever
+  // stores opaque ciphertext for those rows; DAYSPRING_VAULT_KEY stays in env.
   settings: defineTable({
+    userId: v.optional(v.id("users")),
     key: v.string(),
     value: v.string(),
     updatedAt: v.string(),
-  }).index("by_key", ["key"]),
+  }).index("by_user_key", ["userId", "key"]),
 });

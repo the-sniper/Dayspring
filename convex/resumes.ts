@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { owned, requireUser } from "./lib";
 
 // ---- file storage (original master PDFs + rendered tailored PDFs) ------
 // Hosted deployments have no writable disk, so PDF bytes live in Convex File
@@ -7,12 +8,20 @@ import { mutation, query } from "./_generated/server";
 
 export const generateUploadUrl = mutation({
   args: {},
-  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
+  handler: async (ctx) => {
+    await requireUser(ctx);
+    return await ctx.storage.generateUploadUrl();
+  },
 });
 
 export const fileUrl = query({
   args: { fileId: v.id("_storage") },
-  handler: async (ctx, { fileId }) => await ctx.storage.getUrl(fileId),
+  handler: async (ctx, { fileId }) => {
+    // Storage ids are unguessable; rows referencing them are user-scoped, so
+    // requiring a signed-in caller is the meaningful gate here.
+    await requireUser(ctx);
+    return await ctx.storage.getUrl(fileId);
+  },
 });
 
 // ---- master resumes ----------------------------------------------------
@@ -20,7 +29,11 @@ export const fileUrl = query({
 export const listMasters = query({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db.query("masterResumes").collect();
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query("masterResumes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
     rows.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
     return rows.map((r) => ({ ...r, id: r._id }));
   },
@@ -28,22 +41,37 @@ export const listMasters = query({
 
 export const getMaster = query({
   args: { id: v.id("masterResumes") },
-  handler: async (ctx, { id }) => await ctx.db.get(id),
+  handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    return owned(await ctx.db.get(id), userId);
+  },
 });
 
 export const mastersCount = query({
   args: {},
-  handler: async (ctx) => (await ctx.db.query("masterResumes").collect()).length,
+  handler: async (ctx) => {
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query("masterResumes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
+    return rows.length;
+  },
 });
 
 export const insertMaster = mutation({
   args: { doc: v.any() },
-  handler: async (ctx, { doc }) => await ctx.db.insert("masterResumes", doc),
+  handler: async (ctx, { doc }) => {
+    const userId = await requireUser(ctx);
+    return await ctx.db.insert("masterResumes", { ...doc, userId });
+  },
 });
 
 export const patchMaster = mutation({
   args: { id: v.id("masterResumes"), patch: v.any() },
   handler: async (ctx, { id, patch }) => {
+    const userId = await requireUser(ctx);
+    if (!owned(await ctx.db.get(id), userId)) throw new Error("Master resume not found");
     await ctx.db.patch(id, patch);
   },
 });
@@ -51,17 +79,24 @@ export const patchMaster = mutation({
 export const removeMaster = mutation({
   args: { id: v.id("masterResumes") },
   handler: async (ctx, { id }) => {
-    const row = await ctx.db.get(id);
-    if (row?.sourceFileId) await ctx.storage.delete(row.sourceFileId);
+    const userId = await requireUser(ctx);
+    const row = owned(await ctx.db.get(id), userId);
+    if (!row) return;
+    if (row.sourceFileId) await ctx.storage.delete(row.sourceFileId);
     await ctx.db.delete(id);
   },
 });
 
-// Exactly one primary master.
+// Exactly one primary master (within the user's masters).
 export const setPrimaryMaster = mutation({
   args: { id: v.id("masterResumes") },
   handler: async (ctx, { id }) => {
-    const rows = await ctx.db.query("masterResumes").collect();
+    const userId = await requireUser(ctx);
+    if (!owned(await ctx.db.get(id), userId)) throw new Error("Master resume not found");
+    const rows = await ctx.db
+      .query("masterResumes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .collect();
     for (const r of rows) {
       if (r.isPrimary && r._id !== id) await ctx.db.patch(r._id, { isPrimary: false });
     }
@@ -73,12 +108,17 @@ export const setPrimaryMaster = mutation({
 
 export const getGenerated = query({
   args: { id: v.id("generatedResumes") },
-  handler: async (ctx, { id }) => await ctx.db.get(id),
+  handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    return owned(await ctx.db.get(id), userId);
+  },
 });
 
 export const latestForJob = query({
   args: { jobId: v.id("jobs") },
   handler: async (ctx, { jobId }) => {
+    const userId = await requireUser(ctx);
+    if (!owned(await ctx.db.get(jobId), userId)) return null;
     const rows = await ctx.db
       .query("generatedResumes")
       .withIndex("by_job", (q) => q.eq("jobId", jobId))
@@ -90,18 +130,21 @@ export const latestForJob = query({
 
 export const insertGenerated = mutation({
   args: { doc: v.any() },
-  handler: async (ctx, { doc }) => await ctx.db.insert("generatedResumes", doc),
+  handler: async (ctx, { doc }) => {
+    const userId = await requireUser(ctx);
+    return await ctx.db.insert("generatedResumes", { ...doc, userId });
+  },
 });
 
 export const patchGenerated = mutation({
   args: { id: v.id("generatedResumes"), patch: v.any() },
   handler: async (ctx, { id, patch }) => {
+    const userId = await requireUser(ctx);
+    const row = owned(await ctx.db.get(id), userId);
+    if (!row) throw new Error("Generated resume not found");
     // Re-rendered PDF replaces the old storage file — don't leak the bytes.
-    if (patch.pdfFileId) {
-      const row = await ctx.db.get(id);
-      if (row?.pdfFileId && row.pdfFileId !== patch.pdfFileId) {
-        await ctx.storage.delete(row.pdfFileId);
-      }
+    if (patch.pdfFileId && row.pdfFileId && row.pdfFileId !== patch.pdfFileId) {
+      await ctx.storage.delete(row.pdfFileId);
     }
     await ctx.db.patch(id, patch);
   },

@@ -1,10 +1,12 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { owned, requireUser } from "./lib";
 
 // The JD text lives in the `jobDescriptions` side table (see schema). These
 // helpers read/write it by jobId so the rest of the app can keep treating
-// `description` as if it were a column on the job.
+// `description` as if it were a column on the job. Ownership derives from the
+// parent job — callers verify the job first.
 async function readDescription(
   ctx: QueryCtx,
   jobId: Id<"jobs">,
@@ -29,21 +31,52 @@ async function writeDescription(
   else await ctx.db.insert("jobDescriptions", { jobId, text });
 }
 
+// The user's jobs (whole set — job rows are small; the JD lives elsewhere).
+async function userJobs(ctx: QueryCtx, userId: Id<"users">) {
+  return await ctx.db
+    .query("jobs")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+}
+
+async function userJobsByStatus(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  status: string,
+) {
+  return await ctx.db
+    .query("jobs")
+    .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", status))
+    .collect();
+}
+
+// Company-name lookup map, scoped to the user's companies.
+async function companyNames(ctx: QueryCtx, userId: Id<"users">) {
+  const companies = await ctx.db
+    .query("companies")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+  return new Map(companies.map((c) => [String(c._id), c.name]));
+}
+
 // ---- reads -------------------------------------------------------------
 
 export const getById = query({
   args: { id: v.id("jobs") },
-  handler: async (ctx, { id }) => await ctx.db.get(id),
+  handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    return owned(await ctx.db.get(id), userId);
+  },
 });
 
-// Full job list joined with company name — used by dashboard/board/match/
-// digest/scoring which all scan the whole table anyway.
+// Full job list joined with company name — used by backfill/scripts which
+// scan the user's whole table anyway.
 export const listAllWithCompany = query({
   args: {},
   handler: async (ctx) => {
-    const jobs = await ctx.db.query("jobs").collect();
-    const companies = await ctx.db.query("companies").collect();
-    const nameById = new Map(companies.map((c) => [String(c._id), c.name]));
+    const userId = await requireUser(ctx);
+    const jobs = await userJobs(ctx, userId);
+    const nameById = await companyNames(ctx, userId);
     return jobs.map((j) => ({
       ...j,
       id: j._id,
@@ -55,15 +88,20 @@ export const listAllWithCompany = query({
 // The JD text for one job (fetched on demand — kept out of list scans).
 export const getDescription = query({
   args: { id: v.id("jobs") },
-  handler: async (ctx, { id }) => await readDescription(ctx, id),
+  handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    const job = owned(await ctx.db.get(id), userId);
+    if (!job) return "";
+    return await readDescription(ctx, id);
+  },
 });
 
-// Per-status row counts (dashboard funnel + digest). Reads all job rows (small
-// now) but returns just a compact map, so it's safe past the 8192 return cap.
+// Per-status row counts (dashboard funnel + digest).
 export const statusCounts = query({
   args: {},
   handler: async (ctx) => {
-    const jobs = await ctx.db.query("jobs").collect();
+    const userId = await requireUser(ctx);
+    const jobs = await userJobs(ctx, userId);
     const counts: Record<string, number> = {};
     for (const j of jobs) counts[j.status] = (counts[j.status] ?? 0) + 1;
     return counts;
@@ -75,12 +113,10 @@ export const statusCounts = query({
 export const byStatuses = query({
   args: { statuses: v.array(v.string()) },
   handler: async (ctx, { statuses }) => {
-    const companies = await ctx.db.query("companies").collect();
-    const nameById = new Map(companies.map((c) => [String(c._id), c.name]));
+    const userId = await requireUser(ctx);
+    const nameById = await companyNames(ctx, userId);
     const groups = await Promise.all(
-      statuses.map((status) =>
-        ctx.db.query("jobs").withIndex("by_status", (q) => q.eq("status", status)).collect(),
-      ),
+      statuses.map((status) => userJobsByStatus(ctx, userId, status)),
     );
     return groups.flat().map((j) => ({
       ...j,
@@ -95,12 +131,9 @@ export const byStatuses = query({
 export const topNewByScore = query({
   args: { limit: v.number(), minScore: v.number() },
   handler: async (ctx, { limit, minScore }) => {
-    const companies = await ctx.db.query("companies").collect();
-    const nameById = new Map(companies.map((c) => [String(c._id), c.name]));
-    const rows = await ctx.db
-      .query("jobs")
-      .withIndex("by_status", (q) => q.eq("status", "new"))
-      .collect();
+    const userId = await requireUser(ctx);
+    const nameById = await companyNames(ctx, userId);
+    const rows = await userJobsByStatus(ctx, userId, "new");
     return rows
       .filter((j) => (j.matchScore ?? -1) >= minScore)
       .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0))
@@ -118,12 +151,12 @@ export const topNewByScore = query({
 export const unscoredScorable = query({
   args: { limit: v.number(), minJdChars: v.number() },
   handler: async (ctx, { limit, minJdChars }) => {
-    const companies = await ctx.db.query("companies").collect();
-    const nameById = new Map(companies.map((c) => [String(c._id), c.name]));
+    const userId = await requireUser(ctx);
+    const nameById = await companyNames(ctx, userId);
     const eligible = (
       await Promise.all([
-        ctx.db.query("jobs").withIndex("by_status", (q) => q.eq("status", "new")).collect(),
-        ctx.db.query("jobs").withIndex("by_status", (q) => q.eq("status", "wishlist")).collect(),
+        userJobsByStatus(ctx, userId, "new"),
+        userJobsByStatus(ctx, userId, "wishlist"),
       ])
     )
       .flat()
@@ -143,15 +176,16 @@ export const unscoredScorable = query({
 });
 
 // Which of the supplied dedupe keys already exist (import de-dup). Bounded by
-// the number of candidate keys, using the by_dedupe_key index.
+// the number of candidate keys, using the per-user dedupe index.
 export const existingDedupeKeys = query({
   args: { keys: v.array(v.string()) },
   handler: async (ctx, { keys }) => {
+    const userId = await requireUser(ctx);
     const found: string[] = [];
     for (const k of keys) {
       const row = await ctx.db
         .query("jobs")
-        .withIndex("by_dedupe_key", (q) => q.eq("dedupeKey", k))
+        .withIndex("by_user_dedupe", (q) => q.eq("userId", userId).eq("dedupeKey", k))
         .first();
       if (row) found.push(k);
     }
@@ -168,11 +202,11 @@ export const briefList = query({
     limit: v.number(),
   },
   handler: async (ctx, a) => {
-    const companies = await ctx.db.query("companies").collect();
-    const nameById = new Map(companies.map((c) => [String(c._id), c.name]));
+    const userId = await requireUser(ctx);
+    const nameById = await companyNames(ctx, userId);
     const base = a.status
-      ? await ctx.db.query("jobs").withIndex("by_status", (q) => q.eq("status", a.status!)).collect()
-      : await ctx.db.query("jobs").collect();
+      ? await userJobsByStatus(ctx, userId, a.status)
+      : await userJobs(ctx, userId);
     const rows = base
       .filter((j) => (a.roleType ? j.roleType === a.roleType : true))
       .filter((j) => (a.minScore !== null ? (j.matchScore ?? -1) >= a.minScore : true))
@@ -195,7 +229,8 @@ export const briefList = query({
 export const getWithCompany = query({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) => {
-    const job = await ctx.db.get(id);
+    const userId = await requireUser(ctx);
+    const job = owned(await ctx.db.get(id), userId);
     if (!job) return null;
     const company = await ctx.db.get(job.companyId);
     return {
@@ -209,12 +244,11 @@ export const getWithCompany = query({
 });
 
 // Newest saved jobs with a non-empty JD — prefills the Resume Match textarea.
-// Job rows are small now, so the scan is cheap; only the (bounded) descriptions
-// we actually return get read.
 export const savedForMatch = query({
   args: { limit: v.number() },
   handler: async (ctx, { limit }) => {
-    const jobs = (await ctx.db.query("jobs").collect()).sort((a, b) =>
+    const userId = await requireUser(ctx);
+    const jobs = (await userJobs(ctx, userId)).sort((a, b) =>
       b.createdAt.localeCompare(a.createdAt),
     );
     const out: {
@@ -243,7 +277,8 @@ export const savedForMatch = query({
 export const detail = query({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) => {
-    const job = await ctx.db.get(id);
+    const userId = await requireUser(ctx);
+    const job = owned(await ctx.db.get(id), userId);
     if (!job) return null;
     const company = await ctx.db.get(job.companyId);
     const application = await ctx.db
@@ -284,8 +319,8 @@ const asRow = (job: any, companyName: string) => ({
   companyName,
 });
 
-// Feed page: filter + sort + paginate. Narrow by status via index, then apply
-// remaining predicates in JS (mirrors the old dynamic WHERE builder).
+// Feed page: filter + sort + paginate. Narrow by user+status via index, then
+// apply remaining predicates in JS (mirrors the old dynamic WHERE builder).
 export const feed = query({
   args: {
     status: v.string(),
@@ -303,10 +338,8 @@ export const feed = query({
     pageSize: v.number(),
   },
   handler: async (ctx, a) => {
-    const base = await ctx.db
-      .query("jobs")
-      .withIndex("by_status", (q) => q.eq("status", a.status))
-      .collect();
+    const userId = await requireUser(ctx);
+    const base = await userJobsByStatus(ctx, userId, a.status);
 
     const ql = a.q.trim().toLowerCase();
     const companyCache = new Map<string, string>();
@@ -388,10 +421,11 @@ export const feed = query({
 export const untaggedAmong = query({
   args: { ids: v.array(v.id("jobs")), limit: v.number() },
   handler: async (ctx, { ids, limit }) => {
+    const userId = await requireUser(ctx);
     const out: { id: string; title: string }[] = [];
     for (const id of ids) {
       if (out.length >= limit) break;
-      const job = await ctx.db.get(id);
+      const job = owned(await ctx.db.get(id), userId);
       if (job && (job.roleType === undefined || job.roleType === null)) {
         out.push({ id: job._id, title: job.title });
       }
@@ -404,7 +438,8 @@ export const untaggedAmong = query({
 export const locationValues = query({
   args: {},
   handler: async (ctx) => {
-    const jobs = await ctx.db.query("jobs").collect();
+    const userId = await requireUser(ctx);
+    const jobs = await userJobs(ctx, userId);
     const set = new Set<string>();
     for (const j of jobs) {
       if (j.isUs === false) continue;
@@ -418,7 +453,8 @@ export const locationValues = query({
 export const scorableCount = query({
   args: { minJdChars: v.number() },
   handler: async (ctx, { minJdChars }) => {
-    const jobs = await ctx.db.query("jobs").collect();
+    const userId = await requireUser(ctx);
+    const jobs = await userJobs(ctx, userId);
     return jobs.filter(
       (j) =>
         (j.matchScore === undefined || j.matchScore === null) &&
@@ -433,7 +469,8 @@ export const staleScoreCount = query({
   args: { profileUpdatedAt: v.union(v.string(), v.null()) },
   handler: async (ctx, { profileUpdatedAt }) => {
     if (!profileUpdatedAt) return 0;
-    const jobs = await ctx.db.query("jobs").collect();
+    const userId = await requireUser(ctx);
+    const jobs = await userJobs(ctx, userId);
     return jobs.filter(
       (j) => j.scoredAt !== undefined && j.scoredAt !== null && j.scoredAt < profileUpdatedAt,
     ).length;
@@ -441,6 +478,29 @@ export const staleScoreCount = query({
 });
 
 // ---- writes ------------------------------------------------------------
+
+// Per-user dedupe checks for inserts.
+async function dedupeHit(
+  ctx: QueryCtx,
+  userId: Id<"users">,
+  doc: { dedupeKey: string; source?: string; externalId?: string },
+): Promise<boolean> {
+  const byKey = await ctx.db
+    .query("jobs")
+    .withIndex("by_user_dedupe", (q) => q.eq("userId", userId).eq("dedupeKey", doc.dedupeKey))
+    .unique();
+  if (byKey) return true;
+  if (doc.externalId) {
+    const byExt = await ctx.db
+      .query("jobs")
+      .withIndex("by_user_source_external", (q) =>
+        q.eq("userId", userId).eq("source", doc.source!).eq("externalId", doc.externalId),
+      )
+      .unique();
+    if (byExt) return true;
+  }
+  return false;
+}
 
 // Dedupe-aware single insert (manual entry + import bridges). Mirrors
 // createJobCore's DB side; the caller supplies the fully-derived doc.
@@ -451,21 +511,9 @@ export const createOne = mutation({
     submittedAt: v.union(v.string(), v.null()),
   },
   handler: async (ctx, { doc, initialStatus, submittedAt }) => {
-    const byKey = await ctx.db
-      .query("jobs")
-      .withIndex("by_dedupe_key", (q) => q.eq("dedupeKey", doc.dedupeKey))
-      .unique();
-    if (byKey) return { inserted: false as const };
-    if (doc.externalId) {
-      const byExt = await ctx.db
-        .query("jobs")
-        .withIndex("by_source_external_id", (q) =>
-          q.eq("source", doc.source).eq("externalId", doc.externalId),
-        )
-        .unique();
-      if (byExt) return { inserted: false as const };
-    }
-    const jobDoc = { ...(doc as Record<string, unknown>) };
+    const userId = await requireUser(ctx);
+    if (await dedupeHit(ctx, userId, doc)) return { inserted: false as const };
+    const jobDoc: Record<string, unknown> = { ...(doc as Record<string, unknown>), userId };
     const text = typeof jobDoc.description === "string" ? jobDoc.description : "";
     delete jobDoc.description;
     jobDoc.jdChars = text.length;
@@ -474,10 +522,11 @@ export const createOne = mutation({
     if (text) await writeDescription(ctx, jobId, text);
     const now = doc.createdAt as string;
     if (initialStatus !== "new") {
-      await ctx.db.insert("stageEvents", { jobId, toStatus: initialStatus, at: now });
+      await ctx.db.insert("stageEvents", { userId, jobId, toStatus: initialStatus, at: now });
     }
     if (submittedAt) {
       await ctx.db.insert("applications", {
+        userId,
         jobId,
         submittedAt,
         createdAt: now,
@@ -492,24 +541,12 @@ export const createOne = mutation({
 export const upsertBatch = mutation({
   args: { docs: v.array(v.any()) },
   handler: async (ctx, { docs }) => {
+    const userId = await requireUser(ctx);
     const insertedIds: string[] = [];
     let added = 0;
     for (const doc of docs) {
-      const byKey = await ctx.db
-        .query("jobs")
-        .withIndex("by_dedupe_key", (q) => q.eq("dedupeKey", doc.dedupeKey))
-        .unique();
-      if (byKey) continue;
-      if (doc.externalId) {
-        const byExt = await ctx.db
-          .query("jobs")
-          .withIndex("by_source_external_id", (q) =>
-            q.eq("source", doc.source).eq("externalId", doc.externalId),
-          )
-          .unique();
-        if (byExt) continue;
-      }
-      const jobDoc = { ...(doc as Record<string, unknown>) };
+      if (await dedupeHit(ctx, userId, doc)) continue;
+      const jobDoc: Record<string, unknown> = { ...(doc as Record<string, unknown>), userId };
       const text = typeof jobDoc.description === "string" ? jobDoc.description : "";
       delete jobDoc.description;
       jobDoc.jdChars = text.length;
@@ -526,6 +563,9 @@ export const upsertBatch = mutation({
 export const patch = mutation({
   args: { id: v.id("jobs"), patch: v.any() },
   handler: async (ctx, { id, patch }) => {
+    const userId = await requireUser(ctx);
+    const job = owned(await ctx.db.get(id), userId);
+    if (!job) throw new Error("Job not found");
     // `description` isn't a column on jobs — route it to the side table and
     // keep the cached length in sync.
     if (Object.prototype.hasOwnProperty.call(patch, "description")) {
@@ -546,12 +586,14 @@ export const patch = mutation({
 export const setStatus = mutation({
   args: { id: v.id("jobs"), to: v.string() },
   handler: async (ctx, { id, to }) => {
-    const job = await ctx.db.get(id);
+    const userId = await requireUser(ctx);
+    const job = owned(await ctx.db.get(id), userId);
     if (!job) return { ok: false as const, error: "Job not found" };
     if (job.status === to) return { ok: true as const };
     const now = new Date().toISOString();
     await ctx.db.patch(id, { status: to, updatedAt: now });
     await ctx.db.insert("stageEvents", {
+      userId,
       jobId: id,
       fromStatus: job.status,
       toStatus: to,
@@ -564,6 +606,7 @@ export const setStatus = mutation({
         .unique();
       if (!existing) {
         await ctx.db.insert("applications", {
+          userId,
           jobId: id,
           submittedAt: now,
           createdAt: now,
@@ -579,6 +622,9 @@ export const setStatus = mutation({
 export const deleteCascade = mutation({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    const job = owned(await ctx.db.get(id), userId);
+    if (!job) return;
     const kids = [
       await ctx.db.query("stageEvents").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
       await ctx.db.query("applications").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
@@ -596,13 +642,16 @@ export const deleteCascade = mutation({
   },
 });
 
-// Maintenance: wipe all jobs + their side rows in bounded batches. Used once to
-// clear pre–side-table rows so a fresh pull repopulates small job docs. Call
-// repeatedly until it returns { done: true }.
+// Maintenance: wipe the signed-in user's jobs + side rows in bounded batches.
+// Call repeatedly until it returns { done: true }.
 export const wipeAllBatch = mutation({
   args: { batch: v.number() },
   handler: async (ctx, { batch }) => {
-    const jobs = await ctx.db.query("jobs").take(batch);
+    const userId = await requireUser(ctx);
+    const jobs = await ctx.db
+      .query("jobs")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(batch);
     for (const j of jobs) {
       const kids = [
         await ctx.db.query("stageEvents").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),

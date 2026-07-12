@@ -1,13 +1,16 @@
 import { v } from "convex/values";
 import { query } from "./_generated/server";
+import { requireUser } from "./lib";
 
-// Recent activity across all jobs (dashboard timeline). Joined with job+company.
+// Recent activity across the user's jobs (dashboard timeline). Joined with
+// job+company.
 export const recent = query({
   args: { limit: v.number() },
   handler: async (ctx, { limit }) => {
+    const userId = await requireUser(ctx);
     const events = await ctx.db
       .query("stageEvents")
-      .withIndex("by_at")
+      .withIndex("by_user_at", (q) => q.eq("userId", userId))
       .order("desc")
       .take(limit);
     const out = [];

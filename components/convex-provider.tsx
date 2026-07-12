@@ -1,12 +1,14 @@
 "use client";
 
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
+import { ConvexReactClient } from "convex/react";
 import type { ReactNode } from "react";
 
 // Reactive client for the hybrid live-update spots (apply session, pull/score
-// progress). Server rendering still fetches via lib/convex/server.ts.
+// progress) plus the auth actions (signIn/signOut). Server rendering still
+// fetches via lib/convex/server.ts with the request's token.
 const client = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export default function ConvexClientProvider({ children }: { children: ReactNode }) {
-  return <ConvexProvider client={client}>{children}</ConvexProvider>;
+  return <ConvexAuthNextjsProvider client={client}>{children}</ConvexAuthNextjsProvider>;
 }

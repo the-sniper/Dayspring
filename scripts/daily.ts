@@ -7,8 +7,8 @@ export {}; // module scope
 const SCORE_CAP = 50; // per-run ceiling on Sonnet spend (~$1.50 max)
 
 async function main() {
-  const { loadLocalEnv } = await import("../lib/env");
-  loadLocalEnv();
+  const { prepareCli } = await import("../lib/env");
+  await prepareCli();
 
   const { pullAllJobs } = await import("../lib/jobs/pull");
   const { scoreUnscored } = await import("../lib/jobs/score");

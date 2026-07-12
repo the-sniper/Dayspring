@@ -291,8 +291,8 @@ async function main() {
     process.exit(1);
   }
 
-  const { loadLocalEnv } = await import("../lib/env");
-  loadLocalEnv();
+  const { prepareCli } = await import("../lib/env");
+  await prepareCli();
 
   const { loadApplyContext, setApplyStatus, appendApplyLog } = await import(
     "../lib/apply/core"

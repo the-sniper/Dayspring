@@ -9,15 +9,19 @@
  */
 
 import type * as applications from "../applications.js";
+import type * as auth from "../auth.js";
 import type * as companies from "../companies.js";
 import type * as contacts from "../contacts.js";
+import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
+import type * as lib from "../lib.js";
 import type * as outreach from "../outreach.js";
 import type * as profiles from "../profiles.js";
 import type * as research from "../research.js";
 import type * as resumes from "../resumes.js";
 import type * as settings from "../settings.js";
 import type * as stageEvents from "../stageEvents.js";
+import type * as users from "../users.js";
 import type * as vault from "../vault.js";
 
 import type {
@@ -28,15 +32,19 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   applications: typeof applications;
+  auth: typeof auth;
   companies: typeof companies;
   contacts: typeof contacts;
+  http: typeof http;
   jobs: typeof jobs;
+  lib: typeof lib;
   outreach: typeof outreach;
   profiles: typeof profiles;
   research: typeof research;
   resumes: typeof resumes;
   settings: typeof settings;
   stageEvents: typeof stageEvents;
+  users: typeof users;
   vault: typeof vault;
 }>;
 

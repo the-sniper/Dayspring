@@ -7,8 +7,8 @@
 export {};
 
 async function main() {
-  const { loadLocalEnv } = await import("../lib/env");
-  loadLocalEnv();
+  const { prepareCli } = await import("../lib/env");
+  await prepareCli();
   const { api, convex } = await import("../lib/convex/server");
   const { cleanDoc } = await import("../lib/convex/server");
   const { deriveJobMeta } = await import("../lib/jobs/derive");

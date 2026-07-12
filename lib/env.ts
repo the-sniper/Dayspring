@@ -17,3 +17,10 @@ export function loadLocalEnv() {
     process.env[key] = raw.replace(/^(["'])(.*)\1$/, "$2");
   }
 }
+
+// loadLocalEnv + CLI sign-in (scripts hit user-scoped Convex functions).
+export async function prepareCli(): Promise<void> {
+  loadLocalEnv();
+  const { ensureCliAuth } = await import("@/lib/convex/cli-auth");
+  await ensureCliAuth();
+}

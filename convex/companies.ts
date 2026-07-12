@@ -1,33 +1,50 @@
 import { v } from "convex/values";
-import { mutation, query } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
+import { owned, requireUser } from "./lib";
 
 const norm = (name: string) => name.trim().replace(/\s+/g, " ");
 
+async function userCompanies(ctx: QueryCtx | MutationCtx, userId: Id<"users">) {
+  return await ctx.db
+    .query("companies")
+    .withIndex("by_user", (q) => q.eq("userId", userId))
+    .collect();
+}
+
 // Case-insensitive lookup by name (mirrors the old `lower(name) = ?`).
-async function byName(ctx: any, name: string) {
+async function byName(ctx: QueryCtx | MutationCtx, userId: Id<"users">, name: string) {
   const clean = norm(name).toLowerCase();
-  // by_name index is case-sensitive; scan the small companies table and match
-  // case-insensitively to preserve prior semantics.
-  const all = await ctx.db.query("companies").collect();
-  return all.find((c: any) => c.name.trim().replace(/\s+/g, " ").toLowerCase() === clean) ?? null;
+  // The name index is case-sensitive; scan the user's (small) companies set
+  // and match case-insensitively to preserve prior semantics.
+  const all = await userCompanies(ctx, userId);
+  return all.find((c) => c.name.trim().replace(/\s+/g, " ").toLowerCase() === clean) ?? null;
 }
 
 export const getByName = query({
   args: { name: v.string() },
-  handler: async (ctx, { name }) => byName(ctx, name),
+  handler: async (ctx, { name }) => {
+    const userId = await requireUser(ctx);
+    return byName(ctx, userId, name);
+  },
 });
 
 export const getById = query({
   args: { id: v.id("companies") },
-  handler: async (ctx, { id }) => await ctx.db.get(id),
+  handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    return owned(await ctx.db.get(id), userId);
+  },
 });
 
 export const findOrCreate = mutation({
   args: { name: v.string() },
   handler: async (ctx, { name }) => {
-    const existing = await byName(ctx, name);
+    const userId = await requireUser(ctx);
+    const existing = await byName(ctx, userId, name);
     if (existing) return existing._id;
     return await ctx.db.insert("companies", {
+      userId,
       name: norm(name),
       visaSponsor: false,
       createdAt: new Date().toISOString(),
@@ -37,12 +54,17 @@ export const findOrCreate = mutation({
 
 export const create = mutation({
   args: { doc: v.any() },
-  handler: async (ctx, { doc }) => await ctx.db.insert("companies", doc),
+  handler: async (ctx, { doc }) => {
+    const userId = await requireUser(ctx);
+    return await ctx.db.insert("companies", { ...doc, userId });
+  },
 });
 
 export const update = mutation({
   args: { id: v.id("companies"), patch: v.any() },
   handler: async (ctx, { id, patch }) => {
+    const userId = await requireUser(ctx);
+    if (!owned(await ctx.db.get(id), userId)) throw new Error("Company not found");
     await ctx.db.patch(id, patch);
   },
 });
@@ -51,6 +73,8 @@ export const update = mutation({
 export const removeCascade = mutation({
   args: { id: v.id("companies") },
   handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    if (!owned(await ctx.db.get(id), userId)) return;
     const contacts = await ctx.db
       .query("contacts")
       .withIndex("by_company", (q) => q.eq("companyId", id))
@@ -63,7 +87,8 @@ export const removeCascade = mutation({
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db.query("companies").collect();
+    const userId = await requireUser(ctx);
+    const rows = await userCompanies(ctx, userId);
     return rows.map((c) => ({ id: c._id, name: c.name }));
   },
 });
@@ -73,7 +98,8 @@ export const list = query({
 export const listAll = query({
   args: {},
   handler: async (ctx) => {
-    const rows = await ctx.db.query("companies").collect();
+    const userId = await requireUser(ctx);
+    const rows = await userCompanies(ctx, userId);
     return rows.map((c) => ({ ...c, id: c._id }));
   },
 });
@@ -94,12 +120,13 @@ export const seedCatalog = mutation({
     ),
   },
   handler: async (ctx, { entries }) => {
-    const all = await ctx.db.query("companies").collect();
+    const userId = await requireUser(ctx);
+    const all = await userCompanies(ctx, userId);
     const byLocator = new Map<string, (typeof all)[number]>();
-    const byName = new Map<string, (typeof all)[number]>();
+    const byNameMap = new Map<string, (typeof all)[number]>();
     for (const c of all) {
       if (c.atsType && c.atsSlug) byLocator.set(`${c.atsType}:${c.atsSlug}`, c);
-      byName.set(c.name.trim().replace(/\s+/g, " ").toLowerCase(), c);
+      byNameMap.set(c.name.trim().replace(/\s+/g, " ").toLowerCase(), c);
     }
 
     const now = new Date().toISOString();
@@ -110,7 +137,7 @@ export const seedCatalog = mutation({
     for (const c of entries) {
       const existing =
         byLocator.get(`${c.atsType}:${c.atsSlug}`) ??
-        byName.get(c.name.trim().replace(/\s+/g, " ").toLowerCase());
+        byNameMap.get(c.name.trim().replace(/\s+/g, " ").toLowerCase());
 
       if (existing) {
         const notWatched = !existing.atsType || !existing.atsSlug;
@@ -131,6 +158,7 @@ export const seedCatalog = mutation({
       }
 
       await ctx.db.insert("companies", {
+        userId,
         name: c.name,
         domain: c.domain ?? undefined,
         roleTypes: c.roleTypes ?? undefined,
@@ -166,6 +194,8 @@ export const seedCatalog = mutation({
 export const jobCount = query({
   args: { id: v.id("companies") },
   handler: async (ctx, { id }) => {
+    const userId = await requireUser(ctx);
+    if (!owned(await ctx.db.get(id), userId)) return 0;
     const rows = await ctx.db
       .query("jobs")
       .withIndex("by_company", (q) => q.eq("companyId", id))
@@ -178,7 +208,8 @@ export const jobCount = query({
 export const withJobCounts = query({
   args: {},
   handler: async (ctx) => {
-    const companies = await ctx.db.query("companies").collect();
+    const userId = await requireUser(ctx);
+    const companies = await userCompanies(ctx, userId);
     const out = [];
     for (const c of companies) {
       const jobs = await ctx.db

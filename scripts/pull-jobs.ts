@@ -4,8 +4,8 @@ export {}; // module scope — dynamic-import-only files are otherwise global sc
 
 async function main() {
   // Dynamic imports so loadLocalEnv runs before the Convex client reads its URL.
-  const { loadLocalEnv } = await import("../lib/env");
-  loadLocalEnv();
+  const { prepareCli } = await import("../lib/env");
+  await prepareCli();
   const { pullAllJobs } = await import("../lib/jobs/pull");
 
   const res = await pullAllJobs();

@@ -3,6 +3,7 @@
 // encrypted settings row saved from Settings → API Keys. Values at rest are
 // AES-256-GCM sealed with the vault key (the launcher generates one on first
 // run), never plaintext — Convex only ever sees ciphertext.
+import { cacheScope } from "@/lib/convex/server";
 import { deleteSetting, getSetting, setSetting } from "@/lib/settings/store";
 import { decrypt, encrypt, hasVaultKey, type Sealed } from "@/lib/vault/crypto";
 
@@ -20,6 +21,8 @@ export type ServiceKey = (typeof SERVICE_KEYS)[number];
 const ROW_PREFIX = "apikey:";
 
 // Decrypted-value cache (globalThis: survives dev HMR, invalidated on write).
+// Keys are per user now — entries are namespaced by cacheScope() so users
+// sharing a process never see each other's decrypted keys.
 const g = globalThis as typeof globalThis & {
   __dsKeyCache?: Map<string, string | null>;
 };
@@ -28,7 +31,8 @@ function cache(): Map<string, string | null> {
 }
 
 async function savedKey(name: ServiceKey): Promise<string | null> {
-  if (cache().has(name)) return cache().get(name)!;
+  const scoped = `${await cacheScope()}:${name}`;
+  if (cache().has(scoped)) return cache().get(scoped)!;
   let value: string | null = null;
   const raw = await getSetting(`${ROW_PREFIX}${name}`);
   if (raw && hasVaultKey()) {
@@ -38,7 +42,7 @@ async function savedKey(name: ServiceKey): Promise<string | null> {
       value = null; // vault key changed → sealed value unreadable; treat as unset
     }
   }
-  cache().set(name, value);
+  cache().set(scoped, value);
   return value;
 }
 
@@ -67,10 +71,10 @@ export async function setKey(name: ServiceKey, value: string): Promise<void> {
   }
   const sealed = encrypt(value.trim());
   await setSetting(`${ROW_PREFIX}${name}`, JSON.stringify(sealed));
-  cache().set(name, value.trim());
+  cache().set(`${await cacheScope()}:${name}`, value.trim());
 }
 
 export async function clearKey(name: ServiceKey): Promise<void> {
   await deleteSetting(`${ROW_PREFIX}${name}`);
-  cache().set(name, null);
+  cache().set(`${await cacheScope()}:${name}`, null);
 }

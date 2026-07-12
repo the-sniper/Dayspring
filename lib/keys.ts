@@ -2,7 +2,7 @@
 // key through getKey(): environment first (power users, scripts), then the
 // encrypted settings row saved from Settings → API Keys. Values at rest are
 // AES-256-GCM sealed with the vault key (the launcher generates one on first
-// run), never plaintext.
+// run), never plaintext — Convex only ever sees ciphertext.
 import { deleteSetting, getSetting, setSetting } from "@/lib/settings/store";
 import { decrypt, encrypt, hasVaultKey, type Sealed } from "@/lib/vault/crypto";
 
@@ -27,10 +27,10 @@ function cache(): Map<string, string | null> {
   return (g.__dsKeyCache ??= new Map());
 }
 
-function savedKey(name: ServiceKey): string | null {
+async function savedKey(name: ServiceKey): Promise<string | null> {
   if (cache().has(name)) return cache().get(name)!;
   let value: string | null = null;
-  const raw = getSetting(`${ROW_PREFIX}${name}`);
+  const raw = await getSetting(`${ROW_PREFIX}${name}`);
   if (raw && hasVaultKey()) {
     try {
       value = decrypt(JSON.parse(raw) as Sealed);
@@ -43,34 +43,34 @@ function savedKey(name: ServiceKey): string | null {
 }
 
 // Env wins (explicit beats stored); otherwise the saved, encrypted value.
-export function getKey(name: ServiceKey): string | null {
-  return process.env[name] || savedKey(name);
+export async function getKey(name: ServiceKey): Promise<string | null> {
+  return process.env[name] || (await savedKey(name));
 }
 
-export function keySource(name: ServiceKey): "env" | "saved" | null {
+export async function keySource(name: ServiceKey): Promise<"env" | "saved" | null> {
   if (process.env[name]) return "env";
-  return savedKey(name) ? "saved" : null;
+  return (await savedKey(name)) ? "saved" : null;
 }
 
 // Is there a stored (Settings-saved) value, regardless of env override?
 // The UI needs this so a saved-but-masked key can still be cleared.
-export function hasSavedKey(name: ServiceKey): boolean {
-  return savedKey(name) !== null;
+export async function hasSavedKey(name: ServiceKey): Promise<boolean> {
+  return (await savedKey(name)) !== null;
 }
 
-export function setKey(name: ServiceKey, value: string): void {
+export async function setKey(name: ServiceKey, value: string): Promise<void> {
   if (!value.trim()) throw new Error("Key is empty.");
   if (!hasVaultKey()) {
     throw new Error(
-      "No vault key on this machine — launch Dayspring via Dayspring.app (it creates one) or add DAYSPRING_VAULT_KEY to .env.local.",
+      "No vault key configured — set DAYSPRING_VAULT_KEY in the environment (it encrypts saved keys at rest).",
     );
   }
   const sealed = encrypt(value.trim());
-  setSetting(`${ROW_PREFIX}${name}`, JSON.stringify(sealed));
+  await setSetting(`${ROW_PREFIX}${name}`, JSON.stringify(sealed));
   cache().set(name, value.trim());
 }
 
-export function clearKey(name: ServiceKey): void {
-  deleteSetting(`${ROW_PREFIX}${name}`);
+export async function clearKey(name: ServiceKey): Promise<void> {
+  await deleteSetting(`${ROW_PREFIX}${name}`);
   cache().set(name, null);
 }

@@ -26,7 +26,7 @@ export async function aiEditResumeAction(input: {
   jd?: string | null;
   instruction: string;
 }): Promise<AiEditResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
   if (!input.instruction?.trim()) {
     return { ok: false, error: "Tell the AI what to change first." };
   }
@@ -46,7 +46,7 @@ export async function auditResumeAction(input: {
   sourceText: string;
   doc: ResumeDocType;
 }): Promise<AuditResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
   try {
     const audit = await auditResumeDoc(input.sourceText, input.doc);
     return { ok: true, audit };
@@ -115,7 +115,7 @@ export async function categorizeSkillAction(input: {
   keyword: string;
   groups: string[];
 }): Promise<CategorizeSkillResult> {
-  if (!hasApiKey() && !hasOpenAIKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey() && !await hasOpenAIKey()) return { ok: false, error: NO_KEY };
   const keyword = input.keyword?.trim();
   if (!keyword) return { ok: false, error: "No keyword provided." };
   const groups = (input.groups ?? []).map((g) => g.trim()).filter(Boolean);
@@ -153,7 +153,7 @@ export async function rescoreResumeAction(input: {
   doc: ResumeDocType;
   jd: string;
 }): Promise<RescoreResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
   if (!input.jd?.trim()) {
     return { ok: false, error: "No job description to score against." };
   }

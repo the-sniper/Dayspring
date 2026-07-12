@@ -16,8 +16,8 @@ export const MODEL_CHEAP = "claude-haiku-4-5";
 // letters, outreach, nudges) when no OpenAI key is set.
 export const MODEL_PREMIUM = "claude-opus-4-8";
 
-export function hasApiKey(): boolean {
-  return !!getKey("ANTHROPIC_API_KEY");
+export async function hasApiKey(): Promise<boolean> {
+  return !!(await getKey("ANTHROPIC_API_KEY"));
 }
 
 // Env first, then the encrypted key saved in Settings → API Keys. The client
@@ -27,8 +27,8 @@ export function hasApiKey(): boolean {
 let client: Anthropic | null = null;
 let clientKey: string | null = null;
 
-export function getClient(): Anthropic {
-  const key = getKey("ANTHROPIC_API_KEY");
+export async function getClient(): Promise<Anthropic> {
+  const key = await getKey("ANTHROPIC_API_KEY");
   if (!key) throw new Error("ANTHROPIC_API_KEY is not set (env or Settings → API Keys).");
   if (!client || clientKey !== key) {
     client = new Anthropic({ apiKey: key });

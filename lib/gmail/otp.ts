@@ -46,7 +46,7 @@ export async function findRecentCodes({
   withinMinutes = 15,
   max = 12,
 }: { withinMinutes?: number; max?: number } = {}): Promise<VerificationCode[]> {
-  if (!hasGmail()) return [];
+  if (!await hasGmail()) return [];
 
   // Gmail query granularity is days/hours; we hard-filter by internalDate.
   const ids = await listMessages(

@@ -21,6 +21,32 @@ export function convex(): ConvexHttpClient {
 
 export { api };
 
+// ---- Convex File Storage (PDF bytes — no writable disk on hosted) ---------
+
+export async function uploadPdfToStorage(bytes: Uint8Array): Promise<string> {
+  const uploadUrl = await convex().mutation(api.resumes.generateUploadUrl, {});
+  const res = await fetch(uploadUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/pdf" },
+    body: bytes as BodyInit,
+  });
+  if (!res.ok) throw new Error(`Convex storage upload failed: HTTP ${res.status}`);
+  const { storageId } = (await res.json()) as { storageId: string };
+  return storageId;
+}
+
+export async function storageFileUrl(fileId: string): Promise<string | null> {
+  return await convex().query(api.resumes.fileUrl, { fileId: fileId as never });
+}
+
+export async function fetchStorageBytes(fileId: string): Promise<Buffer | null> {
+  const url = await storageFileUrl(fileId);
+  if (!url) return null;
+  const res = await fetch(url);
+  if (!res.ok) return null;
+  return Buffer.from(await res.arrayBuffer());
+}
+
 // Convex rejects explicit `null`/`undefined` for optional fields — strip them
 // so unset columns are simply absent (which reads back as null via `?? null` in
 // query mappers). Use when building any insert/patch doc from nullable inputs.

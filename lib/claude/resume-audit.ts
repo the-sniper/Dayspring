@@ -53,7 +53,7 @@ export async function auditResumeDoc(
   sourceText: string,
   doc: ResumeDocType,
 ): Promise<ResumeAudit> {
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: MODEL_SCORE,
     max_tokens: 16_000,
     system: [

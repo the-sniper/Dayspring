@@ -2,27 +2,28 @@
 // this. The ONE master password (Tsenta-style): set once, reused for every
 // generated site account.
 //
-// Master password lives in the local settings store (machine-local secret,
-// never sent to Convex). Site-credential rows live in Convex (passwords are
-// AES-256-GCM sealed at rest).
+// The master password lives in the Convex-backed settings store, AES-256-GCM
+// sealed with the env-only DAYSPRING_VAULT_KEY before it leaves the process —
+// Convex only stores ciphertext. Site-credential rows live in Convex too
+// (passwords sealed the same way).
 import { api, convex } from "@/lib/convex/server";
 import { getSetting, setSetting } from "@/lib/settings/store";
 import { decrypt, encrypt, hasVaultKey, type Sealed } from "@/lib/vault/crypto";
 
 const MASTER_KEY = "masterPasswordEnc";
 
-export function hasMasterPassword(): boolean {
-  return hasVaultKey() && getSetting(MASTER_KEY) !== null;
+export async function hasMasterPassword(): Promise<boolean> {
+  return hasVaultKey() && (await getSetting(MASTER_KEY)) !== null;
 }
 
-export function setMasterPassword(password: string): void {
+export async function setMasterPassword(password: string): Promise<void> {
   if (!password) throw new Error("Password required");
   const sealed = encrypt(password);
-  setSetting(MASTER_KEY, JSON.stringify(sealed));
+  await setSetting(MASTER_KEY, JSON.stringify(sealed));
 }
 
-export function getMasterPassword(): string | null {
-  const raw = getSetting(MASTER_KEY);
+export async function getMasterPassword(): Promise<string | null> {
+  const raw = await getSetting(MASTER_KEY);
   if (!raw) return null;
   return decrypt(JSON.parse(raw) as Sealed);
 }
@@ -61,7 +62,7 @@ export async function addCredential(args: {
   password?: string;
   notes?: string;
 }): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
-  const password = args.password ?? getMasterPassword();
+  const password = args.password ?? (await getMasterPassword());
   if (!password) {
     return { ok: false, error: "Set a master password first." };
   }

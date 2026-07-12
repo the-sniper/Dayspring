@@ -29,7 +29,7 @@ export type NetworkSearchResult =
 export async function searchNetworkAction(
   text: string,
 ): Promise<NetworkSearchResult> {
-  if (!hasHappenstanceKey()) return { ok: false, error: NO_KEY };
+  if (!await hasHappenstanceKey()) return { ok: false, error: NO_KEY };
   const query = text.trim();
   if (!query) return { ok: false, error: "Type who you're looking for." };
 
@@ -86,7 +86,7 @@ export type ResearchContactResult =
 export async function researchNetworkContactAction(
   contactId: string,
 ): Promise<ResearchContactResult> {
-  if (!hasHappenstanceKey()) return { ok: false, error: NO_KEY };
+  if (!await hasHappenstanceKey()) return { ok: false, error: NO_KEY };
   const contact = await convex().query(api.contacts.getById, { id: contactId as never });
   if (!contact) return { ok: false, error: "Contact not found" };
 
@@ -114,6 +114,6 @@ export async function researchNetworkContactAction(
 }
 
 export async function networkBalanceAction(): Promise<number | null> {
-  if (!hasHappenstanceKey()) return null;
+  if (!await hasHappenstanceKey()) return null;
   return (await getUsage()).balance;
 }

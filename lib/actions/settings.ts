@@ -11,7 +11,7 @@ export async function saveProfileAction(
 ): Promise<SaveProfileState> {
   const value = String(formData.get("profile") ?? "");
   const now = new Date().toISOString();
-  setSetting("profile", value);
+  await setSetting("profile", value);
   revalidatePath("/settings");
   return { savedAt: now };
 }
@@ -20,7 +20,7 @@ export async function saveProfileAction(
 export async function saveResumePathAction(
   path: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  setSetting("resumePath", path.trim());
+  await setSetting("resumePath", path.trim());
   revalidatePath("/settings");
   return { ok: true };
 }

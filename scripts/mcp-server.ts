@@ -236,7 +236,7 @@ async function main() {
       const { hasHappenstanceKey } = await import(
         "../lib/integrations/happenstance/client"
       );
-      if (!hasHappenstanceKey()) return text({ error: "HAPPENSTANCE_API_KEY not set" });
+      if (!await hasHappenstanceKey()) return text({ error: "HAPPENSTANCE_API_KEY not set" });
       const { searchNetwork } = await import(
         "../lib/integrations/happenstance/search"
       );
@@ -255,7 +255,7 @@ async function main() {
       const { hasHappenstanceKey } = await import(
         "../lib/integrations/happenstance/client"
       );
-      if (!hasHappenstanceKey()) return text({ error: "HAPPENSTANCE_API_KEY not set" });
+      if (!await hasHappenstanceKey()) return text({ error: "HAPPENSTANCE_API_KEY not set" });
       const { researchPerson } = await import(
         "../lib/integrations/happenstance/research"
       );
@@ -276,7 +276,7 @@ async function main() {
     },
     async ({ subjectType, id, deep }) => {
       const { hasApiKey } = await import("../lib/claude/client");
-      if (!hasApiKey()) return text({ error: "ANTHROPIC_API_KEY not set" });
+      if (!await hasApiKey()) return text({ error: "ANTHROPIC_API_KEY not set" });
       const { briefForJob, briefForCompany } = await import("../lib/research/core");
       const res =
         subjectType === "job"
@@ -294,7 +294,7 @@ async function main() {
     },
     async () => {
       const { hasGmail } = await import("../lib/integrations/gmail/client");
-      if (!hasGmail()) return text({ error: "Gmail not connected" });
+      if (!await hasGmail()) return text({ error: "Gmail not connected" });
       const { findRecentCodes } = await import("../lib/gmail/otp");
       return text(await findRecentCodes({ withinMinutes: 20 }));
     },

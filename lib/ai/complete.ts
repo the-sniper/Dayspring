@@ -60,7 +60,7 @@ export async function structuredComplete<T>({
   // of the cacheable prefix; on Claude it gets an explicit cache_control mark.
   cache?: string;
 }): Promise<{ data: T; usage: { input: number; output: number } }> {
-  if (hasOpenAIKey()) {
+  if (await hasOpenAIKey()) {
     return parseWithOpenAI({
       model: OPENAI_MODEL[tier],
       // Stable content first keeps OpenAI's automatic prefix cache warm.
@@ -85,7 +85,7 @@ export async function structuredComplete<T>({
       ]
     : system;
 
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: CLAUDE_MODEL[tier],
     max_tokens: maxTokens,
     // Opus prose quality depends on extended thinking (it's off when omitted).

@@ -15,7 +15,7 @@ export async function saveKeyAction(
   value: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    setKey(assertService(name), value);
+    await setKey(assertService(name), value);
     revalidatePath("/", "layout"); // key-gated features light up everywhere
     return { ok: true };
   } catch (err) {
@@ -27,7 +27,7 @@ export async function clearKeyAction(
   name: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   try {
-    clearKey(assertService(name));
+    await clearKey(assertService(name));
     revalidatePath("/", "layout");
     return { ok: true };
   } catch (err) {

@@ -14,7 +14,7 @@ import ResumePathForm from "@/components/resume-path-form";
 import VaultPanel from "@/components/vault-panel";
 import PageHeader from "@/components/page-header";
 import { dailyRunStatusAction } from "@/lib/actions/automation";
-import { listMasters } from "@/lib/resumes/core";
+import { listMasters, masterHasPdf } from "@/lib/resumes/core";
 import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
 import { MODEL_CHEAP, MODEL_SCORE, hasApiKey } from "@/lib/claude/client";
@@ -79,14 +79,14 @@ export default async function SettingsPage({
     listMasters(),
     listCredentials(),
   ]);
-  const profileValue = getSetting("profile") ?? "";
+  const profileValue = (await getSetting("profile")) ?? "";
   // Once a profile row exists, the Profile page owns this — the legacy
   // textarea would edit a dead settings blob.
   const hasProfileRow = profileCount > 0;
-  const hasKey = hasApiKey();
-  const hasOpenAI = hasOpenAIKey();
-  const gmail = getGmailConfig();
-  const resumePath = getSetting("resumePath") ?? "";
+  const hasKey = await hasApiKey();
+  const hasOpenAI = await hasOpenAIKey();
+  const gmail = await getGmailConfig();
+  const resumePath = (await getSetting("resumePath")) ?? "";
   const resumeExists = resumePath ? fs.existsSync(resumePath) : false;
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? "(not configured)";
 
@@ -150,11 +150,13 @@ export default async function SettingsPage({
           </section>
 
           <ApiKeysPanel
-            keys={KEY_ROWS.map((k) => ({
-              ...k,
-              source: keySource(k.name as Parameters<typeof keySource>[0]),
-              hasSaved: hasSavedKey(k.name as Parameters<typeof hasSavedKey>[0]),
-            }))}
+            keys={await Promise.all(
+              KEY_ROWS.map(async (k) => ({
+                ...k,
+                source: await keySource(k.name as Parameters<typeof keySource>[0]),
+                hasSaved: await hasSavedKey(k.name as Parameters<typeof hasSavedKey>[0]),
+              })),
+            )}
           />
 
           <MasterResumesPanel
@@ -163,7 +165,7 @@ export default async function SettingsPage({
               label: m.label,
               content: m.content,
               isPrimary: m.isPrimary,
-              isPdf: !!m.sourceFile?.endsWith(".pdf"),
+              isPdf: masterHasPdf(m),
               updatedAt: m.updatedAt,
             }))}
             hasApiKey={hasKey}
@@ -182,7 +184,7 @@ export default async function SettingsPage({
 
           <VaultPanel
             hasVaultKey={hasVaultKey()}
-            hasMaster={hasMasterPassword()}
+            hasMaster={await hasMasterPassword()}
             credentials={credentials}
           />
         </div>
@@ -230,13 +232,13 @@ export default async function SettingsPage({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Apollo</span>
-                  {hasApolloKey() ? (
+                  {await hasApolloKey() ? (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">Active</span>
                   ) : (
                     <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">Missing</span>
                   )}
                 </div>
-                {!hasApolloKey() && (
+                {!await hasApolloKey() && (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
                     Paste your <code className="text-rose-500">Apollo</code> key in API Keys to enable contact discovery.
                   </p>
@@ -246,13 +248,13 @@ export default async function SettingsPage({
               <div className="space-y-1.5">
                 <div className="flex items-center justify-between">
                   <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider">Happenstance</span>
-                  {hasHappenstanceKey() ? (
+                  {await hasHappenstanceKey() ? (
                     <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-emerald-600 dark:bg-emerald-900/20 dark:text-emerald-400">Active</span>
                   ) : (
                     <span className="rounded-full bg-rose-50 px-2 py-0.5 text-[10px] font-black uppercase tracking-tighter text-rose-600 dark:bg-rose-900/20 dark:text-rose-400">Missing</span>
                   )}
                 </div>
-                {!hasHappenstanceKey() && (
+                {!await hasHappenstanceKey() && (
                   <p className="text-[10px] font-medium text-muted-foreground leading-normal">
                     Paste your <code className="text-rose-500">Happenstance</code> key in API Keys to search your warm network.
                   </p>
@@ -280,7 +282,7 @@ export default async function SettingsPage({
                       Reconnect
                     </a>
                   </div>
-                ) : hasGmailEnv() ? (
+                ) : await hasGmailEnv() ? (
                   <a
                     href="/api/gmail/auth"
                     className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-[11px] font-bold text-primary-foreground transition-all hover:scale-105 active:scale-95"

@@ -83,9 +83,9 @@ export default async function DashboardPage() {
 
   const today = new Date().toISOString().slice(0, 10);
   const [dueOutreach, staleApps] = await Promise.all([outreachDue(), staleApplications()]);
-  const gmailConnected = hasGmail();
+  const gmailConnected = await hasGmail();
 
-  const lastDailyRun = getSetting("lastDailyRun") ?? undefined;
+  const lastDailyRun = (await getSetting("lastDailyRun")) ?? undefined;
 
   return (
     <div className="mx-auto max-w-6xl stagger-load">

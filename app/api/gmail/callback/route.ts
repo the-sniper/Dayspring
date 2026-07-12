@@ -16,8 +16,8 @@ export async function GET(req: Request) {
   if (err) fail(`Google said: ${err}`);
   if (!code) fail("Google returned no authorization code.");
 
-  const clientId = getKey("GOOGLE_CLIENT_ID");
-  const clientSecret = getKey("GOOGLE_CLIENT_SECRET");
+  const clientId = await getKey("GOOGLE_CLIENT_ID");
+  const clientSecret = await getKey("GOOGLE_CLIENT_SECRET");
   if (!clientId || !clientSecret) fail("Google client credentials are missing.");
 
   let refreshToken: string | null = null;
@@ -49,8 +49,8 @@ export async function GET(req: Request) {
     emailAddress?: string;
   };
 
-  setSetting("gmailRefreshToken", refreshToken!);
-  setSetting("gmailEmail", profile.emailAddress ?? "");
+  await setSetting("gmailRefreshToken", refreshToken!);
+  await setSetting("gmailEmail", profile.emailAddress ?? "");
 
   redirect(`/settings?gmail=connected${profile.emailAddress ? `+as+${encodeURIComponent(profile.emailAddress)}` : ""}`);
 }

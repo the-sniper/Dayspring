@@ -236,7 +236,7 @@ export async function pullAllJobs(): Promise<PullResult> {
   // Cheap batched classify for this run's titles the regexes missed.
   // Non-fatal: no key or a failed call just leaves roleType null (settable
   // manually on the job detail page).
-  if (hasApiKey() && result.newJobIds.length > 0) {
+  if (await hasApiKey() && result.newJobIds.length > 0) {
     try {
       const untagged = await convex().query(api.jobs.untaggedAmong, {
         ids: result.newJobIds as never,

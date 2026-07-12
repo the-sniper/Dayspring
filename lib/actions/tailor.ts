@@ -10,7 +10,7 @@ import { latestCompanyBrief } from "@/lib/research/core";
 export async function tailorJobAction(
   jobId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return { ok: false, error: "Needs ANTHROPIC_API_KEY in .env.local (see Settings)." };
   }
   const profile = await getProfile();

@@ -1,64 +1,43 @@
-// Local key-value settings store (replaces the old SQLite `settings` table).
-// Kept OFF Convex on purpose: it holds machine-local secrets — encrypted API
-// keys (apikey:*), the sealed vault master password, and Gmail OAuth tokens —
-// which should never leave the machine for Convex Cloud. Values that are
-// sensitive are already sealed (AES-256-GCM) by their callers before landing
-// here, so the file itself stores opaque strings, exactly as the DB row did.
+// Key-value settings store, backed by the Convex `settings` table so hosted
+// deployments (read-only disk) work. Sensitive values are AES-256-GCM sealed
+// by their callers (lib/keys.ts, lib/vault) BEFORE landing here — Convex only
+// ever stores opaque ciphertext for those rows; the vault key stays in env.
 //
-// Synchronous by design so lib/keys.ts, the vault, and the Gmail client keep
-// their sync signatures (no async ripple into lib/claude / lib/ai).
-import fs from "node:fs";
-import path from "node:path";
+// Reads are cached briefly (per process, on globalThis so dev HMR keeps it) —
+// a page render hits getSetting many times and shouldn't pay a Convex
+// round-trip for each. Writes update the cache immediately.
+import { api, convex } from "@/lib/convex/server";
 
-type Store = Record<string, { value: string; updatedAt: string }>;
+type CacheEntry = { value: string | null; at: number };
 
-function filePath(): string {
-  return (
-    process.env.DAYSPRING_SETTINGS_PATH ??
-    path.join(process.cwd(), "data", "settings.json")
-  );
+const TTL_MS = 15_000;
+
+const g = globalThis as typeof globalThis & {
+  __dsSettingsCache?: Map<string, CacheEntry>;
+};
+
+function cache(): Map<string, CacheEntry> {
+  return (g.__dsSettingsCache ??= new Map());
 }
 
-const g = globalThis as typeof globalThis & { __dsSettings?: Store };
-
-function load(): Store {
-  if (g.__dsSettings) return g.__dsSettings;
-  let store: Store = {};
-  try {
-    const raw = fs.readFileSync(filePath(), "utf-8");
-    store = JSON.parse(raw) as Store;
-  } catch {
-    store = {};
-  }
-  g.__dsSettings = store;
-  return store;
+export async function getSetting(key: string): Promise<string | null> {
+  const hit = cache().get(key);
+  if (hit && Date.now() - hit.at < TTL_MS) return hit.value;
+  const value = await convex().query(api.settings.get, { key });
+  cache().set(key, { value, at: Date.now() });
+  return value;
 }
 
-function persist(store: Store): void {
-  const p = filePath();
-  fs.mkdirSync(path.dirname(p), { recursive: true });
-  fs.writeFileSync(p, JSON.stringify(store, null, 2));
+export async function setSetting(key: string, value: string): Promise<void> {
+  await convex().mutation(api.settings.set, { key, value });
+  cache().set(key, { value, at: Date.now() });
 }
 
-export function getSetting(key: string): string | null {
-  const row = load()[key];
-  return row ? row.value : null;
+export async function deleteSetting(key: string): Promise<void> {
+  await convex().mutation(api.settings.remove, { key });
+  cache().set(key, { value: null, at: Date.now() });
 }
 
-export function setSetting(key: string, value: string): void {
-  const store = load();
-  store[key] = { value, updatedAt: new Date().toISOString() };
-  persist(store);
-}
-
-export function deleteSetting(key: string): void {
-  const store = load();
-  if (key in store) {
-    delete store[key];
-    persist(store);
-  }
-}
-
-export function hasSetting(key: string): boolean {
-  return getSetting(key) !== null;
+export async function hasSetting(key: string): Promise<boolean> {
+  return (await getSetting(key)) !== null;
 }

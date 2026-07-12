@@ -96,7 +96,7 @@ export async function getDefaultProfile(): Promise<ProfileRow | null> {
 }
 
 async function seedFromLegacy(): Promise<ProfileRow | null> {
-  const legacy = getSetting("profile") ?? "";
+  const legacy = (await getSetting("profile")) ?? "";
   if (!legacy.trim() || legacy.startsWith("REPLACE ME")) return null;
   const now = new Date().toISOString();
   const id = await convex().mutation(api.profiles.insert, {

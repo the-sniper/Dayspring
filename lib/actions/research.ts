@@ -15,7 +15,7 @@ export async function researchAction(
   id: string,
   deep = false,
 ): Promise<ResearchActionResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!(await hasApiKey())) return { ok: false, error: NO_KEY };
   const res =
     subjectType === "job"
       ? await briefForJob(id, deep)

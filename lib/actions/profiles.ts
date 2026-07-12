@@ -99,7 +99,7 @@ export type ConsolidateResult =
   | { ok: false; error: string };
 
 export async function consolidateAction(): Promise<ConsolidateResult> {
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return { ok: false, error: "Consolidation needs your Anthropic key (Settings → API Keys)." };
   }
   const masters = await listMasters();

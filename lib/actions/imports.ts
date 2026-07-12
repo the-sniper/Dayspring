@@ -44,7 +44,7 @@ export async function parsePasteAction(
   text: string,
 ): Promise<ParseActionResult> {
   if (!text.trim()) return { ok: false, error: "Paste some text first." };
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return {
       ok: false,
       error: "Paste parsing needs ANTHROPIC_API_KEY in .env.local (see Settings).",

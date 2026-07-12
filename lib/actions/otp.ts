@@ -8,7 +8,7 @@ export type OtpActionResult =
   | { ok: false; error: string };
 
 export async function fetchRecentCodesAction(): Promise<OtpActionResult> {
-  if (!hasGmail()) {
+  if (!await hasGmail()) {
     return { ok: false, error: "Connect Gmail in Settings to read verification codes." };
   }
   try {

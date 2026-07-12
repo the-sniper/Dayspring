@@ -1,10 +1,10 @@
-// Streams a generated resume from data/resumes/ (gitignored, not under
-// public/). PDF by default; ?format=docx builds an ATS-safe Word document on
-// the fly from the stored ResumeDoc JSON (works for all past generations — no
-// schema change). Local single-user app — no auth layer by design.
+// Streams a generated resume PDF. New generations live in Convex File
+// Storage (works on hosted deployments); legacy rows fall back to the old
+// local pdfPath. ?format=docx builds an ATS-safe Word document on the fly
+// from the stored ResumeDoc JSON (works for all past generations).
 import fs from "node:fs";
 import path from "node:path";
-import { api, convex } from "@/lib/convex/server";
+import { api, convex, fetchStorageBytes } from "@/lib/convex/server";
 import { renderResumeDocx } from "@/lib/resumes/docx";
 import { normalizeStyle } from "@/lib/resumes/style";
 import type { ResumeDocType } from "@/lib/claude/resume";
@@ -18,6 +18,12 @@ export async function GET(
 
   const row = await convex().query(api.resumes.getGenerated, { id: id as never });
   if (!row) return new Response("Not found", { status: 404 });
+
+  const baseName = row.fileName
+    ? path.basename(row.fileName, ".pdf")
+    : row.pdfPath
+      ? path.basename(row.pdfPath, ".pdf")
+      : `resume-${row._id}`;
 
   if (new URL(req.url).searchParams.get("format") === "docx") {
     let doc: ResumeDocType;
@@ -33,27 +39,35 @@ export async function GET(
       style = null;
     }
     const buffer = await renderResumeDocx(doc, normalizeStyle(style));
-    const base = row.pdfPath
-      ? path.basename(row.pdfPath, ".pdf")
-      : `resume-${row._id}`;
     return new Response(new Uint8Array(buffer), {
       headers: {
         "Content-Type":
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        "Content-Disposition": `attachment; filename="${base}.docx"`,
+        "Content-Disposition": `attachment; filename="${baseName}.docx"`,
         "Cache-Control": "no-store",
       },
     });
   }
 
-  if (!row.pdfPath || !fs.existsSync(row.pdfPath)) {
-    return new Response("Not found", { status: 404 });
-  }
-  return new Response(new Uint8Array(fs.readFileSync(row.pdfPath)), {
+  const pdf = await generatedPdfBytes(row);
+  if (!pdf) return new Response("Not found", { status: 404 });
+  return new Response(new Uint8Array(pdf), {
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `inline; filename="${path.basename(row.pdfPath)}"`,
+      "Content-Disposition": `inline; filename="${baseName}.pdf"`,
       "Cache-Control": "no-store",
     },
   });
+}
+
+async function generatedPdfBytes(row: {
+  pdfFileId?: string | null;
+  pdfPath?: string | null;
+}): Promise<Buffer | null> {
+  if (row.pdfFileId) {
+    const bytes = await fetchStorageBytes(String(row.pdfFileId));
+    if (bytes) return bytes;
+  }
+  if (row.pdfPath && fs.existsSync(row.pdfPath)) return fs.readFileSync(row.pdfPath);
+  return null;
 }

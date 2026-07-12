@@ -14,7 +14,7 @@ const CONCURRENCY = 3;
 export async function getProfile(): Promise<string | null> {
   const p = await getDefaultProfile();
   if (p && p.content.trim()) return profileText(p);
-  const value = getSetting("profile")?.trim() ?? "";
+  const value = (await getSetting("profile"))?.trim() ?? "";
   if (!value || value.startsWith("REPLACE ME")) return null;
   return value;
 }

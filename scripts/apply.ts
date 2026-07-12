@@ -89,7 +89,7 @@ type Deps = {
 async function ensureTosAck(host: string): Promise<boolean> {
   const { getSetting, setSetting } = await import("../lib/settings/store");
   const tosKey = `tos:${host}`;
-  if (getSetting(tosKey) !== null) return true;
+  if ((await getSetting(tosKey)) !== null) return true;
 
   console.log(`\n⚠  FIRST RUN against ${host}`);
   console.log(`   Automating form-fill / submit on a third-party ATS can violate its`);
@@ -101,7 +101,7 @@ async function ensureTosAck(host: string): Promise<boolean> {
     console.log("   Not acknowledged — skipping this job.");
     return false;
   }
-  setSetting(tosKey, new Date().toISOString());
+  await setSetting(tosKey, new Date().toISOString());
   return true;
 }
 
@@ -239,7 +239,7 @@ async function runWorkdayAssist(
   const { hasGmail } = await import("../lib/integrations/gmail/client");
   const { waitForWorkdayCode } = await import("../lib/apply/workday-signup");
 
-  if (!hasVaultKey() || !hasMasterPassword()) {
+  if (!hasVaultKey() || !await hasMasterPassword()) {
     console.log(`\n   ⚠ Vault/master password not set — set them in Settings to use the`);
     console.log(`     one-password + auto-OTP flow. Continuing manually.`);
     return;
@@ -252,7 +252,7 @@ async function runWorkdayAssist(
     console.log(`      → Sign in with these in the browser.`);
     await appendApplyLog(jobId, `surfaced vaulted credential for ${host}`);
   } else {
-    const master = getMasterPassword()!;
+    const master = (await getMasterPassword())!;
     const username = email ?? (await prompt(`\n   Email to register with: `));
     console.log(`\n   🆕 No ${host} account yet. Create one in the browser:`);
     console.log(`      Email:    ${username}`);
@@ -265,7 +265,7 @@ async function runWorkdayAssist(
   }
 
   // Auto-OTP.
-  if (hasGmail()) {
+  if (await hasGmail()) {
     const wantOtp = await prompt(
       `\n   Trigger the verification email in the browser, then press Enter and I'll read the code from Gmail (or 's' to skip): `,
     );

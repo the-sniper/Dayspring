@@ -4,6 +4,7 @@ import { execFile } from "node:child_process";
 import path from "node:path";
 import { promisify } from "node:util";
 import { revalidatePath } from "next/cache";
+import { isHosted } from "@/lib/hosted";
 import { getSetting } from "@/lib/settings/store";
 
 const run = promisify(execFile);
@@ -19,19 +20,28 @@ export type DailyRunStatus = {
 
 export async function dailyRunStatusAction(): Promise<DailyRunStatus> {
   let installed = false;
-  try {
-    await run("launchctl", ["print", `gui/${process.getuid!()}/com.dayspring.daily`]);
-    installed = true;
-  } catch {
-    installed = false;
+  if (!isHosted()) {
+    try {
+      await run("launchctl", ["print", `gui/${process.getuid!()}/com.dayspring.daily`]);
+      installed = true;
+    } catch {
+      installed = false;
+    }
   }
-  const lastRun = getSetting("lastDailyRun");
+  const lastRun = await getSetting("lastDailyRun");
   return { installed, lastRun };
 }
 
 export async function installDailyAction(): Promise<
   { ok: true } | { ok: false; error: string }
 > {
+  if (isHosted()) {
+    return {
+      ok: false,
+      error:
+        "The daily agent installs on the machine running Dayspring — run the app locally (or schedule `npm run daily` on your own machine) to use it.",
+    };
+  }
   try {
     await run("/bin/sh", [path.join(process.cwd(), "scripts", "cron-install.sh")]);
     revalidatePath("/settings");

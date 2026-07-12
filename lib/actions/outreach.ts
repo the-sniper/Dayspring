@@ -15,14 +15,14 @@ import {
 const NO_KEY = "Drafting needs ANTHROPIC_API_KEY in .env.local (see Settings).";
 
 export async function draftOutreachAction(contactId: string, jobId: string) {
-  if (!hasApiKey()) return { ok: false as const, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false as const, error: NO_KEY };
   const res = await createDraft(contactId, jobId);
   revalidatePath("/outreach");
   return res;
 }
 
 export async function draftNudgeAction(originalId: string) {
-  if (!hasApiKey()) return { ok: false as const, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false as const, error: NO_KEY };
   const res = await createNudgeDraft(originalId);
   revalidatePath("/outreach");
   return res;

@@ -184,14 +184,14 @@ export default async function CompanyEditPage({
               companyId={id}
               defaultTitles={defaultTitles(company.roleTypes)}
               savedContacts={savedContacts}
-              hasApolloKey={hasApolloKey()}
+              hasApolloKey={await hasApolloKey()}
               domainSet={!!company.domain}
             />
 
             <div className="mt-6 border-t border-border pt-6">
               <NetworkFinder
                 companyId={id}
-                hasKey={hasHappenstanceKey()}
+                hasKey={await hasHappenstanceKey()}
                 seedQuery={`who do I know at ${company.name}?`}
               />
             </div>

@@ -53,8 +53,8 @@ async function main() {
   }
 
   let profileCreated = false;
-  if (getSetting("profile") === null) {
-    setSetting(
+  if ((await getSetting("profile")) === null) {
+    await setSetting(
       "profile",
       "REPLACE ME: paste your resume and preferences (role types, locations, visa needs, comp floor) in Settings.",
     );

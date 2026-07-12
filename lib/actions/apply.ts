@@ -29,7 +29,7 @@ export async function acceptTosAction(
   host: string,
   jobId: string,
 ): Promise<StartResult> {
-  recordTosAck(host);
+  await recordTosAck(host);
   return startSession(jobId);
 }
 

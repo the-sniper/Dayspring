@@ -20,8 +20,8 @@ export const OPENAI_CHEAP = process.env.OPENAI_MODEL_CHEAP || "gpt-5.6-luna";
 // Strong-but-cost-aware default; bump to "gpt-5.6-sol" for flagship quality.
 export const OPENAI_PREMIUM = process.env.OPENAI_MODEL_PREMIUM || "gpt-5.6-terra";
 
-export function hasOpenAIKey(): boolean {
-  return !!getKey("OPENAI_API_KEY");
+export async function hasOpenAIKey(): Promise<boolean> {
+  return !!(await getKey("OPENAI_API_KEY"));
 }
 
 // Env first, then the encrypted Settings key. Rebuilt if the key rotates
@@ -29,8 +29,8 @@ export function hasOpenAIKey(): boolean {
 let client: OpenAI | null = null;
 let clientKey: string | null = null;
 
-export function getOpenAIClient(): OpenAI {
-  const key = getKey("OPENAI_API_KEY");
+export async function getOpenAIClient(): Promise<OpenAI> {
+  const key = await getKey("OPENAI_API_KEY");
   if (!key) throw new Error("OPENAI_API_KEY is not set (env or Settings → API Keys).");
   if (!client || clientKey !== key) {
     client = new OpenAI({ apiKey: key });
@@ -78,7 +78,7 @@ export async function parseWithOpenAI<T>({
   maxOutputTokens: number;
   effort?: ReasoningEffort;
 }): Promise<{ data: T; usage: { input: number; output: number } }> {
-  const response = await getOpenAIClient().responses.parse({
+  const response = await (await getOpenAIClient()).responses.parse({
     model,
     reasoning: { effort },
     max_output_tokens: maxOutputTokens + reasoningHeadroom(effort),

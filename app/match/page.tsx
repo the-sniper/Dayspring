@@ -53,7 +53,7 @@ export default async function MatchPage() {
           profiles={profiles}
           masters={masters}
           savedJobs={savedJobs}
-          hasApiKey={hasApiKey()}
+          hasApiKey={await hasApiKey()}
         />
       </section>
     </div>

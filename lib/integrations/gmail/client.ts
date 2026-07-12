@@ -12,22 +12,22 @@ export type GmailConfig = {
   email: string | null;
 };
 
-export function getGmailConfig(): GmailConfig | null {
-  const clientId = getKey("GOOGLE_CLIENT_ID");
-  const clientSecret = getKey("GOOGLE_CLIENT_SECRET");
+export async function getGmailConfig(): Promise<GmailConfig | null> {
+  const clientId = await getKey("GOOGLE_CLIENT_ID");
+  const clientSecret = await getKey("GOOGLE_CLIENT_SECRET");
   if (!clientId || !clientSecret) return null;
-  const refreshToken = getSetting("gmailRefreshToken");
+  const refreshToken = await getSetting("gmailRefreshToken");
   if (!refreshToken) return null;
-  return { clientId, clientSecret, refreshToken, email: getSetting("gmailEmail") };
+  return { clientId, clientSecret, refreshToken, email: await getSetting("gmailEmail") };
 }
 
-export function hasGmail(): boolean {
-  return getGmailConfig() !== null;
+export async function hasGmail(): Promise<boolean> {
+  return (await getGmailConfig()) !== null;
 }
 
 // Are OAuth client credentials available (env or Settings → API Keys)?
-export function hasGmailEnv(): boolean {
-  return !!getKey("GOOGLE_CLIENT_ID") && !!getKey("GOOGLE_CLIENT_SECRET");
+export async function hasGmailEnv(): Promise<boolean> {
+  return !!(await getKey("GOOGLE_CLIENT_ID")) && !!(await getKey("GOOGLE_CLIENT_SECRET"));
 }
 
 // Access-token cache survives HMR via globalThis, same trick as lib/db.
@@ -38,7 +38,7 @@ const globalForGmail = globalThis as unknown as {
 async function getAccessToken(): Promise<string> {
   const cached = globalForGmail.gmailToken;
   if (cached && cached.expiresAt > Date.now() + 60_000) return cached.token;
-  const config = getGmailConfig();
+  const config = await getGmailConfig();
   if (!config) throw new Error("Gmail is not connected — use Connect Gmail in Settings.");
   const { accessToken, expiresIn } = await refreshAccessToken(config);
   globalForGmail.gmailToken = {
@@ -106,7 +106,7 @@ export async function sendEmail(args: {
   body: string;
   threadId?: string | null;
 }): Promise<{ id: string; threadId: string }> {
-  const config = getGmailConfig();
+  const config = await getGmailConfig();
   const from = config?.email ?? "me";
   const raw = toBase64Url(
     buildMime({ from, to: args.to, subject: args.subject, body: args.body }),

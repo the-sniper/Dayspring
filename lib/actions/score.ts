@@ -15,7 +15,7 @@ export async function scoreJobAction(
   jobId: string,
   force = false,
 ): Promise<ScoreOneResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
   const res = await scoreOneJob(jobId, force);
   revalidatePath("/", "layout");
   return res;
@@ -26,7 +26,7 @@ export type ScoreBatchActionResult =
   | { ok: false; error: string };
 
 export async function scoreUnscoredAction(): Promise<ScoreBatchActionResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
   const res = await scoreUnscored();
   if ("profileMissing" in res) {
     return { ok: false, error: "No profile yet — paste your resume in Settings first." };

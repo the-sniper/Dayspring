@@ -59,7 +59,7 @@ async function extractOnce(
           "\n",
         )}\n\nProduce the corrected, COMPLETE transcription of the whole resume.`
     : "Transcribe this resume into markdown.";
-  const response = await getClient().messages.create({
+  const response = await (await getClient()).messages.create({
     model: MODEL_PREMIUM,
     max_tokens: 16_000,
     thinking: { type: "adaptive" },
@@ -81,7 +81,7 @@ async function auditExtraction(
   pdfBase64: string,
   markdown: string,
 ): Promise<z.infer<typeof ExtractionAudit>> {
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: MODEL_PREMIUM,
     max_tokens: 8000,
     thinking: { type: "adaptive" },
@@ -272,7 +272,7 @@ export async function generateResume(
     ? `\n\nCOMPANY RESEARCH (verified facts about the employer — context only; the resume content still comes solely from the masters):\n${brief.slice(0, 3000)}`
     : "";
 
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: MODEL_PREMIUM,
     max_tokens: 16_000,
     // Opus 4.8 runs WITHOUT thinking when the field is omitted — set it.

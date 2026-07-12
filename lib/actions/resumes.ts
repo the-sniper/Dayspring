@@ -1,12 +1,11 @@
 "use server";
 
-import path from "node:path";
 import { revalidatePath } from "next/cache";
-import { api, convex } from "@/lib/convex/server";
+import { api, convex, uploadPdfToStorage } from "@/lib/convex/server";
 import { hasApiKey } from "@/lib/claude/client";
 import type { ResumeDocType } from "@/lib/claude/resume";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
-import { writeResumePdf } from "@/lib/resumes/pdf";
+import { renderResumePdfBuffer } from "@/lib/resumes/pdf";
 import { normalizeStyle, type ResumeStyle } from "@/lib/resumes/style";
 import {
   deleteMaster,
@@ -41,7 +40,7 @@ export async function uploadMasterResumeAction(
   if (file.size > MAX_UPLOAD) {
     return { ok: false, error: "File too large (10 MB max)." };
   }
-  if (file.name.toLowerCase().endsWith(".pdf") && !hasApiKey()) {
+  if (file.name.toLowerCase().endsWith(".pdf") && !await hasApiKey()) {
     return {
       ok: false,
       error: "PDF parsing needs your Anthropic key (Settings → API Keys) — or upload .md/.txt instead.",
@@ -76,7 +75,7 @@ export type ReparseResult =
   | { ok: false; error: string };
 
 export async function reparseMasterAction(id: string): Promise<ReparseResult> {
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return { ok: false, error: "Parsing needs your Anthropic key (Settings → API Keys)." };
   }
   try {
@@ -139,7 +138,7 @@ export type GenerateResumeResult =
 export async function generateResumeAction(
   jobId: string,
 ): Promise<GenerateResumeResult> {
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return { ok: false, error: "Resume generation needs ANTHROPIC_API_KEY (see Settings)." };
   }
   try {
@@ -210,8 +209,9 @@ export type SaveGeneratedResult =
   | { ok: true; id: string }
   | { ok: false; error: string };
 
-// Persist studio edits: doc + style JSON, plus a re-rendered PDF at the same
-// path so apply-assist keeps attaching the current version.
+// Persist studio edits: doc + style JSON, plus a re-rendered PDF uploaded to
+// Convex File Storage so downloads and apply-assist keep serving the current
+// version (hosted deployments have no writable disk).
 export async function saveGeneratedResumeAction(
   id: string,
   doc: ResumeDocType,
@@ -221,15 +221,15 @@ export async function saveGeneratedResumeAction(
   if (!row) return { ok: false, error: "Generation not found." };
 
   try {
-    const pdfPath =
-      row.pdfPath ?? path.join(process.cwd(), "data", "resumes", `resume-${id}.pdf`);
-    await writeResumePdf(doc, normalizeStyle(style), pdfPath);
+    const buffer = await renderResumePdfBuffer(doc, normalizeStyle(style));
+    const pdfFileId = await uploadPdfToStorage(buffer);
     await convex().mutation(api.resumes.patchGenerated, {
       id: id as never,
       patch: {
         content: JSON.stringify(doc),
         style: JSON.stringify(style),
-        pdfPath,
+        pdfFileId,
+        fileName: row.fileName ?? `resume-${id}.pdf`,
         tailoringNote: doc.tailoring_note,
       },
     });

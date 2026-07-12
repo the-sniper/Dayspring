@@ -35,7 +35,7 @@ export default async function NetworkPage() {
 
       {/* Primary: free local filter + AI ask over saved/imported contacts */}
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-        <ContactSearch initial={initial} total={total} hasApiKey={hasApiKey()} />
+        <ContactSearch initial={initial} total={total} hasApiKey={await hasApiKey()} />
       </section>
 
       {/* Find NEW people — Apollo cold-contact discovery from a plain query */}
@@ -48,8 +48,8 @@ export default async function NetworkPage() {
         </div>
         <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
           <NewPeopleFinder
-            hasApolloKey={hasApolloKey()}
-            hasApiKey={hasApiKey()}
+            hasApolloKey={await hasApolloKey()}
+            hasApiKey={await hasApiKey()}
           />
         </div>
       </section>
@@ -77,7 +77,7 @@ export default async function NetworkPage() {
             contacts above. If results come back empty, connect your accounts
             there first.
           </p>
-          <NetworkFinder companyId={null} hasKey={hasHappenstanceKey()} />
+          <NetworkFinder companyId={null} hasKey={await hasHappenstanceKey()} />
         </div>
       </section>
     </div>

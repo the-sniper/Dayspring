@@ -160,7 +160,10 @@ export default defineSchema({
   masterResumes: defineTable({
     label: v.string(),
     content: v.string(),
+    // Legacy local-disk path (pre-hosting); new uploads store the original PDF
+    // in Convex File Storage via sourceFileId.
     sourceFile: v.optional(v.string()),
+    sourceFileId: v.optional(v.id("_storage")),
     isPrimary: v.boolean(),
     createdAt: v.string(),
     updatedAt: v.string(),
@@ -169,7 +172,11 @@ export default defineSchema({
   generatedResumes: defineTable({
     jobId: v.id("jobs"),
     content: v.string(),
+    // Legacy local-disk path (pre-hosting); new renders store the PDF in
+    // Convex File Storage (pdfFileId) with fileName for Content-Disposition.
     pdfPath: v.optional(v.string()),
+    pdfFileId: v.optional(v.id("_storage")),
+    fileName: v.optional(v.string()),
     style: v.optional(v.string()),
     audit: v.optional(v.string()),
     tailoringNote: v.optional(v.string()),
@@ -195,7 +202,14 @@ export default defineSchema({
     createdAt: v.string(),
     updatedAt: v.string(),
   }),
-  // NOTE: the key-value `settings` store lives locally (lib/settings/store.ts),
-  // not in Convex, so machine-local secrets (API keys, vault master password,
-  // Gmail tokens) never leave the machine.
+  // Key-value settings (profile blob, Gmail tokens, sealed API keys, ToS acks,
+  // lastDailyRun). Sensitive values are AES-256-GCM sealed by their callers
+  // (lib/keys.ts, lib/vault) BEFORE landing here — Convex only ever stores
+  // opaque ciphertext for those rows. Hosted deployments (read-only disk) need
+  // this in the cloud; DAYSPRING_VAULT_KEY stays in env and never leaves it.
+  settings: defineTable({
+    key: v.string(),
+    value: v.string(),
+    updatedAt: v.string(),
+  }).index("by_key", ["key"]),
 });

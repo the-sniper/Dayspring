@@ -214,7 +214,7 @@ export async function alignResume(
     ? `\n\nSURFACE THESE JD KEYWORDS where the source resume genuinely supports them (never invent): ${opts.keywords.join(", ")}.`
     : "";
 
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: MODEL_PREMIUM,
     max_tokens: 16_000,
     thinking: { type: "adaptive" },

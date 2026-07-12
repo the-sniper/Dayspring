@@ -43,7 +43,7 @@ export async function generateBrief({
   deep?: boolean;
 }): Promise<ResearchBrief> {
   const model = deep ? MODEL_PREMIUM : MODEL_SCORE;
-  const response = await getClient().messages.create({
+  const response = await (await getClient()).messages.create({
     model,
     max_tokens: 4000,
     thinking: { type: "adaptive" },

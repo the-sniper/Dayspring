@@ -16,6 +16,7 @@ import type * as outreach from "../outreach.js";
 import type * as profiles from "../profiles.js";
 import type * as research from "../research.js";
 import type * as resumes from "../resumes.js";
+import type * as settings from "../settings.js";
 import type * as stageEvents from "../stageEvents.js";
 import type * as vault from "../vault.js";
 
@@ -34,6 +35,7 @@ declare const fullApi: ApiFromModules<{
   profiles: typeof profiles;
   research: typeof research;
   resumes: typeof resumes;
+  settings: typeof settings;
   stageEvents: typeof stageEvents;
   vault: typeof vault;
 }>;

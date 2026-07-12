@@ -80,8 +80,8 @@ async function main() {
   const profile = (await profileRes.json()) as { emailAddress?: string };
 
   const { setSetting } = await import("../lib/settings/store");
-  setSetting("gmailRefreshToken", tokens.refreshToken);
-  setSetting("gmailEmail", profile.emailAddress ?? "");
+  await setSetting("gmailRefreshToken", tokens.refreshToken);
+  await setSetting("gmailEmail", profile.emailAddress ?? "");
 
   console.log(`\nConnected as ${profile.emailAddress} ✓`);
   console.log("Gmail send + reply detection + emailed digest are now live.");

@@ -587,7 +587,11 @@ export const deleteCascade = mutation({
       await ctx.db.query("generatedResumes").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
       await ctx.db.query("jobDescriptions").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
     ];
-    for (const group of kids) for (const row of group) await ctx.db.delete(row._id);
+    for (const group of kids)
+      for (const row of group) {
+        if ("pdfFileId" in row && row.pdfFileId) await ctx.storage.delete(row.pdfFileId);
+        await ctx.db.delete(row._id);
+      }
     await ctx.db.delete(id);
   },
 });
@@ -608,7 +612,11 @@ export const wipeAllBatch = mutation({
         await ctx.db.query("generatedResumes").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
         await ctx.db.query("jobDescriptions").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
       ];
-      for (const group of kids) for (const row of group) await ctx.db.delete(row._id);
+      for (const group of kids)
+        for (const row of group) {
+          if ("pdfFileId" in row && row.pdfFileId) await ctx.storage.delete(row.pdfFileId);
+          await ctx.db.delete(row._id);
+        }
       await ctx.db.delete(j._id);
     }
     return { deleted: jobs.length, done: jobs.length < batch };

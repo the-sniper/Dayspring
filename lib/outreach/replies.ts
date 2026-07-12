@@ -10,8 +10,8 @@ import { markReplied } from "@/lib/outreach/core";
 // send, from someone who isn't us, counts as a reply. Runs from the daily
 // script and the "Check replies" button.
 export async function checkReplies(): Promise<{ checked: number; found: number }> {
-  if (!hasGmail()) return { checked: 0, found: 0 };
-  const me = (getGmailConfig()?.email ?? "").toLowerCase();
+  if (!await hasGmail()) return { checked: 0, found: 0 };
+  const me = ((await getGmailConfig())?.email ?? "").toLowerCase();
 
   const rows = await convex().query(api.outreach.sentUnreplied, {});
 

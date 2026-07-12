@@ -29,7 +29,7 @@ export async function parsePaste(rawText: string): Promise<PasteParse> {
   const truncated = rawText.length > MAX_CHARS;
   const text = truncated ? rawText.slice(0, MAX_CHARS) : rawText;
 
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: MODEL_CHEAP,
     max_tokens: 8000,
     system: SYSTEM,

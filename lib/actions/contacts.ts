@@ -27,7 +27,7 @@ export async function searchApolloAction(
   titles: string[],
   page = 1,
 ): Promise<ApolloSearchResult> {
-  if (!hasApolloKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApolloKey()) return { ok: false, error: NO_KEY };
   const company = await convex().query(api.companies.getById, { id: companyId as never });
   if (!company) return { ok: false, error: "Company not found" };
   if (!company.domain) {
@@ -75,10 +75,10 @@ export async function findNewPeopleAction(
 ): Promise<FindPeopleResult> {
   const q = query.trim();
   if (!q) return { ok: false, error: "Type who you're looking for first." };
-  if (!hasApolloKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApolloKey()) return { ok: false, error: NO_KEY };
 
   const { hasApiKey } = await import("@/lib/claude/client");
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return {
       ok: false,
       error:
@@ -207,7 +207,7 @@ export async function saveContactAction(
 export async function enrichContactAction(
   contactId: string,
 ): Promise<{ ok: true; email: string } | { ok: false; error: string }> {
-  if (!hasApolloKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApolloKey()) return { ok: false, error: NO_KEY };
   const contact = await convex().query(api.contacts.getById, { id: contactId as never });
   if (!contact) return { ok: false, error: "Contact not found" };
   if (contact.email) return { ok: true, email: contact.email };
@@ -278,7 +278,7 @@ export async function askContactsAction(
   const q = query.trim();
   if (!q) return { ok: false, error: "Type a question first." };
   const { hasApiKey } = await import("@/lib/claude/client");
-  if (!hasApiKey()) {
+  if (!await hasApiKey()) {
     return { ok: false, error: "AI search needs ANTHROPIC_API_KEY in .env.local (see Settings)." };
   }
   const { listContacts } = await import("@/lib/contacts/query");

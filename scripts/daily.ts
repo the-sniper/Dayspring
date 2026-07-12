@@ -31,7 +31,7 @@ async function main() {
 
   // 2. Score, capped
   let scored = 0;
-  if (hasApiKey()) {
+  if (await hasApiKey()) {
     while (scored < SCORE_CAP) {
       const res = await scoreUnscored(Math.min(25, SCORE_CAP - scored));
       if ("profileMissing" in res) {
@@ -49,7 +49,7 @@ async function main() {
 
   // 3. Reply detection
   let repliesFound = 0;
-  if (hasGmail()) {
+  if (await hasGmail()) {
     const replies = await checkReplies();
     repliesFound = replies.found;
     console.log(`replies: ${replies.found} of ${replies.checked} threads`);
@@ -57,10 +57,10 @@ async function main() {
 
   // 4. Digest
   const digest = await assembleDigest({ added, scored, repliesFound, errors });
-  setSetting("lastDailyRun", new Date().toISOString());
+  await setSetting("lastDailyRun", new Date().toISOString());
 
-  const email = getGmailConfig()?.email;
-  if (hasGmail() && email) {
+  const email = (await getGmailConfig())?.email;
+  if ((await hasGmail()) && email) {
     try {
       await sendEmail({ to: email, subject: digest.subject, body: digest.text });
       console.log(`digest emailed to ${email}`);

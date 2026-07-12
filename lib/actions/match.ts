@@ -31,7 +31,7 @@ export type AnalyzeMatchResult =
 export async function analyzeResumeMatchAction(
   formData: FormData,
 ): Promise<AnalyzeMatchResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
 
   const jd = String(formData.get("jd") ?? "").trim();
   if (jd.length < MIN_JD_CHARS) {
@@ -108,7 +108,7 @@ export async function alignResumeMatchAction(input: {
   keywords: string[];
   title?: string | null;
 }): Promise<AlignMatchResult> {
-  if (!hasApiKey()) return { ok: false, error: NO_KEY };
+  if (!await hasApiKey()) return { ok: false, error: NO_KEY };
   if (!input.resumeText?.trim()) {
     return { ok: false, error: "Run the analysis first." };
   }

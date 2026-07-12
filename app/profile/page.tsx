@@ -3,7 +3,7 @@ import { UserCircle } from "lucide-react";
 import PageHeader from "@/components/page-header";
 import ProfileStudio, { type ProfileView } from "@/components/profile-studio";
 import { completeness, getDefaultProfile, listProfiles, readProfileDoc } from "@/lib/profiles/core";
-import { listMasters } from "@/lib/resumes/core";
+import { listMasters, masterHasPdf } from "@/lib/resumes/core";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ export default async function ProfilePage() {
               ? {
                   id: primary.id,
                   label: primary.label,
-                  hasPdf: !!primary.sourceFile?.endsWith(".pdf"),
+                  hasPdf: masterHasPdf(primary),
                 }
               : null
           }

@@ -84,7 +84,7 @@ export async function consolidateResumes(
     .map((m) => `=== RESUME VERSION: ${m.label} ===\n${m.content}`)
     .join("\n\n");
 
-  const response = await getClient().messages.parse({
+  const response = await (await getClient()).messages.parse({
     model: MODEL_PREMIUM,
     max_tokens: 20_000,
     thinking: { type: "adaptive" },

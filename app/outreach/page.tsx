@@ -24,7 +24,7 @@ export default async function OutreachPage() {
       jobId: r.job?.id ?? null,
     }));
 
-  const gmail = hasGmail();
+  const gmail = await hasGmail();
   const today = new Date().toISOString().slice(0, 10);
   const drafts = rows.filter((r) => !r.o.sentAt);
   const awaiting = rows.filter((r) => r.o.sentAt && !r.o.repliedAt);

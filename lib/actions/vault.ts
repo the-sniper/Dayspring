@@ -20,7 +20,7 @@ export async function setMasterPasswordAction(
     return { ok: false, error: "Password must be at least 6 characters." };
   }
   try {
-    setMasterPassword(password);
+    await setMasterPassword(password);
     revalidatePath("/settings");
     return { ok: true };
   } catch (err) {

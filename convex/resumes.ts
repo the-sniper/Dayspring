@@ -1,6 +1,20 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 
+// ---- file storage (original master PDFs + rendered tailored PDFs) ------
+// Hosted deployments have no writable disk, so PDF bytes live in Convex File
+// Storage. Node uploads via generateUploadUrl; reads go through fileUrl.
+
+export const generateUploadUrl = mutation({
+  args: {},
+  handler: async (ctx) => await ctx.storage.generateUploadUrl(),
+});
+
+export const fileUrl = query({
+  args: { fileId: v.id("_storage") },
+  handler: async (ctx, { fileId }) => await ctx.storage.getUrl(fileId),
+});
+
 // ---- master resumes ----------------------------------------------------
 
 export const listMasters = query({
@@ -37,6 +51,8 @@ export const patchMaster = mutation({
 export const removeMaster = mutation({
   args: { id: v.id("masterResumes") },
   handler: async (ctx, { id }) => {
+    const row = await ctx.db.get(id);
+    if (row?.sourceFileId) await ctx.storage.delete(row.sourceFileId);
     await ctx.db.delete(id);
   },
 });
@@ -80,6 +96,13 @@ export const insertGenerated = mutation({
 export const patchGenerated = mutation({
   args: { id: v.id("generatedResumes"), patch: v.any() },
   handler: async (ctx, { id, patch }) => {
+    // Re-rendered PDF replaces the old storage file — don't leak the bytes.
+    if (patch.pdfFileId) {
+      const row = await ctx.db.get(id);
+      if (row?.pdfFileId && row.pdfFileId !== patch.pdfFileId) {
+        await ctx.storage.delete(row.pdfFileId);
+      }
+    }
     await ctx.db.patch(id, patch);
   },
 });

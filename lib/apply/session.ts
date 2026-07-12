@@ -16,6 +16,7 @@ import {
   type ApplyContext,
 } from "@/lib/apply/core";
 import { detectAts } from "@/lib/apply/ats-forms";
+import { isHosted } from "@/lib/hosted";
 import { setJobStatusCore } from "@/lib/jobs/transition";
 import { getSetting, setSetting } from "@/lib/settings/store";
 
@@ -81,14 +82,14 @@ function finish(s: ActiveSession, outcome: ApplyOutcome, message: string): void 
   s.state.message = message;
 }
 
-// ── ToS acknowledgement (per host, persisted in the local settings store) ────
-export function hasTosAck(host: string): boolean {
-  return getSetting(`tos:${host}`) !== null;
+// ── ToS acknowledgement (per host, persisted in the settings store) ─────────
+export async function hasTosAck(host: string): Promise<boolean> {
+  return (await getSetting(`tos:${host}`)) !== null;
 }
 
-export function recordTosAck(host: string): void {
-  if (getSetting(`tos:${host}`) === null) {
-    setSetting(`tos:${host}`, new Date().toISOString());
+export async function recordTosAck(host: string): Promise<void> {
+  if ((await getSetting(`tos:${host}`)) === null) {
+    await setSetting(`tos:${host}`, new Date().toISOString());
   }
 }
 
@@ -98,6 +99,13 @@ export type StartResult =
   | { ok: false; error: string; needsTosFor?: string; activeJobId?: string };
 
 export async function startSession(jobId: string): Promise<StartResult> {
+  if (isHosted()) {
+    return {
+      ok: false,
+      error:
+        "Apply-assist opens a browser window on the machine running Dayspring, so it's only available when you run the app locally — open the job's application link and apply in your own browser instead.",
+    };
+  }
   const existing = active();
   if (existing && existing.state.phase !== "done") {
     if (browserAlive(existing)) {
@@ -120,7 +128,7 @@ export async function startSession(jobId: string): Promise<StartResult> {
   const { ctx } = loaded;
 
   const host = new URL(ctx.job.url!).host;
-  if (!hasTosAck(host)) {
+  if (!(await hasTosAck(host))) {
     return {
       ok: false,
       error: `First run against ${host} — accept the automation risk to continue.`,
@@ -178,7 +186,7 @@ async function runToReview(s: ActiveSession): Promise<void> {
     const cred = hasVaultKey() ? await credentialForHost(s.state.host) : null;
     s.state.workday = {
       existingUsername: cred?.username ?? null,
-      hasMaster: hasVaultKey() && hasMasterPassword(),
+      hasMaster: hasVaultKey() && await hasMasterPassword(),
     };
     s.state.message =
       "Workday is account-based — sign in or register in the browser window (credential helpers below), complete the form, then approve here.";
@@ -358,7 +366,7 @@ export async function cancelSession(): Promise<DecisionResult> {
 // Workday helper: read a fresh verification code from Gmail (never stored).
 export async function readOtp(): Promise<{ ok: true; code: string } | { ok: false; error: string }> {
   const { hasGmail } = await import("@/lib/integrations/gmail/client");
-  if (!hasGmail()) return { ok: false, error: "Gmail isn't connected." };
+  if (!await hasGmail()) return { ok: false, error: "Gmail isn't connected." };
   const { waitForWorkdayCode } = await import("@/lib/apply/workday-signup");
   const code = await waitForWorkdayCode({ sinceMs: Date.now() - 10 * 60_000 });
   if (!code) return { ok: false, error: "No code found in the last 10 minutes — trigger the email first." };

@@ -1,9 +1,9 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Sparkles, Loader2, CheckCircle2, AlertCircle } from "lucide-react";
+import { Sparkles, Loader2, CheckCircle2 } from "lucide-react";
+import { Button } from "@heroui/react";
 import { scoreUnscoredAction } from "@/lib/actions/score";
-import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ScoreButton({ unscoredCount }: { unscoredCount: number }) {
@@ -17,10 +17,11 @@ export default function ScoreButton({ unscoredCount }: { unscoredCount: number }
 
   return (
     <div className="flex flex-col items-end gap-2">
-      <button
-        type="button"
-        disabled={pending || (unscoredCount === 0 && !pending)}
-        onClick={() =>
+      <Button
+        variant="secondary"
+        isPending={pending}
+        isDisabled={unscoredCount === 0}
+        onPress={() =>
           startTransition(async () => {
             const res = await scoreUnscoredAction();
             if (res.ok) {
@@ -30,25 +31,21 @@ export default function ScoreButton({ unscoredCount }: { unscoredCount: number }
             }
           })
         }
-        className={cn(
-          "flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold transition-all shadow-sm active:scale-95",
-          pending
-            ? "bg-secondary text-muted-foreground cursor-not-allowed"
-            : "bg-brand-500 text-white hover:bg-brand-600 shadow-brand-500/20"
-        )}
       >
-        {pending ? (
-          <>
-            <Loader2 size={16} className="animate-spin" />
-            Scoring…
-          </>
-        ) : (
-          <>
-            <Sparkles size={16} />
-            Score unscored ({unscoredCount})
-          </>
-        )}
-      </button>
+        {({ isPending }) =>
+          isPending ? (
+            <>
+              <Loader2 size={16} className="animate-spin" />
+              Scoring…
+            </>
+          ) : (
+            <>
+              <Sparkles size={16} />
+              Score unscored ({unscoredCount})
+            </>
+          )
+        }
+      </Button>
 
       <AnimatePresence>
         {result && !pending && (

@@ -8,10 +8,15 @@ import {
   extractResumeVerified,
   generateResume,
   type ParsedResume,
+  type ResumeDocType,
 } from "@/lib/claude/resume";
 import { MODEL_PREMIUM } from "@/lib/claude/client";
+import { auditResumeDoc } from "@/lib/claude/resume-audit";
 import { latestJobBrief } from "@/lib/research/core";
-import { RESUMES_DIR, renderResumePdf } from "@/lib/resumes/render";
+import { RESUMES_DIR } from "@/lib/resumes/render";
+import { writeResumePdf } from "@/lib/resumes/pdf";
+import { DEFAULT_STYLE } from "@/lib/resumes/style";
+import type { ResumeAudit } from "@/lib/resumes/audit-types";
 
 const MASTERS_DIR = path.join(RESUMES_DIR, "masters");
 
@@ -205,11 +210,19 @@ export function latestGeneratedForJob(jobId: number): GeneratedResumeRow | null 
   return row ?? null;
 }
 
-// Generate + render a tailored resume for a job. Regenerate = new row (history
-// kept). The latest research brief rides along as employer context.
-export async function generateForJob(
-  jobId: number,
-): Promise<{ id: number; pdfPath: string; tailoringNote: string }> {
+// Generate + audit + render a tailored resume for a job. Regenerate = new row
+// (history kept). The latest research brief rides along as employer context.
+// The fabrication audit compares the output against the full master corpus and
+// is stored on the row so the studio can show highlights on later opens.
+export async function generateForJob(jobId: number): Promise<{
+  id: number;
+  pdfPath: string;
+  tailoringNote: string;
+  doc: ResumeDocType;
+  audit: ResumeAudit | null;
+  sourceText: string;
+  jd: string;
+}> {
   const masters = listMasters();
   if (masters.length === 0) {
     throw new Error("Upload a master resume in Settings first.");
@@ -236,11 +249,23 @@ export async function generateForJob(
     latestJobBrief(jobId)?.brief,
   );
 
+  const sourceText = masters
+    .map((m) => `=== MASTER RESUME: ${m.label} ===\n${m.content}`)
+    .join("\n\n");
+  // The audit is a safety net, not a gate — if it errors the resume still
+  // ships to the studio, just without highlights.
+  let audit: ResumeAudit | null = null;
+  try {
+    audit = await auditResumeDoc(sourceText, doc);
+  } catch {
+    audit = null;
+  }
+
   const pdfPath = path.join(
     RESUMES_DIR,
     `job-${jobId}-${slugify(row.companyName)}-${slugify(row.job.title)}-${Date.now()}.pdf`,
   );
-  await renderResumePdf(doc, pdfPath);
+  await writeResumePdf(doc, DEFAULT_STYLE, pdfPath);
 
   const res = db
     .insert(generatedResumes)
@@ -248,13 +273,23 @@ export async function generateForJob(
       jobId,
       content: JSON.stringify(doc),
       pdfPath,
+      style: JSON.stringify(DEFAULT_STYLE),
+      audit: audit ? JSON.stringify(audit) : null,
       tailoringNote: doc.tailoring_note,
       model: MODEL_PREMIUM,
       createdAt: new Date().toISOString(),
     })
     .run();
 
-  return { id: Number(res.lastInsertRowid), pdfPath, tailoringNote: doc.tailoring_note };
+  return {
+    id: Number(res.lastInsertRowid),
+    pdfPath,
+    tailoringNote: doc.tailoring_note,
+    doc,
+    audit,
+    sourceText,
+    jd: row.job.description,
+  };
 }
 
 // Resume resolution for apply-assist: tailored PDF for this job → primary

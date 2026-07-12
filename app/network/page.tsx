@@ -2,7 +2,9 @@ import { Users2, Sparkles, UserPlus } from "lucide-react";
 import ContactSearch from "@/components/contact-search";
 import NetworkFinder from "@/components/network-finder";
 import NewPeopleFinder from "@/components/new-people-finder";
+import PageHeader from "@/components/page-header";
 import { hasApiKey } from "@/lib/claude/client";
+import { CONTACTS_PAGE_SIZE } from "@/lib/contacts/constants";
 import { contactsCount, listContacts } from "@/lib/contacts/query";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
 import { hasHappenstanceKey } from "@/lib/integrations/happenstance/client";
@@ -11,27 +13,23 @@ export const dynamic = "force-dynamic";
 
 export default function NetworkPage() {
   const total = contactsCount();
-  const initial = listContacts({ limit: 60 });
+  const initial = listContacts({ limit: CONTACTS_PAGE_SIZE });
 
   return (
-    <div className="mx-auto max-w-3xl stagger-load">
-      <header className="mb-8">
-        <div className="flex items-center gap-2 text-muted-foreground mb-1">
-          <Users2 size={14} />
-          <span className="text-xs font-bold uppercase tracking-widest">
-            Warm Network
-          </span>
-        </div>
-        <h1 className="text-4xl font-black tracking-tight text-foreground">
-          Who do I know?
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
-          Filter instantly, or <span className="font-bold text-foreground">ask
-          in plain English</span> — &ldquo;recruiters hiring fullstack
-          devs&rdquo; — across your LinkedIn connections, Apollo finds, and warm
-          intros.
-        </p>
-      </header>
+    <div className="mx-auto max-w-5xl stagger-load">
+      <PageHeader
+        eyebrow="Warm Network"
+        icon={<Users2 size={14} />}
+        title="Who do I know?"
+        description={
+          <>
+            Filter instantly, or{" "}
+            <span className="font-semibold text-foreground">ask in plain English</span>{" "}
+            — &ldquo;recruiters hiring fullstack devs&rdquo; — across your
+            LinkedIn connections, Apollo finds, and warm intros.
+          </>
+        }
+      />
 
       {/* Primary: free local filter + AI ask over saved/imported contacts */}
       <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">

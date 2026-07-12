@@ -38,6 +38,7 @@ export const JOB_SOURCES = [
   "lever",
   "ashby",
   "workday",
+  "adzuna",
   "manual",
   "csv",
   "paste",

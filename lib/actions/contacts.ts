@@ -173,6 +173,7 @@ export async function saveColdContactAction(
       name: person.name,
       title: person.title,
       linkedin: person.linkedinUrl,
+      photoUrl: person.photoUrl,
       source: "apollo",
       apolloId: person.apolloId,
       emailStatus: person.emailStatus,
@@ -214,6 +215,7 @@ export async function saveContactAction(
       name: person.name,
       title: person.title,
       linkedin: person.linkedinUrl,
+      photoUrl: person.photoUrl,
       source: "apollo",
       apolloId: person.apolloId,
       emailStatus: person.emailStatus,
@@ -270,16 +272,21 @@ export async function searchLocalContactsAction(query: string) {
 
 // Paginated browse over all saved/imported contacts (no query, most-recent
 // first). Powers the page controls on the Warm Network list.
-export async function browseContactsPageAction(page = 1) {
+export async function browseContactsPageAction(
+  page = 1,
+  pageSize?: number,
+) {
   const { listContacts } = await import("@/lib/contacts/query");
-  const { CONTACTS_PAGE_SIZE } = await import("@/lib/contacts/constants");
+  const { normalizeContactsPageSize } = await import("@/lib/contacts/constants");
+  const size = normalizeContactsPageSize(pageSize ?? 0);
   const p = Math.max(1, Math.floor(page));
   return {
     rows: listContacts({
-      limit: CONTACTS_PAGE_SIZE,
-      offset: (p - 1) * CONTACTS_PAGE_SIZE,
+      limit: size,
+      offset: (p - 1) * size,
     }),
     page: p,
+    pageSize: size,
   };
 }
 

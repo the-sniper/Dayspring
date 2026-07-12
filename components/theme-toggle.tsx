@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { Moon, Sun } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Switch } from "@heroui/react";
 
 function applyTheme(dark: boolean) {
-  document.documentElement.classList.toggle("dark", dark);
+  const el = document.documentElement;
+  el.classList.toggle("dark", dark);
+  el.setAttribute("data-theme", dark ? "dark" : "light");
   try {
     localStorage.setItem("theme", dark ? "dark" : "light");
   } catch {
@@ -22,30 +24,34 @@ export default function ThemeToggle() {
     setDark(document.documentElement.classList.contains("dark"));
   }, []);
 
-  function toggle() {
-    setDark((prev) => {
-      const next = !prev;
-      applyTheme(next);
-      return next;
-    });
+  if (!mounted) {
+    return <div className="h-[46px] w-full rounded-xl bg-secondary/50 animate-pulse" />;
   }
 
-  if (!mounted) return <div className="h-10 w-full rounded-lg bg-secondary/50 animate-pulse" />;
-
   return (
-    <button
-      type="button"
-      onClick={toggle}
-      className="group flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground transition-all hover:bg-secondary hover:text-foreground"
-    >
-      <div className="relative flex h-5 w-5 items-center justify-center">
+    <div className="flex items-center justify-between gap-3 rounded-xl border border-border/70 bg-surface/60 px-3 py-2.5 backdrop-blur-sm">
+      <span className="flex items-center gap-2.5 text-sm font-medium text-foreground">
         {dark ? (
-          <Sun size={18} className="text-brand-500 transition-all group-hover:rotate-45" />
+          <Moon size={16} className="text-brand-400" />
         ) : (
-          <Moon size={18} className="text-stone-500 transition-all group-hover:-rotate-12" />
+          <Sun size={16} className="text-brand-500" />
         )}
-      </div>
-      <span>{dark ? "Light mode" : "Dark mode"}</span>
-    </button>
+        {dark ? "Dark" : "Light"}
+      </span>
+      <Switch
+        aria-label="Toggle dark mode"
+        isSelected={dark}
+        onChange={(v) => {
+          setDark(v);
+          applyTheme(v);
+        }}
+      >
+        <Switch.Content>
+          <Switch.Control>
+            <Switch.Thumb />
+          </Switch.Control>
+        </Switch.Content>
+      </Switch>
+    </div>
   );
 }

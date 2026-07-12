@@ -14,6 +14,7 @@ import JobForm from "@/components/job-form";
 import ScoreBadge from "@/components/score-badge";
 import StatusSelect from "@/components/status-select";
 import CompanyLogo from "@/components/company-logo";
+import PageHeader from "@/components/page-header";
 import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
 import { KANBAN_STATUSES, type JobStatus } from "@/lib/types";
@@ -64,33 +65,31 @@ export default async function BoardPage({
 
   return (
     <div className="mx-auto max-w-[1400px]">
-      <header className="mb-8 flex items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <KanbanSquare size={14} />
-            <span className="text-xs font-bold uppercase tracking-widest">Pipeline</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground">
-            Board
-          </h1>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">
-            <span className="text-foreground">{rows.length}</span> active opportunities
-          </p>
-        </div>
-        
-        <div className="flex items-center gap-3">
+      <PageHeader
+        eyebrow="Pipeline"
+        icon={<KanbanSquare size={14} />}
+        title="Board"
+        description={
+          <span>
+            <span className="font-semibold text-foreground">{rows.length}</span>{" "}
+            active opportunities
+          </span>
+        }
+        actions={
           <details className="group relative">
-            <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/10 transition-all hover:scale-105 active:scale-95">
-              <Plus size={18} strokeWidth={3} />
-              Add Manually
+            <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] shadow-sm shadow-brand-500/20 transition-all hover:brightness-105 active:scale-[0.98]">
+              <Plus size={16} strokeWidth={2.75} />
+              Add manually
             </summary>
             <div className="absolute right-0 top-full z-50 mt-2 w-[400px] rounded-2xl border border-border bg-popover p-5 shadow-2xl shadow-black/20">
-              <h3 className="mb-4 text-lg font-bold text-foreground">New Opportunity</h3>
+              <h3 className="mb-4 font-display text-lg font-semibold text-foreground">
+                New Opportunity
+              </h3>
               <JobForm companyNames={companyNames} />
             </div>
           </details>
-        </div>
-      </header>
+        }
+      />
 
       {error && (
         <div className="mb-6">

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { UserCircle } from "lucide-react";
+import PageHeader from "@/components/page-header";
 import ProfileStudio, { type ProfileView } from "@/components/profile-studio";
 import { completeness, getDefaultProfile, listProfiles, readProfileDoc } from "@/lib/profiles/core";
 import { listMasters } from "@/lib/resumes/core";
@@ -14,21 +15,12 @@ export default function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-4xl stagger-load">
-      <header className="mb-8">
-        <div className="flex items-center gap-2 text-muted-foreground mb-1">
-          <UserCircle size={14} />
-          <span className="text-xs font-bold uppercase tracking-widest">
-            Candidate
-          </span>
-        </div>
-        <h1 className="text-4xl font-black tracking-tight text-foreground">
-          Profile
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm font-medium text-muted-foreground">
-          What every application draws from — consolidated from your master
-          resumes, plus the defaults apply-assist fills on ATS forms.
-        </p>
-      </header>
+      <PageHeader
+        eyebrow="Candidate"
+        icon={<UserCircle size={14} />}
+        title="Profile"
+        description="What every application draws from — consolidated from your master resumes, plus the defaults apply-assist fills on ATS forms."
+      />
 
       {active ? (
         <ProfileStudio

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import dynamic from "next/dynamic";
 import { useState, useTransition } from "react";
 import {
   FileBadge,
@@ -9,8 +10,19 @@ import {
   ExternalLink,
   AlertCircle,
   RefreshCw,
+  FileDown,
+  PencilRuler,
 } from "lucide-react";
-import { generateResumeAction } from "@/lib/actions/resumes";
+import {
+  generateResumeAction,
+  loadGeneratedResumeAction,
+  type StudioPayload,
+} from "@/lib/actions/resumes";
+
+// The studio pulls in @react-pdf/renderer + pdfjs — client-only, load on use.
+const ResumeEditor = dynamic(() => import("@/components/resume-editor"), {
+  ssr: false,
+});
 
 type Generated = {
   id: number;
@@ -19,7 +31,8 @@ type Generated = {
 } | null;
 
 // Per-JD tailored resume: opus selects/rephrases across the master corpus
-// (never invents), renders an ATS-safe PDF, and apply-assist attaches it.
+// (never invents), a fabrication audit flags anything unsupported, and the
+// review studio opens before anything reaches an application.
 export default function ResumeStudio({
   jobId,
   initial,
@@ -34,6 +47,9 @@ export default function ResumeStudio({
   const [current, setCurrent] = useState<Generated>(initial);
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
+  const [studio, setStudio] = useState<StudioPayload | null>(null);
+  const [studioId, setStudioId] = useState<number | null>(null);
+  const [opening, startOpen] = useTransition();
 
   const ready = mastersCount > 0 && hasApiKey;
 
@@ -43,6 +59,23 @@ export default function ResumeStudio({
       const res = await generateResumeAction(jobId);
       if (res.ok) {
         setCurrent({ id: res.id, tailoringNote: res.tailoringNote, createdAt: res.createdAt });
+        // Straight into review — nothing AI-made ships unreviewed.
+        setStudio(res.studio);
+        setStudioId(res.id);
+      } else {
+        setError(res.error);
+      }
+    });
+  }
+
+  function openStudio() {
+    if (!current) return;
+    setError(null);
+    startOpen(async () => {
+      const res = await loadGeneratedResumeAction(current.id);
+      if (res.ok) {
+        setStudio(res.studio);
+        setStudioId(current.id);
       } else {
         setError(res.error);
       }
@@ -66,7 +99,8 @@ export default function ResumeStudio({
       <p className="mb-4 text-xs font-medium text-muted-foreground leading-relaxed">
         A one-page resume built for <em>this</em> job from your master resume
         {mastersCount === 1 ? "" : "s"} — strongest truthful content selected and
-        re-angled to the JD, never invented. Apply-assist attaches it automatically.
+        re-angled to the JD, never invented. Every generation opens in the review
+        studio with AI changes highlighted before you apply.
       </p>
 
       {mastersCount === 0 ? (
@@ -98,23 +132,54 @@ export default function ResumeStudio({
             {pending ? "Building…" : current ? "Regenerate" : "Generate resume"}
           </button>
           {current && (
-            <a
-              href={`/api/resumes/${current.id}`}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold text-foreground transition-all hover:border-brand-500/40 hover:text-brand-600 active:scale-95 cursor-pointer"
-            >
-              <ExternalLink size={16} />
-              Open PDF
-            </a>
+            <>
+              <button
+                type="button"
+                disabled={opening}
+                onClick={openStudio}
+                className="flex items-center gap-2 rounded-xl border border-brand-500/40 bg-brand-50/50 px-4 py-2.5 text-sm font-bold text-brand-700 transition-all hover:bg-brand-100/60 active:scale-95 disabled:opacity-50 cursor-pointer dark:bg-brand-950/20 dark:text-brand-400 dark:hover:bg-brand-950/40"
+              >
+                {opening ? (
+                  <Loader2 size={16} className="animate-spin" />
+                ) : (
+                  <PencilRuler size={16} />
+                )}
+                Review &amp; edit
+              </button>
+              <a
+                href={`/api/resumes/${current.id}`}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold text-foreground transition-all hover:border-brand-500/40 hover:text-brand-600 active:scale-95 cursor-pointer"
+              >
+                <ExternalLink size={16} />
+                Open PDF
+              </a>
+              <a
+                href={`/api/resumes/${current.id}?format=docx`}
+                title="DOCX parses most reliably across ATS platforms (Workday, Taleo, iCIMS…)"
+                className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-bold text-foreground transition-all hover:border-brand-500/40 hover:text-brand-600 active:scale-95 cursor-pointer"
+              >
+                <FileDown size={16} />
+                DOCX
+              </a>
+            </>
           )}
         </div>
       )}
 
+      {current && !pending && (
+        <p className="mt-3 text-[11px] font-medium text-muted-foreground">
+          Tip: submit the DOCX unless the posting asks for PDF — it parses most
+          reliably across ATS platforms.
+        </p>
+      )}
+
       {pending && (
         <p className="mt-3 text-[11px] font-medium text-muted-foreground">
-          Opus is selecting and re-angling your strongest material for this JD, then
-          rendering the PDF — ~20–40s.
+          Opus is selecting and re-angling your strongest material for this JD,
+          then auditing every claim against your masters — ~30–60s. The review
+          studio opens when it&apos;s done.
         </p>
       )}
 
@@ -130,6 +195,18 @@ export default function ResumeStudio({
           <AlertCircle size={14} className="mt-0.5 shrink-0" />
           {error}
         </p>
+      )}
+
+      {studio && studioId !== null && (
+        <ResumeEditor
+          doc={studio.doc}
+          style={studio.style}
+          audit={studio.audit}
+          sourceText={studio.sourceText}
+          jd={studio.jd}
+          resumeId={studioId}
+          onClose={() => setStudio(null)}
+        />
       )}
     </section>
   );

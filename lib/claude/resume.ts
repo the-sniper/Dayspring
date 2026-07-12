@@ -136,7 +136,7 @@ export async function extractResumeVerified(
 // Structured resume document — rendered to an ATS-safe PDF by
 // lib/resumes/render.ts. All content must come from the master corpus.
 
-const ResumeDoc = z.object({
+export const ResumeDoc = z.object({
   name: z.string(),
   contact: z.object({
     email: z.string().nullable(),
@@ -153,7 +153,9 @@ const ResumeDoc = z.object({
       company: z.string(),
       title: z.string(),
       location: z.string().nullable(),
-      dates: z.string(), // verbatim from master
+      // Values from the master, format normalized to "Mon YYYY – Mon YYYY"
+      // (or "Present") so ATS date math works.
+      dates: z.string(),
       bullets: z.array(z.string()),
     }),
   ),
@@ -178,7 +180,7 @@ const ResumeDoc = z.object({
 
 export type ResumeDocType = z.infer<typeof ResumeDoc>;
 
-const GENERATE_RULES = `You build a one-page tailored resume for one candidate applying to one specific job.
+const GENERATE_RULES = `You build a one-page, ATS-optimized tailored resume for one candidate applying to one specific job.
 
 SOURCE OF TRUTH: the MASTER RESUME(S) below. You may SELECT, REORDER, and REPHRASE what they state — nothing else exists.
 
@@ -189,12 +191,20 @@ HARD RULES — never fabricate:
 - If the JD wants something no master shows, handle the gap by omission — never by invention.
 - If the same role appears in multiple masters with different bullets, pick the strongest truthful set for THIS job.
 
+ATS OPTIMIZATION (recruiters find resumes via literal keyword search — these rules decide whether the resume surfaces at all):
+- headline: the EXACT job title from the posting, verbatim, character-for-character (the single highest-impact ATS factor). This is target positioning, not an employment claim — titles inside Work Experience stay exactly as the masters state them.
+- summary: must contain the exact posted job title once, plus the top matching skills.
+- Weave 25–35 role-specific keywords lifted VERBATIM from the job description across the resume — the JD's exact strings, not synonyms or paraphrases ("Adobe Creative Cloud" ≠ "Adobe Creative Suite"). Only keywords the masters honestly support. Fewer than 25 misses recruiter searches; more than 35 trips stuffing detectors.
+- Keyword placement is weighted: put the highest-priority JD terms in the summary, in the FIRST bullet under each role, and in the Skills section.
+- Spell out each acronym once with its short form — "Search Engine Optimization (SEO)" — so both search variants match.
+- Dates: normalize EVERY date to "Mon YYYY" format ("Jan 2020 – Mar 2023"); use "Present" for current roles (never "Current" or "Ongoing"). Values still come from the masters — only the format is normalized. Inconsistent formats make ATS miscalculate years of experience.
+- No icons, emojis, or decorative characters in any field — plain text only.
+
 SELECTION & SHAPE (target ONE page):
 - experience: the 3–4 most relevant roles, newest first unless relevance clearly dictates otherwise; 2–4 bullets each, ≤ 28 words, action verb first, strongest first.
 - skills: only skills present in masters, grouped sensibly, groups ordered by relevance to the JD.
 - projects: include only if genuinely relevant and space allows (0–2).
 - summary: 2–3 lines positioning the candidate for THIS role using only master facts. No fluff ("results-driven"), no first person.
-- headline: a short role label the masters support (e.g. their actual current title or field).
 - education: keep brief.
 - tailoring_note: one sentence on what you emphasized and why (e.g. "Led with the ML platform work to match the JD's focus on model serving.").`;
 
@@ -202,6 +212,61 @@ export type ResumeGenOutcome = {
   doc: ResumeDocType;
   tokens: { input: number; output: number };
 };
+
+// ── 3. Edit-with-AI (studio) ─────────────────────────────────────────────────
+// Applies one user instruction to an existing structured resume, under the
+// same never-fabricate + ATS rules. Powers the studio's chat box and chips.
+
+const EDIT_RULES = `You revise ONE structured resume document according to the user's instruction, and return the COMPLETE updated document.
+
+SOURCE OF TRUTH: the SOURCE RESUME below. Everything in the output must be supported by it — you may select, reorder, rephrase, and sharpen, nothing else exists.
+
+HARD RULES — never fabricate:
+- Never invent an employer, title, date, degree, certification, metric, or skill. Numbers appear exactly as the source states them.
+- Contact details stay verbatim unless the instruction explicitly changes them.
+- If the instruction asks for something the source cannot support (e.g. "add Kubernetes" when the source never mentions it), do NOT comply with that part — note the refusal briefly in tailoring_note instead.
+
+PRESERVE unless the instruction says otherwise:
+- ATS optimization: exact-title headline, verbatim JD keywords, "Mon YYYY" dates, acronyms spelled out once, plain text only.
+- One-page shape: bullets ≤ 28 words, action verb first.
+- All content the instruction doesn't touch stays EXACTLY as-is — do not rewrite untouched sections.
+
+tailoring_note: one sentence describing the edit you made (and anything you refused).`;
+
+export async function editResume(input: {
+  doc: ResumeDocType;
+  sourceText: string;
+  jd?: string | null;
+  instruction: string;
+}): Promise<{ doc: ResumeDocType }> {
+  const jdBlock = input.jd
+    ? `\n\nTARGET JOB DESCRIPTION (context for keyword choices):\n${input.jd.slice(0, 8000)}`
+    : "";
+  const response = await getClient().messages.parse({
+    model: MODEL_PREMIUM,
+    max_tokens: 16_000,
+    thinking: { type: "adaptive" },
+    system: [
+      { type: "text", text: EDIT_RULES },
+      {
+        type: "text",
+        text: `SOURCE RESUME:\n\n${input.sourceText.slice(0, 60_000)}`,
+        cache_control: { type: "ephemeral" },
+      },
+    ],
+    messages: [
+      {
+        role: "user",
+        content: `CURRENT RESUME DOCUMENT (JSON):\n${JSON.stringify(input.doc)}${jdBlock}\n\nINSTRUCTION:\n${input.instruction.slice(0, 2000)}`,
+      },
+    ],
+    output_config: { format: zodOutputFormat(ResumeDoc) },
+  });
+  if (!response.parsed_output) {
+    throw new Error(`Resume edit failed (stop_reason: ${response.stop_reason})`);
+  }
+  return { doc: response.parsed_output };
+}
 
 export async function generateResume(
   masters: { label: string; content: string }[],
@@ -231,7 +296,7 @@ export async function generateResume(
     messages: [
       {
         role: "user",
-        content: `JOB\nTitle: ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${job.description.slice(0, 12_000)}${briefBlock}`,
+        content: `JOB\nEXACT TARGET TITLE (mirror verbatim in headline and summary): ${job.title}\nCompany: ${job.companyName}\nLocation: ${job.location ?? "unspecified"}\n\nDESCRIPTION:\n${job.description.slice(0, 12_000)}${briefBlock}`,
       },
     ],
     output_config: { format: zodOutputFormat(ResumeDoc) },

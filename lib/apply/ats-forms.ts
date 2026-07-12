@@ -108,12 +108,35 @@ export async function fillCommonForm(
   if (ctx.defaults) {
     const d = ctx.defaults;
     const yesNo = (v: boolean) => (v ? ["Yes", "yes"] : ["No", "no"]);
-    await track("work authorization", trySelectByContext(page, ["authorized to work", "legally authorized", "work authorization"], d.authorizedToWork === null ? null : yesNo(d.authorizedToWork)));
-    await track("sponsorship", trySelectByContext(page, ["sponsorship", "require sponsorship", "visa sponsorship"], d.needsSponsorship === null ? null : yesNo(d.needsSponsorship)));
+    const bool = (v: boolean | null) => (v === null ? null : yesNo(v));
+    // Work authorization
+    await track("work authorization", trySelectByContext(page, ["authorized to work", "legally authorized", "work authorization"], bool(d.authorizedToWork)));
+    await track("sponsorship", trySelectByContext(page, ["sponsorship", "require sponsorship", "visa sponsorship"], bool(d.needsSponsorship)));
+    await track("visa type", trySelectByContext(page, ["visa status", "visa type", "work authorization status", "immigration status"], d.visaType ? [d.visaType] : null));
+    // Work preferences
+    await track("relocation", trySelectByContext(page, ["relocate", "relocation", "willing to relocate"], bool(d.canRelocate)));
+    await track("start immediately", trySelectByContext(page, ["start immediately", "immediately available", "available to start", "immediate start"], bool(d.startImmediately)));
+    await track("reliable transportation", trySelectByContext(page, ["reliable transportation", "own transportation", "transportation"], bool(d.hasReliableTransportation)));
+    await track("worked here before", trySelectByContext(page, ["previously employed", "former employee", "worked for", "worked here"], bool(d.workedForCompanyBefore)));
+    await track("security clearance", trySelectByContext(page, ["security clearance", "government clearance", "clearance"], bool(d.hasGovClearance)));
+    await track("expected salary", tryFill(page, [
+      'input[name*="salary" i]', 'input[aria-label*="salary" i]', 'input[id*="salary" i]',
+      'input[name*="compensation" i]', 'input[aria-label*="expected pay" i]',
+    ], d.expectedSalary));
+    await track("expected hourly rate", tryFill(page, [
+      'input[name*="hourly" i]', 'input[aria-label*="hourly" i]', 'input[id*="hourly" i]',
+      'input[name*="rate" i]',
+    ], d.expectedHourlyRate));
+    // Self-ID (voluntary)
     await track("gender", trySelectByContext(page, ["gender"], d.gender ? [d.gender] : null));
     await track("ethnicity", trySelectByContext(page, ["race", "ethnicity"], d.ethnicity ? [d.ethnicity] : null));
     await track("veteran status", trySelectByContext(page, ["veteran"], d.veteran === null ? null : d.veteran ? ["I am a veteran", "Veteran", "Yes"] : ["I am not a protected veteran", "not a veteran", "No"]));
     await track("disability status", trySelectByContext(page, ["disability"], d.disability === null ? null : d.disability ? ["Yes, I have a disability", "Yes"] : ["No, I do not have a disability", "No"]));
+    // Free-text catch-all for "additional information" prompts.
+    await track("additional info", tryFill(page, [
+      'textarea[name*="additional" i]', 'textarea[aria-label*="additional information" i]',
+      'textarea[name*="anything else" i]', 'textarea[aria-label*="anything else" i]',
+    ], d.additionalInfo));
   }
 
   return { filled, skipped };

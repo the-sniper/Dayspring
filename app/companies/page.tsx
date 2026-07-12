@@ -5,6 +5,7 @@ import CompanyForm from "@/components/company-form";
 import ErrorBanner from "@/components/error-banner";
 import RoleChip from "@/components/role-chip";
 import CompanyLogo from "@/components/company-logo";
+import PageHeader from "@/components/page-header";
 import { createCompanyAction } from "@/lib/actions/companies";
 import { db } from "@/lib/db";
 import { companies, jobs } from "@/lib/db/schema";
@@ -28,31 +29,32 @@ export default async function CompaniesPage({
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-8 flex items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <Building2 size={14} />
-            <span className="text-xs font-bold uppercase tracking-widest">Directory</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground">
-            Companies
-          </h1>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">
-            Managing <span className="text-foreground">{rows.length}</span> tracked organizations
-          </p>
-        </div>
-        
-        <details className="group relative">
-          <summary className="flex cursor-pointer list-none items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/10 transition-all hover:scale-105 active:scale-95">
-            <Plus size={18} strokeWidth={3} />
-            Add Company
-          </summary>
-          <div className="absolute right-0 top-full z-50 mt-2 w-[450px] rounded-2xl border border-border bg-popover p-6 shadow-2xl shadow-black/20">
-            <h3 className="mb-4 text-lg font-bold text-foreground">Track New Company</h3>
-            <CompanyForm action={createCompanyAction} submitLabel="Add Company" />
-          </div>
-        </details>
-      </header>
+      <PageHeader
+        eyebrow="Directory"
+        icon={<Building2 size={14} />}
+        title="Companies"
+        description={
+          <span>
+            Managing{" "}
+            <span className="font-semibold text-foreground">{rows.length}</span>{" "}
+            tracked organizations
+          </span>
+        }
+        actions={
+          <details className="group relative">
+            <summary className="flex h-10 cursor-pointer list-none items-center gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-4 text-sm font-medium text-[var(--accent-foreground)] shadow-sm shadow-brand-500/20 transition-all hover:brightness-105 active:scale-[0.98]">
+              <Plus size={16} strokeWidth={2.75} />
+              Add company
+            </summary>
+            <div className="absolute right-0 top-full z-50 mt-2 w-[450px] rounded-2xl border border-border bg-popover p-6 shadow-2xl shadow-black/20">
+              <h3 className="mb-4 font-display text-lg font-semibold text-foreground">
+                Track New Company
+              </h3>
+              <CompanyForm action={createCompanyAction} submitLabel="Add Company" />
+            </div>
+          </details>
+        }
+      />
 
       {error && (
         <div className="mb-6">

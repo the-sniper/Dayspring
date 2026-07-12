@@ -18,6 +18,8 @@ import {
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
 import VerificationCodes from "@/components/verification-codes";
+import PageHeader from "@/components/page-header";
+import ButtonLink from "@/components/button-link";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { hasGmail } from "@/lib/integrations/gmail/client";
 import { db } from "@/lib/db";
@@ -108,31 +110,31 @@ export default async function DashboardPage() {
     .get()?.value;
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <header className="mb-10 flex items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <LayoutDashboard size={14} />
-            <span className="text-xs font-bold uppercase tracking-widest">Command Center</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground">
-            Overview
-          </h1>
-          {lastDailyRun && (
-            <p className="mt-2 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+    <div className="mx-auto max-w-6xl stagger-load">
+      <PageHeader
+        eyebrow="Command Center"
+        icon={<LayoutDashboard size={14} />}
+        title="Overview"
+        description={
+          lastDailyRun ? (
+            <span className="flex items-center gap-1.5">
               <Clock size={12} />
-              Last sync: <span className="text-foreground">{lastDailyRun.slice(0, 16).replace("T", " ")}</span>
-            </p>
-          )}
-        </div>
-        <Link 
-          href="/import" 
-          className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/10 transition-all hover:scale-105 active:scale-95"
-        >
-          <Plus size={18} strokeWidth={3} />
-          Add Job
-        </Link>
-      </header>
+              Last sync{" "}
+              <span className="font-semibold text-foreground">
+                {lastDailyRun.slice(0, 16).replace("T", " ")}
+              </span>
+            </span>
+          ) : (
+            "Your job-search pipeline at a glance."
+          )
+        }
+        actions={
+          <ButtonLink href="/import">
+            <Plus size={16} strokeWidth={2.75} />
+            Add Job
+          </ButtonLink>
+        }
+      />
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6 mb-10">
         {KANBAN_STATUSES.map((s) => (
@@ -192,12 +194,18 @@ export default async function DashboardPage() {
                     <ScoreBadge score={j.matchScore} />
                     <div className="flex items-center gap-1.5 ml-2">
                       <form action={promoteJobAction.bind(null, j.id)}>
-                        <button className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-all hover:scale-110 active:scale-95">
+                        <button
+                          title="Promote to wishlist"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white shadow-sm shadow-brand-500/25 transition-all hover:bg-brand-600 hover:scale-105 active:scale-95"
+                        >
                           <Check size={16} strokeWidth={3} />
                         </button>
                       </form>
                       <form action={ignoreJobAction.bind(null, j.id)}>
-                        <button className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95">
+                        <button
+                          title="Ignore"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
+                        >
                           <X size={16} strokeWidth={3} />
                         </button>
                       </form>

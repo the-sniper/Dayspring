@@ -18,6 +18,7 @@ import {
   type FindPeopleResult,
 } from "@/lib/actions/contacts";
 import type { ApolloPerson } from "@/lib/integrations/apollo/search";
+import PersonAvatar from "@/components/person-avatar";
 import { cn } from "@/lib/utils";
 
 // Cold-contact discovery over Apollo's whole people database — NEW people not
@@ -124,6 +125,11 @@ export default function NewPeopleFinder({
                     key={p.apolloId}
                     className="flex items-start justify-between gap-4 p-4 transition-colors hover:bg-secondary/20"
                   >
+                    <PersonAvatar
+                      name={p.name}
+                      photoUrl={p.photoUrl}
+                      className="h-10 w-10 text-xs"
+                    />
                     <div className="min-w-0 flex-1">
                       <p className="text-sm font-bold text-foreground truncate">
                         {p.name}

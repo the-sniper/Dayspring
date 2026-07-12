@@ -473,58 +473,139 @@ function SectionCards({ doc, profileId }: { doc: ConsolidatedDoc | null; profile
 }
 
 // ── Application defaults ──────────────────────────────────────────────────────
-type TriKey = Exclude<keyof ApplicationDefaults, "visaType" | "gender" | "ethnicity">;
+type BoolKey = {
+  [K in keyof ApplicationDefaults]: ApplicationDefaults[K] extends boolean | null ? K : never;
+}[keyof ApplicationDefaults];
+type StrKey = {
+  [K in keyof ApplicationDefaults]: ApplicationDefaults[K] extends string | null ? K : never;
+}[keyof ApplicationDefaults];
+
+// Predefined option sets (mirror the choices apply-assist forms expect).
+const VISA_TYPES = [
+  "US Citizen", "Permanent Resident", "H-1B", "F-1 (Student)", "OPT", "CPT",
+  "TN Visa", "L-1", "E-3", "Other",
+];
+const OPT_STATUSES = ["Pre-completion", "Post-completion", "STEM Extension"];
+const VISA_NEEDS_OPT_STATUS = new Set(["F-1 (Student)", "OPT", "CPT"]);
+const GENDERS = ["Male", "Female", "Non-binary", "Prefer not to say"];
+const ETHNICITIES = [
+  "American Indian or Alaska Native",
+  "East Asian (e.g. Chinese, Japanese, Korean)",
+  "South Asian (e.g. Indian, Pakistani, Bangladeshi)",
+  "Southeast Asian (e.g. Filipino, Vietnamese, Thai)",
+  "Black or African American",
+  "Hispanic or Latino",
+  "Middle Eastern or North African",
+  "Native Hawaiian or Other Pacific Islander",
+  "White",
+  "Two or More Races",
+  "Prefer not to say",
+];
 
 // Client-side template (can't import the server core's EMPTY_DEFAULTS — it pulls
 // in better-sqlite3). Merging incoming defaults over this guarantees every field
 // key exists even if the DB row is null, partial, or from an older schema.
 const DEFAULTS_TEMPLATE: ApplicationDefaults = {
   visaType: null,
+  optStatus: null,
   authorizedToWork: null,
   needsSponsorship: null,
+  expectedSalary: null,
+  expectedHourlyRate: null,
   inPersonOk: null,
   canRelocate: null,
   startImmediately: null,
+  hasReliableTransportation: null,
+  needsAccommodations: null,
+  workedForCompanyBefore: null,
+  hasGovClearance: null,
+  hasGovTies: null,
   gender: null,
   ethnicity: null,
   veteran: null,
   disability: null,
+  additionalInfo: null,
 };
+
+const dLabel = "mb-1.5 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground";
 
 // Hoisted (stable component types): defining these inside DefaultsCard would
 // remount the fields on every keystroke and drop focus/state.
-function Tri({
+
+// Binary switch. An untouched field is null (apply-assist skips it); the first
+// tap sets true, and toggling off sets an explicit false.
+function Toggle({
   label,
   k,
   d,
   setD,
 }: {
   label: string;
-  k: TriKey;
+  k: BoolKey;
+  d: ApplicationDefaults;
+  setD: (d: ApplicationDefaults) => void;
+}) {
+  const on = d?.[k] === true;
+  return (
+    <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5 last:border-0">
+      <span className="text-sm font-medium text-foreground">{label}</span>
+      <button
+        type="button"
+        role="switch"
+        aria-checked={on}
+        aria-label={label}
+        onClick={() => setD({ ...d, [k]: !on })}
+        className={cn(
+          "inline-flex h-6 w-11 shrink-0 items-center rounded-full border-2 border-transparent transition-colors cursor-pointer",
+          on ? "bg-brand-500" : "bg-secondary ring-1 ring-inset ring-border",
+        )}
+      >
+        <span
+          className={cn(
+            "pointer-events-none block h-5 w-5 rounded-full bg-white shadow-sm transition-transform",
+            on ? "translate-x-5" : "translate-x-0",
+          )}
+        />
+      </button>
+    </div>
+  );
+}
+
+function Sel({
+  label,
+  k,
+  options,
+  placeholder,
+  d,
+  setD,
+}: {
+  label: string;
+  k: StrKey;
+  options: string[];
+  placeholder: string;
   d: ApplicationDefaults;
   setD: (d: ApplicationDefaults) => void;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
+      <span className={dLabel}>{label}</span>
       <select
-        value={d?.[k] == null ? "" : d[k] ? "yes" : "no"}
-        onChange={(e) =>
-          setD({ ...d, [k]: e.target.value === "" ? null : e.target.value === "yes" })
-        }
+        value={d?.[k] ?? ""}
+        onChange={(e) => setD({ ...d, [k]: e.target.value || null })}
         className={cn(inputCls, "cursor-pointer")}
       >
-        <option value="">— I&apos;ll answer on the page</option>
-        <option value="yes">Yes</option>
-        <option value="no">No</option>
+        <option value="">{placeholder}</option>
+        {options.map((o) => (
+          <option key={o} value={o}>
+            {o}
+          </option>
+        ))}
       </select>
     </label>
   );
 }
 
-function Txt({
+function Fld({
   label,
   k,
   placeholder,
@@ -532,23 +613,30 @@ function Txt({
   setD,
 }: {
   label: string;
-  k: "visaType" | "gender" | "ethnicity";
+  k: StrKey;
   placeholder: string;
   d: ApplicationDefaults;
   setD: (d: ApplicationDefaults) => void;
 }) {
   return (
     <label className="block">
-      <span className="mb-1 block text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-        {label}
-      </span>
+      <span className={dLabel}>{label}</span>
       <input
         value={d?.[k] ?? ""}
         placeholder={placeholder}
-        onChange={(e) => setD({ ...d, [k]: e.target.value.trim() || null })}
+        onChange={(e) => setD({ ...d, [k]: e.target.value || null })}
         className={inputCls}
       />
     </label>
+  );
+}
+
+function SectionLabel({ children, note }: { children: React.ReactNode; note?: string }) {
+  return (
+    <p className="mb-2.5 mt-6 text-xs font-bold text-foreground first:mt-0">
+      {children}
+      {note && <span className="ml-1.5 font-medium text-muted-foreground">({note})</span>}
+    </p>
   );
 }
 
@@ -576,36 +664,70 @@ function DefaultsCard({ active }: { active: ProfileView }) {
         <ClipboardList size={16} className="text-brand-500" />
         <h3 className="text-sm font-bold text-foreground">Application defaults</h3>
       </div>
-      <p className="mb-4 text-xs font-medium text-muted-foreground leading-relaxed">
+      <p className="mb-2 text-xs font-medium text-muted-foreground leading-relaxed">
         What apply-assist fills on every form.{" "}
         <span className="font-bold text-foreground">Only answers you set here are ever
-        filled</span> — anything left as &ldquo;I&apos;ll answer on the page&rdquo; stays blank for
-        you at the review step. Self-ID questions are always voluntary.
+        filled</span> — a toggle you never touch and a dropdown left blank stay unanswered for you
+        at the review step. Self-ID questions are always voluntary.
       </p>
 
-      <p className="mb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Work authorization</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Txt label="Visa type" k="visaType" placeholder="e.g. OPT, H-1B, Citizen" d={d} setD={setD} />
-        <Tri label="Authorized to work (US)" k="authorizedToWork" d={d} setD={setD} />
-        <Tri label="Needs sponsorship" k="needsSponsorship" d={d} setD={setD} />
+      <SectionLabel>Work Authorization</SectionLabel>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Sel label="Visa Type" k="visaType" options={VISA_TYPES} placeholder="Select…" d={d} setD={setD} />
+        {d.visaType && VISA_NEEDS_OPT_STATUS.has(d.visaType) && (
+          <Sel label="OPT / CPT Status" k="optStatus" options={OPT_STATUSES} placeholder="Select…" d={d} setD={setD} />
+        )}
+      </div>
+      <div className="mt-2">
+        <Toggle label="Authorized to work in the US" k="authorizedToWork" d={d} setD={setD} />
+        <Toggle label="Needs visa sponsorship" k="needsSponsorship" d={d} setD={setD} />
       </div>
 
-      <p className="mt-4 mb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Work preferences</p>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <Tri label="In-person OK" k="inPersonOk" d={d} setD={setD} />
-        <Tri label="Can relocate" k="canRelocate" d={d} setD={setD} />
-        <Tri label="Start immediately" k="startImmediately" d={d} setD={setD} />
+      <SectionLabel>Work Preferences</SectionLabel>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Fld label="Expected Annual Salary" k="expectedSalary" placeholder="$80,000" d={d} setD={setD} />
+        <Fld label="Expected Hourly Rate" k="expectedHourlyRate" placeholder="$40/hr" d={d} setD={setD} />
+      </div>
+      <div className="mt-2">
+        <Toggle label="Can work in-person" k="inPersonOk" d={d} setD={setD} />
+        <Toggle label="Willing to relocate" k="canRelocate" d={d} setD={setD} />
+        <Toggle label="Can start immediately" k="startImmediately" d={d} setD={setD} />
+        <Toggle label="Has reliable transportation" k="hasReliableTransportation" d={d} setD={setD} />
+        <Toggle label="Needs accommodations" k="needsAccommodations" d={d} setD={setD} />
       </div>
 
-      <p className="mt-4 mb-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground">Voluntary self-identification</p>
-      <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
-        <Txt label="Gender" k="gender" placeholder="as you'd answer" d={d} setD={setD} />
-        <Txt label="Ethnicity" k="ethnicity" placeholder="as you'd answer" d={d} setD={setD} />
-        <Tri label="Veteran" k="veteran" d={d} setD={setD} />
-        <Tri label="Disability" k="disability" d={d} setD={setD} />
+      <SectionLabel>Background</SectionLabel>
+      <div>
+        <Toggle label="Worked for company before" k="workedForCompanyBefore" d={d} setD={setD} />
+        <Toggle label="Has government clearance" k="hasGovClearance" d={d} setD={setD} />
+        <Toggle label="Has government ties" k="hasGovTies" d={d} setD={setD} />
       </div>
 
-      <button type="button" disabled={pending} onClick={save} className={cn(btnPrimary, "mt-4")}>
+      <SectionLabel note="Optional">Diversity, Equity &amp; Inclusion</SectionLabel>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <Sel label="Gender" k="gender" options={GENDERS} placeholder="Prefer not to say" d={d} setD={setD} />
+        <Sel label="Ethnicity" k="ethnicity" options={ETHNICITIES} placeholder="Prefer not to say" d={d} setD={setD} />
+      </div>
+      <div className="mt-2">
+        <Toggle label="Veteran" k="veteran" d={d} setD={setD} />
+        <Toggle label="Has disability" k="disability" d={d} setD={setD} />
+      </div>
+
+      <SectionLabel note="Optional">Additional Info</SectionLabel>
+      <label className="block">
+        <span className="mb-1.5 block text-xs font-medium text-muted-foreground">
+          Notes we use when an application asks something the fields above don&apos;t cover.
+        </span>
+        <textarea
+          value={d.additionalInfo ?? ""}
+          rows={3}
+          placeholder={'e.g. "Notice period 15 days", "Willing to travel up to 50%"'}
+          onChange={(e) => setD({ ...d, additionalInfo: e.target.value || null })}
+          className={cn(inputCls, "leading-relaxed")}
+        />
+      </label>
+
+      <button type="button" disabled={pending} onClick={save} className={cn(btnPrimary, "mt-5")}>
         {pending ? <Loader2 size={16} className="animate-spin" /> : saved ? <CheckCircle2 size={16} /> : <Check size={16} strokeWidth={3} />}
         {saved ? "Saved ✓" : "Save defaults"}
       </button>

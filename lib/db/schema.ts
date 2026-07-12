@@ -142,6 +142,8 @@ export const contacts = sqliteTable(
     title: text("title"),
     email: text("email"),
     linkedin: text("linkedin"),
+    // Profile photo URL (Apollo returns one; NULL for LinkedIn CSV / manual).
+    photoUrl: text("photo_url"),
     // "apollo" | "manual" | "happenstance" | "linkedin"
     source: text("source"),
     // Apollo person id — dedupes repeat saves; NULL for manual contacts.
@@ -257,6 +259,10 @@ export const generatedResumes = sqliteTable(
       .references(() => jobs.id),
     content: text("content").notNull(),
     pdfPath: text("pdf_path"),
+    // ResumeStyle JSON — the studio's visual settings for this generation.
+    style: text("style"),
+    // ResumeAudit JSON — fabrication audit (supported/adjusted/unsupported).
+    audit: text("audit"),
     // One line from the model: what was emphasized for this JD (UI display).
     tailoringNote: text("tailoring_note"),
     model: text("model"),
@@ -293,18 +299,35 @@ export const profiles = sqliteTable("profiles", {
   updatedAt: text("updated_at").notNull(),
 });
 
-// All nullable — null = "user hasn't decided", never guessed.
+// All nullable — null = "user hasn't decided", never guessed. Booleans are
+// edited via toggles: an untouched toggle stays null (apply-assist skips it);
+// flipping it sets an explicit true/false. Stored as JSON so adding fields is
+// backward-compatible with older rows.
 export type ApplicationDefaults = {
-  visaType: string | null; // e.g. "OPT", "H-1B", "Citizen"
+  // Work authorization
+  visaType: string | null; // e.g. "OPT", "H-1B", "US Citizen"
+  optStatus: string | null; // e.g. "Post-completion" — only relevant for F-1/OPT/CPT
   authorizedToWork: boolean | null;
   needsSponsorship: boolean | null;
+  // Work preferences
+  expectedSalary: string | null; // free text, e.g. "$120,000"
+  expectedHourlyRate: string | null; // free text, e.g. "$60/hr"
   inPersonOk: boolean | null;
   canRelocate: boolean | null;
   startImmediately: boolean | null;
+  hasReliableTransportation: boolean | null;
+  needsAccommodations: boolean | null;
+  // Background
+  workedForCompanyBefore: boolean | null;
+  hasGovClearance: boolean | null;
+  hasGovTies: boolean | null;
+  // Diversity, Equity & Inclusion (voluntary self-ID)
   gender: string | null;
   ethnicity: string | null;
   veteran: boolean | null;
   disability: boolean | null;
+  // Free-text notes for anything the structured fields don't cover.
+  additionalInfo: string | null;
 };
 
 // Key-value store; row key='profile' holds the resume/preferences text.

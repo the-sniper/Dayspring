@@ -9,15 +9,24 @@ export type ProfileRow = typeof profiles.$inferSelect;
 
 export const EMPTY_DEFAULTS: ApplicationDefaults = {
   visaType: null,
+  optStatus: null,
   authorizedToWork: null,
   needsSponsorship: null,
+  expectedSalary: null,
+  expectedHourlyRate: null,
   inPersonOk: null,
   canRelocate: null,
   startImmediately: null,
+  hasReliableTransportation: null,
+  needsAccommodations: null,
+  workedForCompanyBefore: null,
+  hasGovClearance: null,
+  hasGovTies: null,
   gender: null,
   ethnicity: null,
   veteran: null,
   disability: null,
+  additionalInfo: null,
 };
 
 export function listProfiles(): ProfileRow[] {
@@ -73,6 +82,10 @@ export function profileText(p: ProfileRow): string {
     prefLines.push(`- Open to relocation: ${d.canRelocate ? "yes" : "no"}`);
   if (d?.inPersonOk !== null && d?.inPersonOk !== undefined)
     prefLines.push(`- In-person / hybrid OK: ${d.inPersonOk ? "yes" : "no"}`);
+  if (d?.expectedSalary) prefLines.push(`- Expected salary: ${d.expectedSalary}`);
+  if (d?.expectedHourlyRate) prefLines.push(`- Expected hourly rate: ${d.expectedHourlyRate}`);
+  if (d?.startImmediately !== null && d?.startImmediately !== undefined)
+    prefLines.push(`- Can start immediately: ${d.startImmediately ? "yes" : "no"}`);
   const prefs = prefLines.length
     ? `\n\n---\nCANDIDATE PREFERENCES (user-set):\n${prefLines.join("\n")}`
     : "";

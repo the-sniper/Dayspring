@@ -19,6 +19,7 @@ import ScoreBadge from "@/components/score-badge";
 import ScoreButton from "@/components/score-button";
 import CompanyLogo from "@/components/company-logo";
 import Pagination from "@/components/pagination";
+import PageHeader from "@/components/page-header";
 import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { db } from "@/lib/db";
 import { companies, jobs, settings } from "@/lib/db/schema";
@@ -232,36 +233,40 @@ export default async function FeedPage({
   };
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <header className="mb-8 flex items-end justify-between gap-4">
-        <div>
-          <div className="flex items-center gap-2 text-muted-foreground mb-1">
-            <Link href="/feed" className="text-xs font-bold uppercase tracking-widest hover:text-foreground transition-colors">Feed</Link>
-            <span className="text-muted-foreground/30">/</span>
-            <span className="text-xs font-bold uppercase tracking-widest text-foreground">{showIgnored ? "Ignored" : "New Roles"}</span>
-          </div>
-          <h1 className="text-4xl font-black tracking-tight text-foreground">
-            {showIgnored ? "Archive" : "Discovery"}
-          </h1>
-          <p className="mt-2 text-sm font-medium text-muted-foreground">
-            <span className="text-foreground font-bold">{totalCount}</span> {showIgnored ? "ignored" : "new"} roles
+    <div className="mx-auto max-w-6xl stagger-load">
+      <PageHeader
+        eyebrow={showIgnored ? "Feed / Ignored" : "Feed / New Roles"}
+        icon={<Filter size={14} />}
+        title={showIgnored ? "Archive" : "Discovery"}
+        description={
+          <span>
+            <span className="font-semibold text-foreground">{totalCount}</span>{" "}
+            {showIgnored ? "ignored" : "new"} roles
             {!showIgnored && unscored > 0 && (
-              <> · <span className="text-brand-600 dark:text-brand-400 font-bold">{unscored}</span> unscored on this page</>
+              <>
+                {" · "}
+                <span className="font-semibold text-brand-600 dark:text-brand-400">
+                  {unscored}
+                </span>{" "}
+                unscored here
+              </>
             )}
             {" · "}
             <Link
               href={showIgnored ? "/feed" : "/feed?ignored=1"}
-              className="font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400 transition-colors"
+              className="font-semibold text-brand-600 transition-colors hover:text-brand-700 dark:text-brand-400"
             >
-              {showIgnored ? "View Active" : "View Ignored"}
+              {showIgnored ? "View active" : "View ignored"}
             </Link>
-          </p>
-        </div>
-        <div className="flex items-center gap-3">
-          <ScoreButton unscoredCount={scorable} />
-          <PullButton />
-        </div>
-      </header>
+          </span>
+        }
+        actions={
+          <>
+            <ScoreButton unscoredCount={scorable} />
+            <PullButton />
+          </>
+        }
+      />
 
       {sp.error && (
         <div className="mb-6">
@@ -344,7 +349,7 @@ export default async function FeedPage({
                   <div className="flex justify-end gap-2">
                     <form action={promoteJobAction.bind(null, j.id)}>
                       <button
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shadow-sm transition-all hover:scale-110 active:scale-95"
+                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white shadow-sm shadow-brand-500/25 transition-all hover:bg-brand-600 hover:scale-105 active:scale-95"
                         title="Promote to wishlist"
                       >
                         <Check size={16} strokeWidth={3} />
@@ -353,7 +358,7 @@ export default async function FeedPage({
                     {!showIgnored && (
                       <form action={ignoreJobAction.bind(null, j.id)}>
                         <button 
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
+                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
                           title="Ignore role"
                         >
                           <X size={16} strokeWidth={3} />

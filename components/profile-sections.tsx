@@ -7,6 +7,7 @@
 // sync. All components are MODULE-SCOPE (nested defs remount per keystroke —
 // learned the hard way in M27).
 import { useMemo, useState, useTransition } from "react";
+import { createPortal } from "react-dom";
 import {
   Briefcase,
   GraduationCap,
@@ -114,7 +115,12 @@ function EditModal({
   onCancel: () => void;
   children: React.ReactNode;
 }) {
-  return (
+  // Portal to <body>: the profile page's `.stagger-load` wrapper leaves a
+  // lingering `transform` on its children, which would otherwise make this
+  // `position: fixed` overlay resolve against that box instead of the viewport
+  // (the "cramped modal" bug). Rendering at the body escapes any such ancestor.
+  if (typeof document === "undefined") return null;
+  return createPortal(
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" onClick={onCancel} />
       <div className="relative flex max-h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-border bg-card shadow-2xl">
@@ -215,7 +221,8 @@ function EditModal({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

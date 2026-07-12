@@ -1,8 +1,15 @@
+"use client";
+
+import { Alert } from "@heroui/react";
+
 export default function ErrorBanner({ message }: { message?: string }) {
   if (!message) return null;
   return (
-    <div className="mb-4 rounded border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-      {message}
-    </div>
+    <Alert status="danger" className="mb-4">
+      <Alert.Indicator />
+      <Alert.Content>
+        <Alert.Description>{message}</Alert.Description>
+      </Alert.Content>
+    </Alert>
   );
 }

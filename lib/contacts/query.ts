@@ -11,6 +11,7 @@ export type ContactRow = {
   email: string | null;
   linkedin: string | null;
   twitter: string | null;
+  photoUrl: string | null;
   source: string | null;
   summary: string | null;
   notes: string | null;
@@ -25,6 +26,7 @@ const SELECT = {
   email: contacts.email,
   linkedin: contacts.linkedin,
   twitter: contacts.twitter,
+  photoUrl: contacts.photoUrl,
   source: contacts.source,
   summary: contacts.summary,
   notes: contacts.notes,

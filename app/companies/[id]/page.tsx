@@ -75,6 +75,7 @@ export default async function CompanyEditPage({
       title: contacts.title,
       email: contacts.email,
       linkedin: contacts.linkedin,
+      photoUrl: contacts.photoUrl,
       emailStatus: contacts.emailStatus,
       outreachStatus: contacts.outreachStatus,
     })
@@ -103,7 +104,7 @@ export default async function CompanyEditPage({
         <div className="flex items-start gap-4">
           <CompanyLogo name={company.name} className="h-14 w-14 text-xl" />
           <div>
-            <h1 className="text-3xl font-black tracking-tight text-foreground leading-tight">
+            <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground leading-tight">
               {company.name}
             </h1>
             <div className="mt-2 flex items-center gap-4 text-sm font-medium text-muted-foreground">

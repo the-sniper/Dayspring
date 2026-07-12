@@ -8,6 +8,7 @@ export type ApolloPerson = {
   location: string | null;
   linkedinUrl: string | null;
   emailStatus: string | null;
+  photoUrl: string | null;
 };
 
 type RawPerson = {
@@ -18,6 +19,7 @@ type RawPerson = {
   title?: string | null;
   linkedin_url?: string | null;
   email_status?: string | null;
+  photo_url?: string | null;
   organization?: { name?: string | null } | null;
   city?: string | null;
   state?: string | null;
@@ -37,6 +39,7 @@ function normalizePerson(p: RawPerson): ApolloPerson {
       [p.city, p.state, p.country].filter(Boolean).join(", ") || null,
     linkedinUrl: p.linkedin_url ?? null,
     emailStatus: p.email_status ?? null,
+    photoUrl: p.photo_url?.trim() || null,
   };
 }
 

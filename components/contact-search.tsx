@@ -20,8 +20,9 @@ import {
   browseContactsPageAction,
   searchLocalContactsAction,
 } from "@/lib/actions/contacts";
-import { CONTACTS_PAGE_SIZE } from "@/lib/contacts/constants";
+import { CONTACTS_PAGE_SIZE, CONTACTS_PAGE_SIZES } from "@/lib/contacts/constants";
 import type { ContactRow } from "@/lib/contacts/query";
+import PersonAvatar from "@/components/person-avatar";
 import { cn } from "@/lib/utils";
 
 const SOURCE_STYLE: Record<string, string> = {
@@ -49,13 +50,14 @@ export default function ContactSearch({
   const [rows, setRows] = useState<ContactRow[]>(initial);
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<number>(CONTACTS_PAGE_SIZE);
   const [ai, setAi] = useState<AiState>(null);
   const [aiError, setAiError] = useState<string | null>(null);
   const [filtering, startFilter] = useTransition();
   const [asking, startAsk] = useTransition();
   const [paging, startPaging] = useTransition();
 
-  const totalPages = Math.max(1, Math.ceil(total / CONTACTS_PAGE_SIZE));
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   function filter(query: string) {
     setAi(null);
@@ -64,17 +66,23 @@ export default function ContactSearch({
     startFilter(async () => setRows(await searchLocalContactsAction(query)));
   }
 
-  function goToPage(next: number) {
-    const target = Math.min(Math.max(1, next), totalPages);
-    if (target === page) return;
+  function goToPage(next: number, size = pageSize) {
+    const pages = Math.max(1, Math.ceil(total / size));
+    const target = Math.min(Math.max(1, next), pages);
     startPaging(async () => {
-      const res = await browseContactsPageAction(target);
+      const res = await browseContactsPageAction(target, size);
       setRows(res.rows);
       setPage(res.page);
+      setPageSize(res.pageSize);
       if (typeof window !== "undefined") {
         window.scrollTo({ top: 0, behavior: "smooth" });
       }
     });
+  }
+
+  function changePageSize(size: number) {
+    if (size === pageSize) return;
+    goToPage(1, size);
   }
 
   // Browse mode = no active text filter and not showing AI results.
@@ -174,18 +182,37 @@ export default function ContactSearch({
         </>
       ) : (
         <>
-          <p className="text-xs font-medium text-muted-foreground">
-            {q ? (
-              `${rows.length} match${rows.length === 1 ? "" : "es"}`
-            ) : (
-              <>
-                {total} contacts
-                {totalPages > 1 && (
-                  <> · page <span className="font-bold text-foreground">{page}</span> of {totalPages}</>
-                )}
-              </>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-medium text-muted-foreground">
+              {q ? (
+                `${rows.length} match${rows.length === 1 ? "" : "es"}`
+              ) : (
+                <>
+                  {total} contacts
+                  {totalPages > 1 && (
+                    <> · page <span className="font-bold text-foreground">{page}</span> of {totalPages}</>
+                  )}
+                </>
+              )}
+            </p>
+            {browsing && total > CONTACTS_PAGE_SIZES[0] && (
+              <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+                <span className="uppercase tracking-widest font-bold">Per page</span>
+                <select
+                  value={pageSize}
+                  disabled={paging}
+                  onChange={(e) => changePageSize(Number(e.target.value))}
+                  className="rounded-lg border border-border bg-secondary/30 px-2 py-1 text-xs font-bold text-foreground transition-all focus:border-brand-500 focus:ring-1 focus:ring-brand-500 cursor-pointer disabled:opacity-50"
+                >
+                  {CONTACTS_PAGE_SIZES.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+              </label>
             )}
-          </p>
+          </div>
           {rows.length === 0 ? (
             <div className="flex flex-col items-center gap-3 rounded-xl border-2 border-dashed border-border p-8 text-center">
               {q ? (
@@ -217,12 +244,12 @@ export default function ContactSearch({
             <>
               <div
                 className={cn(
-                  "divide-y divide-border rounded-xl border border-border bg-secondary/10 overflow-hidden transition-opacity",
+                  "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 transition-opacity",
                   paging && "opacity-50",
                 )}
               >
                 {rows.map((c) => (
-                  <ContactRowView key={c.id} c={c} />
+                  <ContactCard key={c.id} c={c} />
                 ))}
               </div>
               {browsing && totalPages > 1 && (
@@ -275,6 +302,11 @@ function ContactRowView({
 }) {
   return (
     <div className="flex items-center justify-between gap-4 p-4 transition-colors hover:bg-secondary/20">
+      <PersonAvatar
+        name={c.name}
+        photoUrl={c.photoUrl}
+        className="h-10 w-10 text-xs"
+      />
       <div className="min-w-0 flex-1">
         <div className="flex items-center gap-2">
           <p className="truncate text-sm font-bold text-foreground">{c.name}</p>
@@ -323,6 +355,71 @@ function ContactRowView({
           <a href={c.twitter} target="_blank" rel="noreferrer" title="X / Twitter" className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-brand-600 transition-colors">
             <AtSign size={14} />
           </a>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// Grid-cell variant used by the browse view — vertical card with contact
+// actions pinned to the bottom so equal-height cells line up cleanly.
+function ContactCard({ c }: { c: ContactRow }) {
+  return (
+    <div className="flex h-full flex-col rounded-xl border border-border bg-secondary/10 p-4 transition-colors hover:bg-secondary/20">
+      <div className="flex items-start gap-3">
+        <PersonAvatar
+          name={c.name}
+          photoUrl={c.photoUrl}
+          className="h-11 w-11 text-sm"
+        />
+        <div className="min-w-0 flex-1">
+          <div className="flex items-start justify-between gap-2">
+            <p className="min-w-0 truncate text-sm font-bold text-foreground" title={c.name}>
+              {c.name}
+            </p>
+            {c.source && (
+              <span
+                className={cn(
+                  "shrink-0 rounded px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter",
+                  SOURCE_STYLE[c.source] ?? "bg-secondary text-muted-foreground",
+                )}
+              >
+                {c.source}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 line-clamp-2 text-xs font-medium text-muted-foreground">
+            {c.title ?? c.notes ?? "—"}
+          </p>
+        </div>
+      </div>
+      {c.companyName && (
+        <Link
+          href={`/companies/${c.companyId}`}
+          className="mt-1 inline-flex items-center gap-1 truncate text-[11px] font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+        >
+          <Building2 size={11} className="shrink-0" />
+          <span className="truncate">{c.companyName}</span>
+        </Link>
+      )}
+      <div className="mt-auto flex items-center gap-1.5 pt-3">
+        {c.email && (
+          <a href={`mailto:${c.email}`} title={c.email} className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-brand-600 transition-colors">
+            <Mail size={14} />
+          </a>
+        )}
+        {c.linkedin && (
+          <a href={c.linkedin} target="_blank" rel="noreferrer" title="LinkedIn" className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-brand-600 transition-colors">
+            <ExternalLink size={14} />
+          </a>
+        )}
+        {c.twitter && (
+          <a href={c.twitter} target="_blank" rel="noreferrer" title="X / Twitter" className="p-1.5 rounded-lg bg-card border border-border text-muted-foreground hover:text-brand-600 transition-colors">
+            <AtSign size={14} />
+          </a>
+        )}
+        {!c.email && !c.linkedin && !c.twitter && (
+          <span className="text-[10px] font-medium text-muted-foreground/40">No links</span>
         )}
       </div>
     </div>

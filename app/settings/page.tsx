@@ -17,6 +17,7 @@ import MasterResumesPanel from "@/components/master-resumes-panel";
 import ProfileForm from "@/components/profile-form";
 import ResumePathForm from "@/components/resume-path-form";
 import VaultPanel from "@/components/vault-panel";
+import PageHeader from "@/components/page-header";
 import { dailyRunStatusAction } from "@/lib/actions/automation";
 import { listMasters } from "@/lib/resumes/core";
 import { hasVaultKey } from "@/lib/vault/crypto";
@@ -91,15 +92,12 @@ export default async function SettingsPage({
 
   return (
     <div className="mx-auto max-w-4xl stagger-load">
-      <header className="mb-10">
-        <div className="flex items-center gap-2 text-muted-foreground mb-1">
-          <Settings size={14} />
-          <span className="text-xs font-bold uppercase tracking-widest">Configuration</span>
-        </div>
-        <h1 className="text-4xl font-black tracking-tight text-foreground">
-          Settings
-        </h1>
-      </header>
+      <PageHeader
+        eyebrow="Configuration"
+        icon={<Settings size={14} />}
+        title="Settings"
+        description="Keys, resumes, integrations, and automation for your command center."
+      />
 
       {(gmailOk || gmailError) && (
         <div

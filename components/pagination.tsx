@@ -1,9 +1,19 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronLeft, ChevronRight } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { usePathname, useSearchParams, useRouter } from "next/navigation";
+import { Pagination as HeroPagination } from "@heroui/react";
+
+function pageWindow(current: number, total: number): (number | "ellipsis")[] {
+  if (total <= 7) return Array.from({ length: total }, (_, i) => i + 1);
+  const pages: (number | "ellipsis")[] = [1];
+  const start = Math.max(2, current - 1);
+  const end = Math.min(total - 1, current + 1);
+  if (start > 2) pages.push("ellipsis");
+  for (let p = start; p <= end; p++) pages.push(p);
+  if (end < total - 1) pages.push("ellipsis");
+  pages.push(total);
+  return pages;
+}
 
 export default function Pagination({
   total,
@@ -16,78 +26,69 @@ export default function Pagination({
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const router = useRouter();
   const totalPages = Math.ceil(total / pageSize);
 
   if (totalPages <= 1) return null;
 
-  function createPageUrl(page: number) {
+  function go(page: number) {
     const params = new URLSearchParams(searchParams.toString());
     if (page === 1) params.delete("page");
     else params.set("page", String(page));
-    return `${pathname}?${params.toString()}`;
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
   }
 
-  return (
-    <div className="flex items-center justify-between border-t border-border bg-secondary/10 px-6 py-4">
-      <div className="flex flex-1 justify-between sm:hidden">
-        <Link
-          href={currentPage > 1 ? createPageUrl(currentPage - 1) : "#"}
-          className={cn(
-            "relative inline-flex items-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground",
-            currentPage <= 1 && "pointer-events-none opacity-50"
-          )}
-        >
-          Previous
-        </Link>
-        <Link
-          href={currentPage < totalPages ? createPageUrl(currentPage + 1) : "#"}
-          className={cn(
-            "relative ml-3 inline-flex items-center rounded-md border border-border bg-card px-4 py-2 text-sm font-medium text-foreground",
-            currentPage >= totalPages && "pointer-events-none opacity-50"
-          )}
-        >
-          Next
-        </Link>
-      </div>
-      <div className="hidden sm:flex sm:flex-1 sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">
-            Showing <span className="font-bold text-foreground">{(currentPage - 1) * pageSize + 1}</span> to{" "}
-            <span className="font-bold text-foreground">{Math.min(currentPage * pageSize, total)}</span> of{" "}
-            <span className="font-bold text-foreground">{total}</span> results
-          </p>
-        </div>
-        <div>
-          <nav className="isolate inline-flex -space-x-px rounded-xl shadow-sm" aria-label="Pagination">
-            <Link
-              href={currentPage > 1 ? createPageUrl(currentPage - 1) : "#"}
-              className={cn(
-                "relative inline-flex items-center rounded-l-xl border border-border bg-card px-2 py-2 text-muted-foreground hover:bg-secondary focus:z-20 focus:outline-offset-0 transition-colors",
-                currentPage <= 1 && "pointer-events-none opacity-50"
-              )}
-            >
-              <span className="sr-only">Previous</span>
-              <ChevronLeft className="h-5 w-5" aria-hidden="true" />
-            </Link>
-            
-            {/* Page numbers could be added here for more complex pagination */}
-            <div className="relative inline-flex items-center border border-border bg-card px-4 py-2 text-sm font-bold text-foreground focus:z-20">
-              Page {currentPage} of {totalPages}
-            </div>
+  const from = (currentPage - 1) * pageSize + 1;
+  const to = Math.min(currentPage * pageSize, total);
+  const pages = pageWindow(currentPage, totalPages);
 
-            <Link
-              href={currentPage < totalPages ? createPageUrl(currentPage + 1) : "#"}
-              className={cn(
-                "relative inline-flex items-center rounded-r-xl border border-border bg-card px-2 py-2 text-muted-foreground hover:bg-secondary focus:z-20 focus:outline-offset-0 transition-colors",
-                currentPage >= totalPages && "pointer-events-none opacity-50"
-              )}
+  return (
+    <div className="flex flex-col items-center justify-between gap-3 border-t border-border px-6 py-4 sm:flex-row">
+      <HeroPagination.Summary>
+        Showing <span className="font-semibold text-foreground">{from}</span>–
+        <span className="font-semibold text-foreground">{to}</span> of{" "}
+        <span className="font-semibold text-foreground">{total}</span>
+      </HeroPagination.Summary>
+
+      <HeroPagination>
+        <HeroPagination.Content>
+          <HeroPagination.Item>
+            <HeroPagination.Previous
+              isDisabled={currentPage <= 1}
+              onPress={() => go(currentPage - 1)}
             >
-              <span className="sr-only">Next</span>
-              <ChevronRight className="h-5 w-5" aria-hidden="true" />
-            </Link>
-          </nav>
-        </div>
-      </div>
+              <HeroPagination.PreviousIcon />
+            </HeroPagination.Previous>
+          </HeroPagination.Item>
+
+          {pages.map((p, i) =>
+            p === "ellipsis" ? (
+              <HeroPagination.Item key={`e-${i}`}>
+                <HeroPagination.Ellipsis />
+              </HeroPagination.Item>
+            ) : (
+              <HeroPagination.Item key={p}>
+                <HeroPagination.Link
+                  isActive={p === currentPage}
+                  onPress={() => go(p)}
+                >
+                  {p}
+                </HeroPagination.Link>
+              </HeroPagination.Item>
+            ),
+          )}
+
+          <HeroPagination.Item>
+            <HeroPagination.Next
+              isDisabled={currentPage >= totalPages}
+              onPress={() => go(currentPage + 1)}
+            >
+              <HeroPagination.NextIcon />
+            </HeroPagination.Next>
+          </HeroPagination.Item>
+        </HeroPagination.Content>
+      </HeroPagination>
     </div>
   );
 }

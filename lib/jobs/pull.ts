@@ -9,9 +9,16 @@ import { companies, jobs } from "@/lib/db/schema";
 import { adapters } from "@/lib/integrations/ats";
 import { fetchWorkday } from "@/lib/integrations/ats/workday";
 import type { NormalizedJob } from "@/lib/integrations/ats/types";
+import { fetchAdzuna, hasAdzunaKeys } from "@/lib/integrations/jobs/adzuna";
 import { dedupeKey } from "@/lib/jobs/dedupe";
 import { deriveJobMeta } from "@/lib/jobs/derive";
+import { findOrCreateCompany } from "@/lib/jobs/create";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
+import { mapPool } from "@/lib/util/pool";
+
+// Cap concurrent ATS requests so a large watched set (hundreds of catalog
+// companies) doesn't fire hundreds of fetches at once and trip timeouts.
+const ATS_CONCURRENCY = 10;
 
 // Resolve the right fetcher per company: bare-slug ATSes use the registry;
 // Workday needs its three-value locator.
@@ -60,13 +67,12 @@ export async function pullAllJobs(): Promise<PullResult> {
     classified: 0,
   };
 
-  // One bad slug (404, empty board, timeout) never kills the run.
-  const settled = await Promise.allSettled(
-    watched.map(async (c) => ({
-      company: c,
-      fetched: await fetchForCompany(c),
-    })),
-  );
+  // One bad slug (404, empty board, timeout) never kills the run. Pooled so a
+  // large catalog doesn't open hundreds of sockets simultaneously.
+  const settled = await mapPool(watched, ATS_CONCURRENCY, async (c) => ({
+    company: c,
+    fetched: await fetchForCompany(c),
+  }));
 
   const now = new Date().toISOString();
   settled.forEach((s, i) => {
@@ -129,6 +135,71 @@ export async function pullAllJobs(): Promise<PullResult> {
       skipped,
     });
   });
+
+  // Aggregator source (Adzuna) — broad cross-industry US coverage for the long
+  // tail not on a watched ATS board. Env-guarded; each posting is resolved to a
+  // company row on the fly, then flows through the same derive → US-filter →
+  // dedupe insert as ATS jobs. Reported as one summary row.
+  if (hasAdzunaKeys()) {
+    try {
+      const aggregated = await fetchAdzuna();
+      let added = 0;
+      let skipped = 0;
+      for (const aj of aggregated) {
+        const meta = deriveJobMeta({
+          title: aj.title,
+          location: aj.location,
+          description: aj.descriptionText,
+        });
+        if (meta.isUs === false) {
+          skipped++;
+          continue;
+        }
+        const companyId = findOrCreateCompany(aj.companyName);
+        const res = db
+          .insert(jobs)
+          .values({
+            companyId,
+            title: aj.title,
+            roleType: heuristicRoleType(aj.title),
+            url: aj.url,
+            source: "adzuna",
+            externalId: aj.externalId,
+            dedupeKey: dedupeKey(companyId, aj.title, aj.url),
+            status: "new",
+            location: aj.location,
+            isUs: meta.isUs,
+            workplaceType: meta.workplaceType,
+            employmentType: meta.employmentType,
+            // Prefer the aggregator's structured comp; fall back to mined values.
+            salaryMin: aj.salaryMin ?? meta.salaryMin,
+            salaryMax: aj.salaryMax ?? meta.salaryMax,
+            salaryCurrency: aj.salaryMin != null || aj.salaryMax != null ? "USD" : meta.salaryCurrency,
+            description: aj.descriptionText,
+            postedAt: aj.postedAt,
+            createdAt: now,
+            updatedAt: now,
+          })
+          .onConflictDoNothing()
+          .run();
+        if (res.changes > 0) {
+          added++;
+          result.newJobIds.push(Number(res.lastInsertRowid));
+        }
+      }
+      result.perCompany.push({
+        name: "Adzuna (aggregator)",
+        fetched: aggregated.length,
+        added,
+        skipped,
+      });
+    } catch (err) {
+      result.errors.push({
+        name: "Adzuna (aggregator)",
+        message: err instanceof Error ? err.message : String(err),
+      });
+    }
+  }
 
   // Cheap batched classify for this run's titles the regexes missed.
   // Non-fatal: no key or a failed call just leaves roleType null (settable

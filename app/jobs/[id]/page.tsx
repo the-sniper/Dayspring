@@ -109,7 +109,7 @@ export default async function JobDetailPage({
             <div className="flex items-start gap-4">
               <CompanyLogo name={companyName} className="h-14 w-14 text-xl" />
               <div>
-                <h1 className="text-3xl font-black tracking-tight text-foreground leading-tight">
+                <h1 className="font-display text-3xl font-semibold tracking-tight text-foreground leading-tight">
                   {job.title}
                 </h1>
                 <div className="mt-2 flex flex-wrap items-center gap-y-2 gap-x-4 text-sm font-medium text-muted-foreground">
@@ -294,9 +294,9 @@ export default async function JobDetailPage({
                 </div>
                 <button
                   type="submit"
-                  className="flex items-center gap-2 rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/10 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                  className="flex items-center gap-2 rounded-[var(--radius)] bg-[var(--accent)] px-6 py-2.5 text-sm font-medium text-[var(--accent-foreground)] shadow-sm shadow-brand-500/20 transition-all hover:brightness-105 active:scale-[0.98] cursor-pointer"
                 >
-                  <Check size={16} strokeWidth={3} />
+                  <Check size={16} strokeWidth={2.75} />
                   Save Changes
                 </button>
               </form>

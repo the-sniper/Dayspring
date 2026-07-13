@@ -19,24 +19,49 @@ export default function Pagination({
   total,
   pageSize,
   currentPage,
+  pageSizes,
+  pageSizeParam = "per",
 }: {
   total: number;
   pageSize: number;
   currentPage: number;
+  pageSizes?: readonly number[];
+  pageSizeParam?: string;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const router = useRouter();
   const totalPages = Math.ceil(total / pageSize);
 
-  if (totalPages <= 1) return null;
+  if (total === 0) return null;
+
+  const showNav = totalPages > 1;
+  const showSizeSelect =
+    pageSizes !== undefined &&
+    pageSizes.length > 0 &&
+    total > Math.min(...pageSizes);
+
+  if (!showNav && !showSizeSelect) return null;
+
+  function pushParams(params: URLSearchParams) {
+    const qs = params.toString();
+    router.push(qs ? `${pathname}?${qs}` : pathname);
+  }
 
   function go(page: number) {
     const params = new URLSearchParams(searchParams.toString());
     if (page === 1) params.delete("page");
     else params.set("page", String(page));
-    const qs = params.toString();
-    router.push(qs ? `${pathname}?${qs}` : pathname);
+    pushParams(params);
+  }
+
+  function changePageSize(size: number) {
+    const params = new URLSearchParams(searchParams.toString());
+    const defaultSize = pageSizes?.[0];
+    if (defaultSize !== undefined && size === defaultSize) params.delete(pageSizeParam);
+    else params.set(pageSizeParam, String(size));
+    params.delete("page");
+    pushParams(params);
   }
 
   const from = (currentPage - 1) * pageSize + 1;
@@ -51,44 +76,65 @@ export default function Pagination({
         <span className="font-semibold text-foreground">{total}</span>
       </HeroPagination.Summary>
 
-      <HeroPagination>
-        <HeroPagination.Content>
-          <HeroPagination.Item>
-            <HeroPagination.Previous
-              isDisabled={currentPage <= 1}
-              onPress={() => go(currentPage - 1)}
+      <div className="flex flex-wrap items-center justify-center gap-4">
+        {showSizeSelect && (
+          <label className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+            <span className="font-bold uppercase tracking-widest">Per page</span>
+            <select
+              value={pageSize}
+              onChange={(e) => changePageSize(Number(e.target.value))}
+              className="cursor-pointer rounded-lg border border-border bg-secondary/30 px-2 py-1 text-xs font-bold text-foreground transition-all focus:border-brand-500 focus:ring-1 focus:ring-brand-500"
             >
-              <HeroPagination.PreviousIcon />
-            </HeroPagination.Previous>
-          </HeroPagination.Item>
+              {pageSizes.map((s) => (
+                <option key={s} value={s}>
+                  {s}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
 
-          {pages.map((p, i) =>
-            p === "ellipsis" ? (
-              <HeroPagination.Item key={`e-${i}`}>
-                <HeroPagination.Ellipsis />
-              </HeroPagination.Item>
-            ) : (
-              <HeroPagination.Item key={p}>
-                <HeroPagination.Link
-                  isActive={p === currentPage}
-                  onPress={() => go(p)}
+        {showNav && (
+          <HeroPagination>
+            <HeroPagination.Content>
+              <HeroPagination.Item>
+                <HeroPagination.Previous
+                  isDisabled={currentPage <= 1}
+                  onPress={() => go(currentPage - 1)}
                 >
-                  {p}
-                </HeroPagination.Link>
+                  <HeroPagination.PreviousIcon />
+                </HeroPagination.Previous>
               </HeroPagination.Item>
-            ),
-          )}
 
-          <HeroPagination.Item>
-            <HeroPagination.Next
-              isDisabled={currentPage >= totalPages}
-              onPress={() => go(currentPage + 1)}
-            >
-              <HeroPagination.NextIcon />
-            </HeroPagination.Next>
-          </HeroPagination.Item>
-        </HeroPagination.Content>
-      </HeroPagination>
+              {pages.map((p, i) =>
+                p === "ellipsis" ? (
+                  <HeroPagination.Item key={`e-${i}`}>
+                    <HeroPagination.Ellipsis />
+                  </HeroPagination.Item>
+                ) : (
+                  <HeroPagination.Item key={p}>
+                    <HeroPagination.Link
+                      isActive={p === currentPage}
+                      onPress={() => go(p)}
+                    >
+                      {p}
+                    </HeroPagination.Link>
+                  </HeroPagination.Item>
+                ),
+              )}
+
+              <HeroPagination.Item>
+                <HeroPagination.Next
+                  isDisabled={currentPage >= totalPages}
+                  onPress={() => go(currentPage + 1)}
+                >
+                  <HeroPagination.NextIcon />
+                </HeroPagination.Next>
+              </HeroPagination.Item>
+            </HeroPagination.Content>
+          </HeroPagination>
+        )}
+      </div>
     </div>
   );
 }

@@ -5,21 +5,43 @@ import ErrorBanner from "@/components/error-banner";
 import RoleChip from "@/components/role-chip";
 import CompanyLogo from "@/components/company-logo";
 import PageHeader from "@/components/page-header";
+import Pagination from "@/components/pagination";
 import { createCompanyAction } from "@/lib/actions/companies";
 import { api, convex } from "@/lib/convex/server";
 import type { RoleType } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
+const PAGE_SIZES = [10, 25, 50] as const;
+const DEFAULT_PAGE_SIZE = PAGE_SIZES[1];
+
+const posNum = (v?: string) => {
+  const n = Number(v);
+  return Number.isFinite(n) && n > 0 ? n : null;
+};
+
+function normalizePageSize(size: number): number {
+  return (PAGE_SIZES as readonly number[]).includes(size) ? size : DEFAULT_PAGE_SIZE;
+}
+
 export default async function CompaniesPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; page?: string; per?: string }>;
 }) {
-  const { error } = await searchParams;
-  const rows = (await convex().query(api.companies.withJobCounts, {}))
+  const sp = await searchParams;
+  const { error } = sp;
+  const pageSize = normalizePageSize(posNum(sp.per) ?? DEFAULT_PAGE_SIZE);
+  const requestedPage = Math.max(1, posNum(sp.page) ?? 1);
+
+  const allRows = (await convex().query(api.companies.withJobCounts, {}))
     .sort((a, b) => a.name.localeCompare(b.name))
     .map((c) => ({ company: c, jobCount: c.jobCount }));
+
+  const total = allRows.length;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const page = Math.min(requestedPage, totalPages);
+  const rows = allRows.slice((page - 1) * pageSize, page * pageSize);
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -30,7 +52,7 @@ export default async function CompaniesPage({
         description={
           <span>
             Managing{" "}
-            <span className="font-semibold text-foreground">{rows.length}</span>{" "}
+            <span className="font-semibold text-foreground">{total}</span>{" "}
             tracked organizations
           </span>
         }
@@ -148,6 +170,12 @@ export default async function CompaniesPage({
             </p>
           </div>
         )}
+        <Pagination
+          total={total}
+          pageSize={pageSize}
+          currentPage={page}
+          pageSizes={PAGE_SIZES}
+        />
       </div>
     </div>
   );

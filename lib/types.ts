@@ -29,16 +29,11 @@ export type ApplicationDefaults = {
   additionalInfo: string | null;
 };
 
-export const ROLE_TYPES = ["FDE", "FE", "BE", "FS", "DATA"] as const;
-export type RoleType = (typeof ROLE_TYPES)[number];
-
-export const ROLE_TYPE_LABELS: Record<RoleType, string> = {
-  FDE: "Forward Deployed",
-  FE: "Frontend",
-  BE: "Backend",
-  FS: "Fullstack",
-  DATA: "Data",
-};
+// Taxonomy lives in shared/role-types.ts so Convex functions use the same
+// list; re-exported here so app code keeps importing from @/lib/types.
+import { ROLE_TYPES } from "@/shared/role-types";
+export { ROLE_TYPES, ROLE_TYPE_LABELS } from "@/shared/role-types";
+export type { RoleType } from "@/shared/role-types";
 
 // `new`/`ignored` are feed states; the rest are the kanban columns.
 export const JOB_STATUSES = [

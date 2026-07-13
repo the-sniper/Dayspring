@@ -4,10 +4,11 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import Nav from "@/components/nav";
 
-// Full chrome everywhere except /signin, which is a standalone auth screen.
+// Full chrome everywhere except /signin and /onboarding, which are
+// standalone full-screen flows.
 export default function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
-  if (pathname === "/signin") return <>{children}</>;
+  if (pathname === "/signin" || pathname === "/onboarding") return <>{children}</>;
 
   return (
     <div className="flex min-h-screen">

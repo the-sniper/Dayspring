@@ -597,7 +597,7 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "roblox",
-    "industry": "Media & Gaming"
+    "industry": "Media, Gaming & XR"
   },
   {
     "name": "Riot Games",
@@ -605,7 +605,7 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "riotgames",
-    "industry": "Media & Gaming"
+    "industry": "Media, Gaming & XR"
   },
   {
     "name": "Netflix",
@@ -613,7 +613,7 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "netflix",
-    "industry": "Media & Gaming"
+    "industry": "Media, Gaming & XR"
   },
   {
     "name": "Squarespace",
@@ -621,7 +621,7 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "squarespace",
-    "industry": "Media & Gaming"
+    "industry": "Media, Gaming & XR"
   },
   {
     "name": "Watershed",
@@ -646,5 +646,101 @@
     "atsType": "ashby",
     "atsSlug": "formenergy",
     "industry": "Climate & Energy"
+  },
+  {
+    "name": "Wiz",
+    "domain": "wiz.io",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "wizinc",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Tailscale",
+    "domain": "tailscale.com",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "tailscale",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Abnormal Security",
+    "domain": "abnormalsecurity.com",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "abnormalsecurity",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Chainguard",
+    "domain": "chainguard.dev",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "chainguard",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Cribl",
+    "domain": "cribl.io",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "cribl",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Huntress",
+    "domain": "huntress.com",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "huntress",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "1Password",
+    "domain": "1password.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "1password",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Socket",
+    "domain": "socket.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "socket",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Doppler",
+    "domain": "doppler.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "doppler",
+    "industry": "Cybersecurity"
+  },
+  {
+    "name": "Epic Games",
+    "domain": "epicgames.com",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "epicgames",
+    "industry": "Media, Gaming & XR"
+  },
+  {
+    "name": "Magic Leap",
+    "domain": "magicleap.com",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "magicleap",
+    "industry": "Media, Gaming & XR"
+  },
+  {
+    "name": "Niantic",
+    "domain": "nianticlabs.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "niantic",
+    "industry": "Media, Gaming & XR"
   }
 ]

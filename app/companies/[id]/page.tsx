@@ -32,7 +32,17 @@ const ROLE_TITLES: Record<RoleType, string[]> = {
   FE: ["frontend engineer"],
   BE: ["backend engineer"],
   FS: ["software engineer"],
-  DATA: ["data scientist", "machine learning engineer"],
+  DATA: ["data engineer", "data scientist"],
+  MOBILE: ["mobile engineer", "ios engineer"],
+  AIML: ["machine learning engineer", "ai researcher"],
+  INFRA: ["devops engineer", "site reliability engineer"],
+  SEC: ["security engineer"],
+  QA: ["qa engineer"],
+  EMB: ["embedded engineer", "firmware engineer"],
+  XR: ["xr engineer"],
+  GAME: ["game developer"],
+  PM: ["product manager"],
+  DESIGN: ["product designer"],
 };
 
 function defaultTitles(roleTypes: RoleType[] | null): string[] {

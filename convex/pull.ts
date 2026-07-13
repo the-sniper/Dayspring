@@ -6,6 +6,7 @@ import {
   internalQuery,
 } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+import { heuristicRoleType } from "../shared/role-types";
 import { companyByNameForUser } from "./onboarding";
 
 type NormalizedJob = {
@@ -65,19 +66,6 @@ async function dedupeKey(
   url?: string | null,
 ): Promise<string> {
   return sha256Hex(`${companyId}|${title.trim().toLowerCase()}|${url ?? ""}`);
-}
-
-function heuristicRoleType(title: string): string | null {
-  const t = title.toLowerCase();
-  if (/forward[- ]deployed|solutions? (engineer|architect)|field engineer/.test(t))
-    return "FDE";
-  if (/data (engineer|scientist|analyst)|machine learning|\bml\b/.test(t))
-    return "DATA";
-  if (/front[- ]?end|\bui engineer\b|react/.test(t)) return "FE";
-  if (/back[- ]?end|platform engineer|infrastructure|devops|sre/.test(t))
-    return "BE";
-  if (/full[- ]?stack|product engineer/.test(t)) return "FS";
-  return null;
 }
 
 async function fetchGreenhouse(slug: string): Promise<NormalizedJob[]> {
@@ -346,22 +334,26 @@ export const pullForUser = internalAction({
       for (const nj of fetched) {
         const isUs = isUsLocation(nj.location);
         if (isUs === false) continue;
-        docs.push({
+        // Schema fields are v.optional(...) — omit unknowns entirely, since
+        // null fails validation on insert.
+        const doc: Record<string, unknown> = {
           companyId: company.id,
           title: nj.title,
-          roleType: heuristicRoleType(nj.title),
           url: nj.url,
           source: company.atsType,
           externalId: nj.externalId,
           dedupeKey: await dedupeKey(company.id, nj.title, nj.url),
           status: "new",
-          location: nj.location,
-          isUs,
           description: nj.descriptionText,
-          postedAt: nj.postedAt,
           createdAt: now,
           updatedAt: now,
-        });
+        };
+        const roleType = heuristicRoleType(nj.title);
+        if (roleType !== null) doc.roleType = roleType;
+        if (nj.location !== null) doc.location = nj.location;
+        if (isUs !== null) doc.isUs = isUs;
+        if (nj.postedAt !== null) doc.postedAt = nj.postedAt;
+        docs.push(doc);
       }
 
       for (let j = 0; j < docs.length; j += UPSERT_CHUNK) {

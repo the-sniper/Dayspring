@@ -25,8 +25,8 @@ export async function classifyRoles(
     schemaName: "role_classification",
     maxTokens: 2000,
     system: `Classify job titles into exactly one category:
-FDE (forward deployed / solutions / field / customer engineer), FE (frontend), BE (backend / platform / infra), FS (fullstack / product engineer / generalist software engineer), DATA (data / ML / analytics), or OTHER (anything non-engineering: sales, marketing, ops, design, legal, etc.).
-Return one classification per input index. When genuinely ambiguous between engineering types, prefer FS for generic software titles; use OTHER for everything non-engineering.`,
+FDE (forward deployed / solutions / field / customer engineer), FE (frontend / web), BE (backend / API / distributed systems), FS (fullstack / product engineer / generalist software engineer), MOBILE (iOS / Android / cross-platform apps), DATA (data engineering / analytics / BI), AIML (machine learning / AI / research), INFRA (DevOps / SRE / platform / cloud infrastructure), SEC (security / appsec / infosec), QA (QA / test / SDET), EMB (embedded / firmware / hardware / robotics), XR (AR / VR / spatial computing), GAME (game development), PM (product / technical program management), DESIGN (product / UX / visual design), or OTHER (anything else: sales, marketing, ops, finance, legal, recruiting, etc.).
+Return one classification per input index. When genuinely ambiguous between engineering types, prefer FS for generic software titles; use OTHER for anything that fits no category.`,
     user: batch.map((t, i) => `${i}: ${t}`).join("\n"),
   });
 

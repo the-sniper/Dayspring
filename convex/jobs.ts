@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { owned, requireUser } from "./lib";
+import { getOnboardingPrefs } from "./onboarding";
 
 // The JD text lives in the `jobDescriptions` side table (see schema). These
 // helpers read/write it by jobId so the rest of the app can keep treating
@@ -387,6 +388,11 @@ export const feed = query({
       filtered.push({ job, companyName });
     }
 
+    // Onboarding role-type picks break ties among unscored jobs in the
+    // default "best" sort — scored jobs already reflect the user's profile.
+    const prefs = await getOnboardingPrefs(ctx, userId);
+    const preferredRoles = new Set(prefs?.roleTypes ?? []);
+
     const posted = (j: any) => j.postedAt ?? j.createdAt;
     filtered.sort((x, y) => {
       if (a.sort === "newest") return posted(y.job).localeCompare(posted(x.job));
@@ -399,10 +405,16 @@ export const feed = query({
         if (sy !== sx) return sy - sx;
         return y.job.createdAt.localeCompare(x.job.createdAt);
       }
-      // "best"/"score": matchScore desc nulls last, then createdAt desc
+      // "best"/"score": matchScore desc nulls last, then preferred role
+      // types among the unscored, then createdAt desc
       const mx = x.job.matchScore ?? null;
       const my = y.job.matchScore ?? null;
-      if (mx === null && my === null) return y.job.createdAt.localeCompare(x.job.createdAt);
+      if (mx === null && my === null) {
+        const px = preferredRoles.has(x.job.roleType ?? "") ? 1 : 0;
+        const py = preferredRoles.has(y.job.roleType ?? "") ? 1 : 0;
+        if (px !== py) return py - px;
+        return y.job.createdAt.localeCompare(x.job.createdAt);
+      }
       if (mx === null) return 1;
       if (my === null) return -1;
       if (my !== mx) return my - mx;

@@ -1,9 +1,11 @@
-// Unified API-key access — the no-terminal path. Every integration reads its
-// key through getKey(): environment first (power users, scripts), then the
-// encrypted settings row saved from Settings → API Keys. Values at rest are
-// AES-256-GCM sealed with the vault key (the launcher generates one on first
-// run), never plaintext — Convex only ever sees ciphertext.
+// Unified API-key access. Signed-in users (web or CLI) only see keys they
+// saved in Settings → API Keys — per-user, AES-256-GCM sealed in Convex.
+// Env vars are a local-operator fallback only: unauthenticated CLI on a
+// non-hosted machine (.env.local). Hosted deployments (Vercel) never read
+// shared env keys into user sessions — that would leak the operator's keys
+// to every account.
 import { cacheScope } from "@/lib/convex/server";
+import { isHosted } from "@/lib/hosted";
 import { deleteSetting, getSetting, setSetting } from "@/lib/settings/store";
 import { decrypt, encrypt, hasVaultKey, type Sealed } from "@/lib/vault/crypto";
 
@@ -46,14 +48,21 @@ async function savedKey(name: ServiceKey): Promise<string | null> {
   return value;
 }
 
-// Env wins (explicit beats stored); otherwise the saved, encrypted value.
+// Local-operator env fallback — never for signed-in users or hosted deploys.
+async function envFallback(name: ServiceKey): Promise<string | null> {
+  if (isHosted()) return null;
+  if ((await cacheScope()) !== "anon") return null;
+  return process.env[name] || null;
+}
+
 export async function getKey(name: ServiceKey): Promise<string | null> {
-  return process.env[name] || (await savedKey(name));
+  return (await savedKey(name)) ?? (await envFallback(name));
 }
 
 export async function keySource(name: ServiceKey): Promise<"env" | "saved" | null> {
-  if (process.env[name]) return "env";
-  return (await savedKey(name)) ? "saved" : null;
+  if (await savedKey(name)) return "saved";
+  if (await envFallback(name)) return "env";
+  return null;
 }
 
 // Is there a stored (Settings-saved) value, regardless of env override?

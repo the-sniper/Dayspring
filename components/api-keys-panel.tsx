@@ -16,8 +16,8 @@ export type KeyRowView = {
   getUrl: string | null;
 };
 
-// Paste keys here instead of editing .env.local — stored AES-encrypted with
-// the vault key. An environment variable with the same name always wins.
+// Per-user keys — stored AES-encrypted in your Convex account. Each user
+// brings their own; nothing is pre-filled from server environment variables.
 export default function ApiKeysPanel({ keys }: { keys: KeyRowView[] }) {
   return (
     <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">
@@ -28,7 +28,7 @@ export default function ApiKeysPanel({ keys }: { keys: KeyRowView[] }) {
         <div>
           <h2 className="text-lg font-bold text-foreground">API Keys</h2>
           <p className="text-xs font-medium text-muted-foreground">
-            Paste keys here — no file editing. Stored encrypted on this machine.
+            Paste your own keys — stored encrypted in your account.
           </p>
         </div>
       </div>
@@ -55,7 +55,7 @@ function KeyRow({ row }: { row: KeyRowView }) {
     startTransition(async () => {
       const res = await saveKeyAction(row.name, value);
       if (res.ok) {
-        setStatus(row.source === "env" ? "env" : "saved");
+        setStatus("saved");
         setSaved(true);
         setValue("");
       } else setError(res.error);
@@ -67,7 +67,7 @@ function KeyRow({ row }: { row: KeyRowView }) {
     startTransition(async () => {
       const res = await clearKeyAction(row.name);
       if (res.ok) {
-        setStatus(row.source === "env" ? "env" : null);
+        setStatus(null);
         setSaved(false);
       } else setError(res.error);
     });
@@ -80,7 +80,7 @@ function KeyRow({ row }: { row: KeyRowView }) {
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-foreground">{row.label}</p>
             {status === "env" && (
-              <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-muted-foreground" title="Set in .env.local — overrides anything saved here">
+              <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-muted-foreground" title="Loaded from .env.local on this machine (local dev only)">
                 env
               </span>
             )}

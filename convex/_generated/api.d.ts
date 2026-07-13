@@ -10,13 +10,17 @@
 
 import type * as applications from "../applications.js";
 import type * as auth from "../auth.js";
+import type * as catalog from "../catalog.js";
 import type * as companies from "../companies.js";
 import type * as contacts from "../contacts.js";
+import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
 import type * as lib from "../lib.js";
+import type * as onboarding from "../onboarding.js";
 import type * as outreach from "../outreach.js";
 import type * as profiles from "../profiles.js";
+import type * as pull from "../pull.js";
 import type * as research from "../research.js";
 import type * as resumes from "../resumes.js";
 import type * as settings from "../settings.js";
@@ -33,13 +37,17 @@ import type {
 declare const fullApi: ApiFromModules<{
   applications: typeof applications;
   auth: typeof auth;
+  catalog: typeof catalog;
   companies: typeof companies;
   contacts: typeof contacts;
+  crons: typeof crons;
   http: typeof http;
   jobs: typeof jobs;
   lib: typeof lib;
+  onboarding: typeof onboarding;
   outreach: typeof outreach;
   profiles: typeof profiles;
+  pull: typeof pull;
   research: typeof research;
   resumes: typeof resumes;
   settings: typeof settings;

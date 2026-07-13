@@ -3,6 +3,7 @@
 import { ConvexAuthNextjsProvider } from "@convex-dev/auth/nextjs";
 import { ConvexReactClient } from "convex/react";
 import type { ReactNode } from "react";
+import OnboardingBootstrap from "@/components/onboarding-bootstrap";
 
 // Reactive client for the hybrid live-update spots (apply session, pull/score
 // progress) plus the auth actions (signIn/signOut). Server rendering still
@@ -10,5 +11,10 @@ import type { ReactNode } from "react";
 const client = new ConvexReactClient(process.env.NEXT_PUBLIC_CONVEX_URL!);
 
 export default function ConvexClientProvider({ children }: { children: ReactNode }) {
-  return <ConvexAuthNextjsProvider client={client}>{children}</ConvexAuthNextjsProvider>;
+  return (
+    <ConvexAuthNextjsProvider client={client}>
+      <OnboardingBootstrap />
+      {children}
+    </ConvexAuthNextjsProvider>
+  );
 }

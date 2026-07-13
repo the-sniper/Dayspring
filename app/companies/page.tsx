@@ -144,7 +144,7 @@ export default async function CompaniesPage({
             </div>
             <h3 className="text-lg font-bold text-foreground">No companies yet</h3>
             <p className="mt-1 max-w-xs text-sm text-muted-foreground">
-              Add your first company manually above or run the seed script.
+              New accounts auto-load the curated catalog — refresh in a moment, or add a company above.
             </p>
           </div>
         )}

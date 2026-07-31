@@ -25,6 +25,7 @@ import ScoreJobButton from "@/components/score-job-button";
 import StatusSelect from "@/components/status-select";
 import TailorSection from "@/components/tailor-section";
 import CompanyLogo from "@/components/company-logo";
+import { hasApiKey } from "@/lib/claude/client";
 import { getProfile } from "@/lib/jobs/score";
 import { latestGeneratedForJob, mastersCount, resumePdfForJob } from "@/lib/resumes/core";
 import { latestJobBrief } from "@/lib/research/core";
@@ -79,12 +80,13 @@ export default async function JobDetailPage({
     a.name.localeCompare(b.name),
   );
 
-  const [briefRow, profile, resumePdf, generated, mastersN] = await Promise.all([
+  const [briefRow, profile, resumePdf, generated, mastersN, anthropicKey] = await Promise.all([
     latestJobBrief(job.id),
     getProfile(),
     resumePdfForJob(job.id),
     latestGeneratedForJob(job.id),
     mastersCount(),
+    hasApiKey(),
   ]);
   const jobBrief = briefRow
     ? { brief: briefRow.brief, sources: briefRow.sources ?? [] }
@@ -226,7 +228,7 @@ export default async function JobDetailPage({
                 : null
             }
             mastersCount={mastersN}
-            hasApiKey={!!process.env.ANTHROPIC_API_KEY}
+            hasApiKey={anthropicKey}
           />
 
           <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">

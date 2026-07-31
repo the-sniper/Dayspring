@@ -11,8 +11,9 @@ import { auditResumeDoc } from "@/lib/claude/resume-audit";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
 import { resolveResumeText, type ResumeSource } from "@/lib/match/core";
 
-const NO_KEY =
-  "Resume Match needs ANTHROPIC_API_KEY in .env.local (see Settings → API Keys).";
+import { keyMessages } from "@/lib/keys/messages";
+
+const NO_KEY = keyMessages.resumeMatch;
 const MIN_JD_CHARS = 120;
 
 export type AnalyzeMatchResult =

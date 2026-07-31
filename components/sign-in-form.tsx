@@ -3,8 +3,9 @@
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { LogIn, Mail, UserPlus } from "lucide-react";
+import { LogIn, Mail, UserPlus, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { formatAuthError } from "@/lib/auth/errors";
 
 type Step = "signIn" | "signUp";
 
@@ -14,6 +15,7 @@ export default function SignInForm() {
   const [step, setStep] = useState<Step>("signIn");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
 
   async function onPasswordSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -27,13 +29,7 @@ export default function SignInForm() {
       if (result.signingIn) router.push("/");
       else setError("Couldn't sign in — check your email and password.");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : step === "signUp"
-            ? "Sign up failed — that email may already be registered."
-            : "Invalid email or password.",
-      );
+      setError(formatAuthError(err, step));
     } finally {
       setLoading(false);
     }
@@ -45,11 +41,7 @@ export default function SignInForm() {
     try {
       await signIn("google");
     } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Google sign-in failed — is AUTH_GOOGLE_ID set on the Convex deployment?",
-      );
+      setError(formatAuthError(err, "signIn"));
       setLoading(false);
     }
   }
@@ -134,16 +126,27 @@ export default function SignInForm() {
           <label htmlFor="password" className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-muted-foreground">
             Password
           </label>
-          <input
-            id="password"
-            name="password"
-            type="password"
-            required
-            minLength={8}
-            autoComplete={step === "signUp" ? "new-password" : "current-password"}
-            placeholder="At least 8 characters"
-            className={inputClass}
-          />
+          <div className="relative">
+            <input
+              id="password"
+              name="password"
+              type={showPassword ? "text" : "password"}
+              required
+              minLength={8}
+              autoComplete={step === "signUp" ? "new-password" : "current-password"}
+              placeholder="At least 8 characters"
+              className={cn(inputClass, "pr-11")}
+            />
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-label={showPassword ? "Hide password" : "Show password"}
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+            >
+              {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+            </button>
+          </div>
         </div>
         <button
           type="submit"
@@ -169,6 +172,7 @@ export default function SignInForm() {
           onClick={() => {
             setStep(step === "signIn" ? "signUp" : "signIn");
             setError(null);
+            setShowPassword(false);
           }}
           className="font-bold text-brand-600 hover:underline dark:text-brand-400"
         >

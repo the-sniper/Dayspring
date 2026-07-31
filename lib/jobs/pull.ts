@@ -13,10 +13,13 @@ import { deriveJobMeta } from "@/lib/jobs/derive";
 import { findOrCreateCompany } from "@/lib/jobs/create";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
 import { mapPool } from "@/lib/util/pool";
+import { getTargetMaxHeadcount } from "@/lib/jobs/targeting";
+import { levelOrDefault } from "@/shared/seniority";
 
 // Cap concurrent ATS requests so a large watched set (hundreds of catalog
 // companies) doesn't fire hundreds of fetches at once and trip timeouts.
 const ATS_CONCURRENCY = 10;
+export const MAX_NEW_JOBS_PER_PULL = 500;
 
 // Convex caps writes at ~4 MiB/s per (local) deployment. Job descriptions are
 // large, so a single upsertBatch of a whole board/aggregator can trip the
@@ -24,10 +27,15 @@ const ATS_CONCURRENCY = 10;
 // if we still get rate-limited.
 const UPSERT_CHUNK = 15;
 
-async function upsertJobsThrottled(docs: unknown[]): Promise<string[]> {
+async function upsertJobsThrottled(
+  docs: unknown[],
+  maxNew: number,
+): Promise<string[]> {
   const insertedIds: string[] = [];
-  for (let i = 0; i < docs.length; i += UPSERT_CHUNK) {
-    const chunk = docs.slice(i, i + UPSERT_CHUNK);
+  for (let i = 0; i < docs.length && insertedIds.length < maxNew; ) {
+    const remaining = maxNew - insertedIds.length;
+    const chunk = docs.slice(i, i + Math.min(UPSERT_CHUNK, remaining));
+    i += chunk.length;
     let attempt = 0;
     for (;;) {
       try {
@@ -68,6 +76,7 @@ type WatchedCompany = {
   atsTenant?: string | null;
   atsHost?: string | null;
   atsSite?: string | null;
+  headcount?: number | null;
 };
 
 // Resolve the right fetcher per company: bare-slug ATSes use the registry;
@@ -87,23 +96,57 @@ export type PullResult = {
   errors: { name: string; message: string }[];
   newJobIds: string[];
   classified: number;
+  limitReached: boolean;
+  // Companies excluded by the headcount ceiling — surfaced so the pull never
+  // silently narrows what it looked at.
+  skippedTooBig: number;
 };
 
 export async function pullAllJobs(): Promise<PullResult> {
+  const onboarding = await convex().query(api.onboarding.status, {});
+  const preferredRoles = new Set(onboarding?.prefs?.roleTypes ?? []);
+  const isRelevant = (title: string) => {
+    if (preferredRoles.size === 0) return true;
+    const role = heuristicRoleType(title);
+    // Keep ambiguous titles for the classifier; reject only confirmed
+    // mismatches so a generic "Software Engineer" is not lost.
+    return role === null || preferredRoles.has(role);
+  };
+
   // Watched = a bare-slug ATS with a slug, OR Workday with all three fields.
   const allCompanies = await convex().query(api.companies.listAll, {});
-  const watched: WatchedCompany[] = allCompanies.filter(
+  const eligible: WatchedCompany[] = allCompanies.filter(
     (c) =>
       !!c.atsType &&
       (!!c.atsSlug ||
         (c.atsType === "workday" && !!c.atsTenant && !!c.atsHost && !!c.atsSite)),
   );
 
+  // Ingestion-time targeting. Filtering only at display time is not enough:
+  // the per-pull job cap is spent in company order, so one enterprise board
+  // with thousands of postings can consume the whole budget before a single
+  // startup is reached. Companies of unknown size are kept (never silently
+  // dropped) but sorted last so they can't outrank a known-small company.
+  const maxHeadcount = await getTargetMaxHeadcount();
+  const watched = eligible
+    .filter(
+      (c) =>
+        maxHeadcount === null ||
+        c.headcount === undefined ||
+        c.headcount === null ||
+        c.headcount <= maxHeadcount,
+    )
+    .sort((a, b) => (a.headcount ?? Infinity) - (b.headcount ?? Infinity));
+
+  const skippedTooBig = eligible.length - watched.length;
+
   const result: PullResult = {
     perCompany: [],
     errors: [],
     newJobIds: [],
     classified: 0,
+    limitReached: false,
+    skippedTooBig,
   };
 
   // One bad slug (404, empty board, timeout) never kills the run. Pooled so a
@@ -127,6 +170,10 @@ export async function pullAllJobs(): Promise<PullResult> {
     let skipped = 0;
     const docs = [];
     for (const nj of fetched) {
+      if (!isRelevant(nj.title)) {
+        skipped++;
+        continue;
+      }
       const meta = deriveJobMeta({
         title: nj.title,
         location: nj.location,
@@ -143,6 +190,9 @@ export async function pullAllJobs(): Promise<PullResult> {
           companyId: company.id,
           title: nj.title,
           roleType: heuristicRoleType(nj.title),
+          // Tag seniority at ingestion so the Level filter works on freshly
+          // pulled rows without a backfill pass.
+          level: levelOrDefault(nj.title),
           url: nj.url,
           source: company.atsType!,
           externalId: nj.externalId,
@@ -162,7 +212,9 @@ export async function pullAllJobs(): Promise<PullResult> {
         }),
       );
     }
-    const insertedIds = await upsertJobsThrottled(docs);
+    const remaining = MAX_NEW_JOBS_PER_PULL - result.newJobIds.length;
+    const insertedIds =
+      remaining > 0 ? await upsertJobsThrottled(docs, remaining) : [];
     result.newJobIds.push(...insertedIds);
     result.perCompany.push({
       name: company.name,
@@ -176,12 +228,16 @@ export async function pullAllJobs(): Promise<PullResult> {
   // tail not on a watched ATS board. Env-guarded; each posting is resolved to a
   // company row on the fly, then flows through the same derive → US-filter →
   // dedupe insert as ATS jobs. Reported as one summary row.
-  if (hasAdzunaKeys()) {
+  if (hasAdzunaKeys() && result.newJobIds.length < MAX_NEW_JOBS_PER_PULL) {
     try {
       const aggregated = await fetchAdzuna();
       let skipped = 0;
       const docs = [];
       for (const aj of aggregated) {
+        if (!isRelevant(aj.title)) {
+          skipped++;
+          continue;
+        }
         const meta = deriveJobMeta({
           title: aj.title,
           location: aj.location,
@@ -197,6 +253,7 @@ export async function pullAllJobs(): Promise<PullResult> {
             companyId,
             title: aj.title,
             roleType: heuristicRoleType(aj.title),
+            level: levelOrDefault(aj.title),
             url: aj.url,
             source: "adzuna",
             externalId: aj.externalId,
@@ -217,7 +274,10 @@ export async function pullAllJobs(): Promise<PullResult> {
           }),
         );
       }
-      const insertedIds = await upsertJobsThrottled(docs);
+      const insertedIds = await upsertJobsThrottled(
+        docs,
+        MAX_NEW_JOBS_PER_PULL - result.newJobIds.length,
+      );
       result.newJobIds.push(...insertedIds);
       result.perCompany.push({
         name: "Adzuna (aggregator)",
@@ -259,5 +319,6 @@ export async function pullAllJobs(): Promise<PullResult> {
     }
   }
 
+  result.limitReached = result.newJobIds.length >= MAX_NEW_JOBS_PER_PULL;
   return result;
 }

@@ -18,6 +18,7 @@ import {
   type NetworkSearchResult,
 } from "@/lib/actions/happenstance";
 import type { HappenstancePerson } from "@/lib/integrations/happenstance/search";
+import { keyMessages } from "@/lib/keys/messages";
 import { cn } from "@/lib/utils";
 
 // Warm-network search over YOUR OWN connections (Happenstance). Distinct from
@@ -62,6 +63,13 @@ export default function NetworkFinder({
         People you already know — searched over your own connected accounts.
         Costs 2 Happenstance credits per search.
       </p>
+
+      {!hasKey && (
+        <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+          <AlertCircle size={12} />
+          {keyMessages.happenstance}
+        </p>
+      )}
 
       <div className="flex gap-2">
         <div className="relative flex-1">

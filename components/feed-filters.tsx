@@ -2,7 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Search, MapPin, Briefcase, DollarSign, Calendar, Star, X } from "lucide-react";
+import { Search, MapPin, Briefcase, DollarSign, Calendar, Star, X, Layers, Building2 } from "lucide-react";
 import MultiSelect, { type MultiSelectOption } from "@/components/multi-select";
 import {
   EMPLOYMENT_TYPE_LABELS,
@@ -12,6 +12,8 @@ import {
   WORKPLACE_TYPE_LABELS,
   WORKPLACE_TYPES,
 } from "@/lib/types";
+import { LEVELS, LEVEL_LABELS } from "@/shared/seniority";
+import { SIZE_BANDS, SIZE_LABELS } from "@/shared/company-size";
 import { cn } from "@/lib/utils";
 
 // Filters that hold multiple comma-separated values in the URL.
@@ -39,8 +41,15 @@ export type FeedFilterValues = {
   salary: string;
   posted: string;
   score: string;
+  level: string;
+  size: string;
   sort: string;
 };
+
+// Distance-from-early-career order, so the list reads top-down from most to
+// least reachable rather than alphabetically.
+const LEVEL_OPTIONS = LEVELS.map((l) => ({ value: l, label: LEVEL_LABELS[l] }));
+const SIZE_OPTIONS = SIZE_BANDS.map((s) => ({ value: s, label: SIZE_LABELS[s] }));
 
 const SALARY_OPTIONS = [
   ["100000", "$100k+"],
@@ -108,6 +117,8 @@ export default function FeedFilters({
     values.salary,
     values.posted,
     values.score,
+    values.level,
+    values.size,
   ].filter(Boolean).length;
 
   return (
@@ -158,6 +169,26 @@ export default function FeedFilters({
       </div>
 
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6">
+        <div>
+          <span className={labelCls}><Layers size={12} /> Level</span>
+          <MultiSelect
+            selected={csv(values.level)}
+            options={LEVEL_OPTIONS}
+            placeholder="Any level"
+            onChange={(next) => apply({ level: next.join(",") })}
+          />
+        </div>
+
+        <div>
+          <span className={labelCls}><Building2 size={12} /> Company size</span>
+          <MultiSelect
+            selected={csv(values.size)}
+            options={SIZE_OPTIONS}
+            placeholder="Any size"
+            onChange={(next) => apply({ size: next.join(",") })}
+          />
+        </div>
+
         <div>
           <span className={labelCls}>Workplace</span>
           <MultiSelect
@@ -259,6 +290,8 @@ export default function FeedFilters({
                 salary: "",
                 posted: "",
                 score: "",
+                level: "",
+                size: "",
                 sort: "",
               })
             }

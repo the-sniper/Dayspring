@@ -10,15 +10,15 @@ import {
   Sparkles,
   TrendingUp,
   Building2,
-  Check,
-  X
+  Zap,
 } from "lucide-react";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
+import JobQuickActions from "@/components/job-quick-actions";
+import Tip from "@/components/tip";
 import VerificationCodes from "@/components/verification-codes";
 import PageHeader from "@/components/page-header";
 import ButtonLink from "@/components/button-link";
-import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
 import { hasGmail } from "@/lib/integrations/gmail/client";
 import { api, convex } from "@/lib/convex/server";
 import { getSetting } from "@/lib/settings/store";
@@ -34,7 +34,7 @@ export default async function DashboardPage() {
   const [countsRaw, needsDecisionRaw, activeJobs, apps, activityRaw] =
     await Promise.all([
       convex().query(api.jobs.statusCounts, {}),
-      convex().query(api.jobs.topNewByScore, { limit: 5, minScore: 70 }),
+      convex().query(api.jobs.topNewByScore, { limit: 10, minScore: 50 }),
       convex().query(api.jobs.byStatuses, { statuses: ACTIVE_STATUSES }),
       convex().query(api.applications.listAll, {}),
       convex().query(api.stageEvents.recent, { limit: 6 }),
@@ -141,11 +141,16 @@ export default async function DashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
                 <Sparkles size={18} className="text-brand-500" />
-                High Potential Roles
+                Top Matches Today
               </h2>
-              <Link href="/feed" className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400">
-                View Feed <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
-              </Link>
+              <div className="flex items-center gap-4">
+                <Link href="/apply" className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400">
+                  <Zap size={12} /> Auto-Apply queue
+                </Link>
+                <Link href="/feed" className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400">
+                  View Feed <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+                </Link>
+              </div>
             </div>
             
             <div className="space-y-3">
@@ -155,13 +160,14 @@ export default async function DashboardPage() {
                   className="group flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 transition-all hover:border-brand-500/30 hover:shadow-md"
                 >
                   <div className="min-w-0 flex-1">
-                    <Link
-                      href={`/jobs/${j.id}`}
-                      title={j.title}
-                      className="block truncate font-bold text-foreground hover:text-brand-600 transition-colors"
-                    >
-                      {j.title}
-                    </Link>
+                    <Tip label={j.title}>
+                      <Link
+                        href={`/jobs/${j.id}`}
+                        className="block truncate font-bold text-foreground hover:text-brand-600 transition-colors"
+                      >
+                        {j.title}
+                      </Link>
+                    </Tip>
                     <div className="mt-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
                       <Building2 size={12} />
                       <span>{j.companyName}</span>
@@ -170,24 +176,7 @@ export default async function DashboardPage() {
                   <div className="flex shrink-0 items-center gap-3">
                     <RoleChip role={j.roleType} />
                     <ScoreBadge score={j.matchScore} />
-                    <div className="flex items-center gap-1.5 ml-2">
-                      <form action={promoteJobAction.bind(null, j.id)}>
-                        <button
-                          title="Promote to wishlist"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white shadow-sm shadow-brand-500/25 transition-all hover:bg-brand-600 hover:scale-105 active:scale-95"
-                        >
-                          <Check size={16} strokeWidth={3} />
-                        </button>
-                      </form>
-                      <form action={ignoreJobAction.bind(null, j.id)}>
-                        <button
-                          title="Ignore"
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
-                        >
-                          <X size={16} strokeWidth={3} />
-                        </button>
-                      </form>
-                    </div>
+                    <JobQuickActions jobId={j.id} />
                   </div>
                 </div>
               ))}
@@ -197,7 +186,9 @@ export default async function DashboardPage() {
                     <Inbox size={20} />
                   </div>
                   <p className="text-sm font-bold text-foreground">Nothing waiting</p>
-                  <p className="mt-1 text-xs text-muted-foreground">High-fit roles from your feed will appear here.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    Your 10 best-scoring new roles appear here daily — run scoring from the feed to fill it.
+                  </p>
                 </div>
               )}
             </div>

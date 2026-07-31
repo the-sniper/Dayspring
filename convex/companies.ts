@@ -116,6 +116,7 @@ export const seedCatalog = mutation({
         roleTypes: v.optional(v.union(v.array(v.string()), v.null())),
         atsType: v.string(),
         atsSlug: v.string(),
+        headcount: v.optional(v.union(v.number(), v.null())),
       }),
     ),
   },
@@ -143,13 +144,19 @@ export const seedCatalog = mutation({
         const notWatched = !existing.atsType || !existing.atsSlug;
         const managed = existing.source === "catalog" || existing.source === "seed";
         const drifted = existing.atsType !== c.atsType || existing.atsSlug !== c.atsSlug;
-        if (notWatched || (managed && drifted)) {
-          await ctx.db.patch(existing._id, {
-            atsType: c.atsType,
-            atsSlug: c.atsSlug,
-            domain: c.domain ?? undefined,
-            source: "catalog",
-          });
+        // Backfill catalog headcount onto rows seeded before the field
+        // existed — free size data that costs no Apollo credits.
+        const needsSize = existing.headcount === undefined && typeof c.headcount === "number";
+        if (notWatched || (managed && drifted) || needsSize) {
+          const patch: Record<string, unknown> = {};
+          if (notWatched || (managed && drifted)) {
+            patch.atsType = c.atsType;
+            patch.atsSlug = c.atsSlug;
+            patch.domain = c.domain ?? undefined;
+            patch.source = "catalog";
+          }
+          if (needsSize) patch.headcount = c.headcount as number;
+          await ctx.db.patch(existing._id, patch);
           watched++;
         } else {
           skipped++;
@@ -166,6 +173,7 @@ export const seedCatalog = mutation({
         source: "catalog",
         atsType: c.atsType,
         atsSlug: c.atsSlug,
+        headcount: c.headcount ?? undefined,
         createdAt: now,
       });
       added++;

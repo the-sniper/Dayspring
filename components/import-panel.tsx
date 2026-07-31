@@ -18,6 +18,7 @@ import {
   type ParseActionResult,
 } from "@/lib/actions/imports";
 import type { PreparedCandidate } from "@/lib/imports/candidates";
+import { keyMessages } from "@/lib/keys/messages";
 import type { JobSource } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { motion, AnimatePresence } from "framer-motion";
@@ -111,7 +112,7 @@ export default function ImportPanel({ hasKey }: { hasKey: boolean }) {
             {!hasKey && (
               <div className="flex items-center gap-2 text-xs font-bold text-destructive">
                 <AlertCircle size={14} />
-                <span>Needs ANTHROPIC_API_KEY</span>
+                <span>{keyMessages.needsAnthropicShort}</span>
               </div>
             )}
             <button

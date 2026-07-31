@@ -9,7 +9,9 @@ import {
   type ScoreOneResult,
 } from "@/lib/jobs/score";
 
-const NO_KEY = "Scoring needs ANTHROPIC_API_KEY in .env.local (see Settings).";
+import { keyMessages } from "@/lib/keys/messages";
+
+const NO_KEY = keyMessages.scoring;
 
 export async function scoreJobAction(
   jobId: string,

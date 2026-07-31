@@ -7,6 +7,9 @@ export type CatalogEntry = {
   atsType: string;
   atsSlug: string;
   industry: string;
+  // Apollo-sourced headcount, baked in at curation time so seeded companies
+  // have a size band without spending an enrichment credit per user.
+  headcount?: number;
 };
 
 // Curated ATS board catalog — shared with lib/integrations/ats/catalog.ts via

@@ -24,6 +24,7 @@ import { CONTACTS_PAGE_SIZE, CONTACTS_PAGE_SIZES } from "@/lib/contacts/constant
 import type { ContactRow } from "@/lib/contacts/query";
 import PersonAvatar from "@/components/person-avatar";
 import { cn } from "@/lib/utils";
+import { keyMessages } from "@/lib/keys/messages";
 
 const SOURCE_STYLE: Record<string, string> = {
   linkedin: "bg-sky-50 text-sky-600 dark:bg-sky-900/20 dark:text-sky-400",
@@ -127,7 +128,7 @@ export default function ContactSearch({
             type="button"
             disabled={asking || !q.trim() || !hasApiKey}
             onClick={ask}
-            title={hasApiKey ? "Answer this as a question over all your contacts" : "Needs ANTHROPIC_API_KEY"}
+            title={hasApiKey ? "Answer this as a question over all your contacts" : keyMessages.needsAnthropicShort}
             className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-600 active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             {asking ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
@@ -137,7 +138,7 @@ export default function ContactSearch({
         <p className="mt-1.5 text-[11px] font-medium text-muted-foreground">
           Type to filter instantly · press Enter or Ask AI to search by meaning
           across all {total} contacts
-          {!hasApiKey && " (Ask AI needs ANTHROPIC_API_KEY)"}
+          {!hasApiKey && ` (Ask AI needs your Anthropic key in Settings → API Keys)`}
         </p>
       </div>
 
@@ -231,7 +232,7 @@ export default function ContactSearch({
                     Ask AI about &ldquo;{q.length > 30 ? q.slice(0, 30) + "…" : q}&rdquo;
                   </button>
                   {!hasApiKey && (
-                    <p className="text-[11px] text-muted-foreground">Needs ANTHROPIC_API_KEY (Settings).</p>
+                    <p className="text-[11px] text-muted-foreground">{keyMessages.needsAnthropicShort}</p>
                   )}
                 </>
               ) : (

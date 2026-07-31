@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowUpRight, Filter, Check, X } from "lucide-react";
+import { ArrowUpRight, Filter, Check } from "lucide-react";
 import ErrorBanner from "@/components/error-banner";
 import FeedFilters, { type FeedFilterValues } from "@/components/feed-filters";
 import PullButton from "@/components/pull-button";
@@ -9,7 +9,11 @@ import ScoreButton from "@/components/score-button";
 import CompanyLogo from "@/components/company-logo";
 import Pagination from "@/components/pagination";
 import PageHeader from "@/components/page-header";
-import { ignoreJobAction, promoteJobAction } from "@/lib/actions/jobs";
+import JobQuickActions from "@/components/job-quick-actions";
+import Tip from "@/components/tip";
+import TargetingPanel from "@/components/targeting-panel";
+import { getTargetMaxHeadcount } from "@/lib/jobs/targeting";
+import FeedSelection from "@/components/feed-selection";
 import { api, convex } from "@/lib/convex/server";
 import { MIN_JD_CHARS } from "@/lib/jobs/score";
 import { formatSalary } from "@/lib/jobs/salary";
@@ -23,6 +27,8 @@ import {
   type RoleType,
   type WorkplaceType,
 } from "@/lib/types";
+import { LEVELS, LEVEL_LABELS, isLeadership, type Level } from "@/shared/seniority";
+import { SIZE_BANDS, SIZE_SHORT, sizeBand, type SizeBand } from "@/shared/company-size";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -37,6 +43,8 @@ type SearchParams = {
   salary?: string;
   posted?: string;
   score?: string;
+  level?: string;
+  size?: string;
   sort?: string;
   page?: string;
   error?: string;
@@ -75,6 +83,12 @@ export default async function FeedPage({
       (EMPLOYMENT_TYPES as readonly string[]).includes(e),
   );
   const locSel = parseCsv(sp.loc);
+  const levelSel = parseCsv(sp.level).filter((l): l is Level =>
+    (LEVELS as readonly string[]).includes(l),
+  );
+  const sizeSel = parseCsv(sp.size).filter((s): s is SizeBand =>
+    (SIZE_BANDS as readonly string[]).includes(s),
+  );
   const q = (sp.q ?? "").trim();
   const minSalary = posNum(sp.salary);
   const postedDays = posNum(sp.posted);
@@ -91,7 +105,7 @@ export default async function FeedPage({
   const profile = await convex().query(api.profiles.getDefault, {});
   const profileUpdatedAt = profile?.updatedAt ?? null;
 
-  const [feedResult, scorable, staleScores, locationValues] = await Promise.all([
+  const [feedResult, scorable, staleScores, locationValues, coverage] = await Promise.all([
     convex().query(api.jobs.feed, {
       status,
       roleTypes,
@@ -103,6 +117,8 @@ export default async function FeedPage({
       minSalary,
       postedCutoff,
       minScore,
+      levels: levelSel,
+      sizes: sizeSel,
       sort,
       page,
       pageSize: PAGE_SIZE,
@@ -110,7 +126,11 @@ export default async function FeedPage({
     convex().query(api.jobs.scorableCount, { minJdChars: MIN_JD_CHARS }),
     convex().query(api.jobs.staleScoreCount, { profileUpdatedAt }),
     convex().query(api.jobs.locationValues, {}),
+    convex().query(api.targeting.targetingCoverage, {}),
   ]);
+
+  // The ingestion ceiling is always shown, so the panel renders unconditionally.
+  const maxHeadcount = await getTargetMaxHeadcount();
 
   const rows = feedResult.rows;
   const totalCount = feedResult.total;
@@ -126,6 +146,8 @@ export default async function FeedPage({
     salary: minSalary ? String(minSalary) : "",
     posted: postedDays ? String(postedDays) : "",
     score: minScore ? String(minScore) : "",
+    level: levelSel.join(","),
+    size: sizeSel.join(","),
     sort: sort === "best" ? "" : sort,
   };
 
@@ -181,13 +203,23 @@ export default async function FeedPage({
       )}
 
       <section className="relative z-20 mb-8">
+        <TargetingPanel coverage={coverage} maxHeadcount={maxHeadcount} />
         <FeedFilters values={filterValues} locationOptions={locationOptions} />
       </section>
 
+      <FeedSelection>
       <div className="rounded-2xl border border-border bg-card shadow-sm">
         <table className="w-full border-collapse text-left text-sm">
           <thead>
             <tr className="border-b border-border bg-secondary/30 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
+              <th className="w-10 px-4 py-4">
+                <input
+                  type="checkbox"
+                  data-select-all
+                  aria-label="Select all jobs on this page"
+                  className="h-4 w-4 cursor-pointer rounded border-border text-brand-500 focus:ring-brand-500"
+                />
+              </th>
               <th className="px-6 py-4">Role & Company</th>
               <th className="px-4 py-4">Location</th>
               <th className="px-4 py-4">Type</th>
@@ -202,19 +234,47 @@ export default async function FeedPage({
               const salary = formatSalary(j.salaryMin, j.salaryMax, j.salaryCurrency);
               return (
               <tr key={j.id} className="group transition-colors hover:bg-secondary/20">
+                <td className="px-4 py-5">
+                  <input
+                    type="checkbox"
+                    data-job-checkbox
+                    data-job-id={j.id}
+                    aria-label={`Select ${j.title} at ${j.companyName}`}
+                    className="h-4 w-4 cursor-pointer rounded border-border text-brand-500 focus:ring-brand-500"
+                  />
+                </td>
                 <td className="px-6 py-5 max-w-[300px]">
                   <div className="flex items-center gap-3">
                     <CompanyLogo name={j.companyName} className="h-9 w-9 text-xs" />
                     <div className="min-w-0">
-                      <Link
-                        href={`/jobs/${j.id}`}
-                        title={j.title}
-                        className="flex items-center gap-1.5 font-bold text-foreground hover:text-brand-600 transition-colors"
-                      >
-                        <span className="truncate">{j.title}</span>
-                        <ArrowUpRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </Link>
-                      <p className="mt-0.5 font-medium text-muted-foreground truncate">{j.companyName}</p>
+                      <Tip label={j.title} placement="top">
+                        <Link
+                          href={`/jobs/${j.id}`}
+                          className="flex items-center gap-1.5 font-bold text-foreground hover:text-brand-600 transition-colors"
+                        >
+                          <span className="truncate">{j.title}</span>
+                          <ArrowUpRight size={14} className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </Link>
+                      </Tip>
+                      <p className="mt-0.5 flex items-center gap-1.5 font-medium text-muted-foreground truncate">
+                        <span className="truncate">{j.companyName}</span>
+                        {sizeBand(j.headcount) && (
+                          <span
+                            title={`~${j.headcount!.toLocaleString()} employees`}
+                            className="shrink-0 rounded bg-stone-100 px-1 py-0.5 text-[9px] font-black tabular-nums text-stone-500 dark:bg-stone-800 dark:text-stone-400"
+                          >
+                            {SIZE_SHORT[sizeBand(j.headcount)!]}
+                          </span>
+                        )}
+                        {isLeadership(j.level as Level) && (
+                          <span
+                            title="Leadership role — typically needs direct-report history"
+                            className="shrink-0 rounded bg-amber-100 px-1 py-0.5 text-[9px] font-black uppercase text-amber-700 dark:bg-amber-950/50 dark:text-amber-400"
+                          >
+                            {LEVEL_LABELS[j.level as Level]}
+                          </span>
+                        )}
+                      </p>
                     </div>
                   </div>
                 </td>
@@ -243,26 +303,7 @@ export default async function FeedPage({
                   {j.postedAt ? j.postedAt.slice(0, 10) : "—"}
                 </td>
                 <td className="px-6 py-5 text-right">
-                  <div className="flex justify-end gap-2">
-                    <form action={promoteJobAction.bind(null, j.id)}>
-                      <button
-                        className="flex h-8 w-8 items-center justify-center rounded-lg bg-brand-500 text-white shadow-sm shadow-brand-500/25 transition-all hover:bg-brand-600 hover:scale-105 active:scale-95"
-                        title="Promote to wishlist"
-                      >
-                        <Check size={16} strokeWidth={3} />
-                      </button>
-                    </form>
-                    {!showIgnored && (
-                      <form action={ignoreJobAction.bind(null, j.id)}>
-                        <button 
-                          className="flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-surface text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
-                          title="Ignore role"
-                        >
-                          <X size={16} strokeWidth={3} />
-                        </button>
-                      </form>
-                    )}
-                  </div>
+                  <JobQuickActions jobId={j.id} showIgnore={!showIgnored} />
                 </td>
               </tr>
               );
@@ -288,6 +329,7 @@ export default async function FeedPage({
           currentPage={page} 
         />
       </div>
+      </FeedSelection>
     </div>
   );
 }

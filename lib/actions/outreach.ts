@@ -12,7 +12,9 @@ import {
   updateDraft,
 } from "@/lib/outreach/core";
 
-const NO_KEY = "Drafting needs ANTHROPIC_API_KEY in .env.local (see Settings).";
+import { keyMessages } from "@/lib/keys/messages";
+
+const NO_KEY = keyMessages.drafting;
 
 export async function draftOutreachAction(contactId: string, jobId: string) {
   if (!await hasApiKey()) return { ok: false as const, error: NO_KEY };
@@ -41,10 +43,15 @@ export async function sendOutreachAction(
   return res;
 }
 
-export async function markSentAction(id: string, subject: string, body: string) {
+export async function markSentAction(
+  id: string,
+  subject: string,
+  body: string,
+  channel?: "email" | "linkedin",
+) {
   const upd = await updateDraft(id, subject, body);
   if (!upd.ok) return upd;
-  const res = await markSentManually(id);
+  const res = await markSentManually(id, channel);
   revalidatePath("/", "layout");
   return res;
 }

@@ -4,7 +4,9 @@ import { revalidatePath } from "next/cache";
 import { hasApiKey } from "@/lib/claude/client";
 import { briefForCompany, briefForJob } from "@/lib/research/core";
 
-const NO_KEY = "Research needs ANTHROPIC_API_KEY in .env.local (see Settings).";
+import { keyMessages } from "@/lib/keys/messages";
+
+const NO_KEY = keyMessages.research;
 
 export type ResearchActionResult =
   | { ok: true; brief: string; sources: { title: string; url: string }[] }

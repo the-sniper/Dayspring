@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { api, convex, uploadPdfToStorage } from "@/lib/convex/server";
 import { hasApiKey } from "@/lib/claude/client";
+import { SETTINGS_API_KEYS } from "@/lib/keys/messages";
 import type { ResumeDocType } from "@/lib/claude/resume";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
 import { renderResumePdfBuffer } from "@/lib/resumes/pdf";
@@ -139,7 +140,7 @@ export async function generateResumeAction(
   jobId: string,
 ): Promise<GenerateResumeResult> {
   if (!await hasApiKey()) {
-    return { ok: false, error: "Resume generation needs ANTHROPIC_API_KEY (see Settings)." };
+    return { ok: false, error: `Resume generation needs your Anthropic API key in ${SETTINGS_API_KEYS}.` };
   }
   try {
     const res = await generateForJob(jobId);

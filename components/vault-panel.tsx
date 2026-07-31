@@ -20,6 +20,7 @@ import {
   setMasterPasswordAction,
 } from "@/lib/actions/vault";
 import type { CredentialRow } from "@/lib/vault/core";
+import { keyMessages } from "@/lib/keys/messages";
 
 export default function VaultPanel({
   hasVaultKey,
@@ -49,9 +50,7 @@ export default function VaultPanel({
           </span>
         </div>
         <p className="text-xs font-medium text-muted-foreground leading-relaxed">
-          Add <code className="text-rose-500">DAYSPRING_VAULT_KEY</code> to
-          .env.local to enable encrypted storage of job-site passwords. Without
-          it, nothing is stored — Dayspring never keeps a plaintext password.
+          {keyMessages.vaultOff}
         </p>
       </div>
     );

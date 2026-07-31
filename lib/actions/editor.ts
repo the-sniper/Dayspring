@@ -10,8 +10,9 @@ import { editResume, type ResumeDocType } from "@/lib/claude/resume";
 import { auditResumeDoc } from "@/lib/claude/resume-audit";
 import { analyzeMatch, type MatchAnalysis } from "@/lib/claude/resume-match";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
+import { keyMessages } from "@/lib/keys/messages";
 
-const NO_KEY = "This needs ANTHROPIC_API_KEY (see Settings → API Keys).";
+const NO_KEY = keyMessages.drafting;
 
 export type AiEditResult =
   | { ok: true; doc: ResumeDocType; note: string }

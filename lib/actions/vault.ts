@@ -7,10 +7,10 @@ import {
   revealCredential,
   setMasterPassword,
 } from "@/lib/vault/core";
+import { keyMessages } from "@/lib/keys/messages";
 import { hasVaultKey } from "@/lib/vault/crypto";
 
-const NO_KEY =
-  "Set DAYSPRING_VAULT_KEY in .env.local first — it encrypts the vault at rest.";
+const NO_KEY = keyMessages.vaultOff;
 
 export async function setMasterPasswordAction(
   password: string,

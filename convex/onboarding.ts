@@ -147,6 +147,7 @@ export const complete = mutation({
         source: "catalog",
         atsType: c.atsType,
         atsSlug: c.atsSlug,
+        headcount: c.headcount ?? undefined,
         createdAt: now,
       });
       companiesAdded++;

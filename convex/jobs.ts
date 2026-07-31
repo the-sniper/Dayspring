@@ -3,6 +3,7 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import type { Id } from "./_generated/dataModel";
 import { owned, requireUser } from "./lib";
 import { getOnboardingPrefs } from "./onboarding";
+import { sizeBand as bandOf } from "../shared/company-size";
 
 // The JD text lives in the `jobDescriptions` side table (see schema). These
 // helpers read/write it by jobId so the rest of the app can keep treating
@@ -306,10 +307,11 @@ export const detail = query({
   },
 });
 
-const asRow = (job: any, companyName: string) => ({
+const asRow = (job: any, companyName: string, headcount?: number) => ({
   id: job._id,
   title: job.title,
   roleType: job.roleType ?? null,
+  level: job.level ?? null,
   location: job.location ?? null,
   workplaceType: job.workplaceType ?? null,
   salaryMin: job.salaryMin ?? null,
@@ -318,6 +320,7 @@ const asRow = (job: any, companyName: string) => ({
   matchScore: job.matchScore ?? null,
   postedAt: job.postedAt ?? null,
   companyName,
+  headcount: headcount ?? null,
 });
 
 // Feed page: filter + sort + paginate. Narrow by user+status via index, then
@@ -334,6 +337,8 @@ export const feed = query({
     minSalary: v.union(v.number(), v.null()),
     postedCutoff: v.union(v.string(), v.null()),
     minScore: v.union(v.number(), v.null()),
+    levels: v.array(v.string()),
+    sizes: v.array(v.string()),
     sort: v.string(),
     page: v.number(),
     pageSize: v.number(),
@@ -343,17 +348,26 @@ export const feed = query({
     const base = await userJobsByStatus(ctx, userId, a.status);
 
     const ql = a.q.trim().toLowerCase();
-    const companyCache = new Map<string, string>();
-    const nameOf = async (companyId: Id<"companies">): Promise<string> => {
+    // Company lookups now need headcount as well as the name, so the cache
+    // holds the pair — the feed can page over thousands of jobs and re-reading
+    // a company per row would blow the query's read budget.
+    const companyCache = new Map<
+      string,
+      { name: string; headcount: number | undefined }
+    >();
+    const companyOf = async (
+      companyId: Id<"companies">,
+    ): Promise<{ name: string; headcount: number | undefined }> => {
       const key = String(companyId);
-      if (companyCache.has(key)) return companyCache.get(key)!;
+      const hit = companyCache.get(key);
+      if (hit) return hit;
       const c = await ctx.db.get(companyId);
-      const name = c?.name ?? "";
-      companyCache.set(key, name);
-      return name;
+      const entry = { name: c?.name ?? "", headcount: c?.headcount };
+      companyCache.set(key, entry);
+      return entry;
     };
 
-    const filtered: { job: any; companyName: string }[] = [];
+    const filtered: { job: any; companyName: string; headcount?: number }[] = [];
     for (const job of base) {
       if (!(job.isUs === undefined || job.isUs === null || job.isUs === true)) continue;
       if (a.roleTypes.length > 0 || a.roleUntyped) {
@@ -375,7 +389,18 @@ export const feed = query({
       if (a.minScore !== null) {
         if (job.matchScore === undefined || job.matchScore === null || job.matchScore < a.minScore) continue;
       }
-      const companyName = await nameOf(job.companyId);
+      // Seniority: a job with no parsed level (pre-backfill row) is never
+      // hidden — silently dropping unlabelled rows would look like data loss.
+      if (a.levels.length > 0 && job.level && !a.levels.includes(job.level)) continue;
+
+      const company = await companyOf(job.companyId);
+      const companyName = company.name;
+      // Same rule for size: companies not yet enriched have no band and stay
+      // visible, so an unenriched workspace doesn't render an empty feed.
+      if (a.sizes.length > 0) {
+        const band = bandOf(company.headcount);
+        if (band !== null && !a.sizes.includes(band)) continue;
+      }
       if (ql) {
         const inTitle = job.title.toLowerCase().includes(ql);
         const inCompany = companyName.toLowerCase().includes(ql);
@@ -385,7 +410,7 @@ export const feed = query({
         const loc = (job.location ?? "").toLowerCase();
         if (!a.locs.some((l) => loc.includes(l.toLowerCase()))) continue;
       }
-      filtered.push({ job, companyName });
+      filtered.push({ job, companyName, headcount: company.headcount });
     }
 
     // Onboarding role-type picks break ties among unscored jobs in the
@@ -423,7 +448,9 @@ export const feed = query({
 
     const total = filtered.length;
     const start = (a.page - 1) * a.pageSize;
-    const rows = filtered.slice(start, start + a.pageSize).map((f) => asRow(f.job, f.companyName));
+    const rows = filtered
+      .slice(start, start + a.pageSize)
+      .map((f) => asRow(f.job, f.companyName, f.headcount));
     return { rows, total };
   },
 });
@@ -630,27 +657,51 @@ export const setStatus = mutation({
   },
 });
 
+async function deleteOwnedJobCascade(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  id: Id<"jobs">,
+): Promise<boolean> {
+  const job = owned(await ctx.db.get(id), userId);
+  if (!job) return false;
+  const kids = [
+    await ctx.db.query("stageEvents").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
+    await ctx.db.query("applications").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
+    await ctx.db.query("outreach").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
+    await ctx.db.query("researchBriefs").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
+    await ctx.db.query("generatedResumes").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
+    await ctx.db.query("jobDescriptions").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
+  ];
+  for (const group of kids)
+    for (const row of group) {
+      if ("pdfFileId" in row && row.pdfFileId) await ctx.storage.delete(row.pdfFileId);
+      await ctx.db.delete(row._id);
+    }
+  await ctx.db.delete(id);
+  return true;
+}
+
 // Full cascade delete (fixes the old gap: also removes briefs + resumes).
 export const deleteCascade = mutation({
   args: { id: v.id("jobs") },
   handler: async (ctx, { id }) => {
     const userId = await requireUser(ctx);
-    const job = owned(await ctx.db.get(id), userId);
-    if (!job) return;
-    const kids = [
-      await ctx.db.query("stageEvents").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
-      await ctx.db.query("applications").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
-      await ctx.db.query("outreach").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
-      await ctx.db.query("researchBriefs").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
-      await ctx.db.query("generatedResumes").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
-      await ctx.db.query("jobDescriptions").withIndex("by_job", (q) => q.eq("jobId", id)).collect(),
-    ];
-    for (const group of kids)
-      for (const row of group) {
-        if ("pdfFileId" in row && row.pdfFileId) await ctx.storage.delete(row.pdfFileId);
-        await ctx.db.delete(row._id);
-      }
-    await ctx.db.delete(id);
+    await deleteOwnedJobCascade(ctx, userId, id);
+  },
+});
+
+// Page-scoped bulk delete. The action calls this in small chunks so related
+// rows and stored resume PDFs stay within one bounded mutation.
+export const deleteManyCascade = mutation({
+  args: { ids: v.array(v.id("jobs")) },
+  handler: async (ctx, { ids }) => {
+    if (ids.length > 10) throw new Error("Delete at most 10 jobs per batch.");
+    const userId = await requireUser(ctx);
+    let deleted = 0;
+    for (const id of [...new Set(ids)]) {
+      if (await deleteOwnedJobCascade(ctx, userId, id)) deleted++;
+    }
+    return { deleted };
   },
 });
 
@@ -665,20 +716,7 @@ export const wipeAllBatch = mutation({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .take(batch);
     for (const j of jobs) {
-      const kids = [
-        await ctx.db.query("stageEvents").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
-        await ctx.db.query("applications").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
-        await ctx.db.query("outreach").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
-        await ctx.db.query("researchBriefs").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
-        await ctx.db.query("generatedResumes").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
-        await ctx.db.query("jobDescriptions").withIndex("by_job", (q) => q.eq("jobId", j._id)).collect(),
-      ];
-      for (const group of kids)
-        for (const row of group) {
-          if ("pdfFileId" in row && row.pdfFileId) await ctx.storage.delete(row.pdfFileId);
-          await ctx.db.delete(row._id);
-        }
-      await ctx.db.delete(j._id);
+      await deleteOwnedJobCascade(ctx, userId, j._id);
     }
     return { deleted: jobs.length, done: jobs.length < batch };
   },

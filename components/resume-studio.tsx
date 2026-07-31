@@ -18,6 +18,7 @@ import {
   loadGeneratedResumeAction,
   type StudioPayload,
 } from "@/lib/actions/resumes";
+import { keyMessages } from "@/lib/keys/messages";
 
 // The studio pulls in @react-pdf/renderer + pdfjs — client-only, load on use.
 const ResumeEditor = dynamic(() => import("@/components/resume-editor"), {
@@ -119,7 +120,7 @@ export default function ResumeStudio({
             type="button"
             disabled={pending || !ready}
             onClick={generate}
-            title={hasApiKey ? undefined : "Needs ANTHROPIC_API_KEY"}
+            title={hasApiKey ? undefined : keyMessages.needsAnthropicShort}
             className="flex items-center gap-2 rounded-xl bg-brand-500 px-4 py-2.5 text-sm font-bold text-white shadow-lg shadow-brand-500/20 transition-all hover:bg-brand-600 active:scale-95 disabled:opacity-50 cursor-pointer"
           >
             {pending ? (

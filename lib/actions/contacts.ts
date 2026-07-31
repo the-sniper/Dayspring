@@ -10,7 +10,9 @@ import {
   type ApolloPerson,
 } from "@/lib/integrations/apollo/search";
 
-const NO_KEY = "Contact search needs APOLLO_API_KEY in .env.local (see Settings).";
+import { keyMessages } from "@/lib/keys/messages";
+
+const NO_KEY = keyMessages.contactSearch;
 
 export type ApolloSearchResult =
   | {
@@ -82,7 +84,7 @@ export async function findNewPeopleAction(
     return {
       ok: false,
       error:
-        "Parsing your search into a people query needs ANTHROPIC_API_KEY in .env.local (see Settings).",
+        keyMessages.contactParse,
     };
   }
 
@@ -168,10 +170,10 @@ export async function saveColdContactAction(
 function apolloError(err: unknown, fallback: string): string {
   const raw = err instanceof Error ? err.message : "";
   if (raw.includes("API_INACCESSIBLE") || raw.includes("not accessible")) {
-    return "Apollo's contact search requires a paid plan — your current API key is on the free tier, which no longer allows this endpoint. Upgrade at app.apollo.io or add contacts manually.";
+    return "Apollo rejected this key for contact search. If you just upgraded, re-paste your key in Settings → API Keys — signed-in sessions use the key saved there, not the one in .env.local, so an older saved key keeps being used after an upgrade. If it still fails, confirm the key has People Search enabled at app.apollo.io.";
   }
   if (raw.includes("HTTP 401")) {
-    return "Apollo rejected the API key. Double-check APOLLO_API_KEY in .env.local.";
+    return keyMessages.apolloRejected;
   }
   if (raw.includes("HTTP 429")) {
     return "Apollo rate limit hit. Wait a moment and try again.";
@@ -279,7 +281,7 @@ export async function askContactsAction(
   if (!q) return { ok: false, error: "Type a question first." };
   const { hasApiKey } = await import("@/lib/claude/client");
   if (!await hasApiKey()) {
-    return { ok: false, error: "AI search needs ANTHROPIC_API_KEY in .env.local (see Settings)." };
+    return { ok: false, error: keyMessages.aiSearch };
   }
   const { listContacts } = await import("@/lib/contacts/query");
   // Full set for the model (capped inside askContacts).

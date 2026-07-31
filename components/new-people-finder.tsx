@@ -20,6 +20,7 @@ import {
 import type { ApolloPerson } from "@/lib/integrations/apollo/search";
 import PersonAvatar from "@/components/person-avatar";
 import { cn } from "@/lib/utils";
+import { keyMessages } from "@/lib/keys/messages";
 
 // Cold-contact discovery over Apollo's whole people database — NEW people not
 // yet in your network, matched to a plain-English query. Distinct from the warm
@@ -74,7 +75,7 @@ export default function NewPeopleFinder({
           title={
             ready
               ? "Search Apollo for new people"
-              : "Needs APOLLO_API_KEY + ANTHROPIC_API_KEY"
+              : keyMessages.needsApolloAnthropicShort
           }
           className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-primary-foreground shadow-lg shadow-primary/10 transition-all hover:scale-105 active:scale-95 disabled:opacity-50 disabled:hover:scale-100 cursor-pointer"
         >
@@ -91,10 +92,10 @@ export default function NewPeopleFinder({
         <p className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
           <AlertCircle size={12} />
           {!hasApolloKey && !hasApiKey
-            ? "Add APOLLO_API_KEY and ANTHROPIC_API_KEY in .env.local to enable."
+            ? keyMessages.apolloAndAnthropic
             : !hasApolloKey
-              ? "Add APOLLO_API_KEY in .env.local to enable."
-              : "Add ANTHROPIC_API_KEY in .env.local to enable."}
+              ? keyMessages.apollo
+              : keyMessages.anthropic}
         </p>
       )}
 

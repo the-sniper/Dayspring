@@ -1,3 +1,4 @@
+import { hasApiKey } from "@/lib/claude/client";
 import ImportPanel from "@/components/import-panel";
 import LinkedinImportPanel from "@/components/linkedin-import-panel";
 import PageHeader from "@/components/page-header";
@@ -5,7 +6,8 @@ import { Download, Users2 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
-export default function ImportPage() {
+export default async function ImportPage() {
+  const hasKey = await hasApiKey();
   return (
     <div className="mx-auto max-w-5xl stagger-load">
       <PageHeader
@@ -19,7 +21,7 @@ export default function ImportPage() {
         <h2 className="mb-4 text-xs font-bold uppercase tracking-widest text-muted-foreground">
           Jobs
         </h2>
-        <ImportPanel hasKey={!!process.env.ANTHROPIC_API_KEY} />
+        <ImportPanel hasKey={hasKey} />
       </section>
 
       <section className="mt-14">

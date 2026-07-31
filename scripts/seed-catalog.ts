@@ -18,6 +18,7 @@ async function main() {
     roleTypes: c.roleTypes ?? null,
     atsType: c.atsType,
     atsSlug: c.atsSlug,
+    headcount: c.headcount ?? null,
   }));
 
   const { added, watched, skipped, pruned } = await convex().mutation(

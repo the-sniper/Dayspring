@@ -14,8 +14,9 @@ import {
   type HappenstancePerson,
 } from "@/lib/integrations/happenstance/search";
 
-const NO_KEY =
-  "Warm-network search needs HAPPENSTANCE_API_KEY in .env.local (see Settings).";
+import { keyMessages } from "@/lib/keys/messages";
+
+const NO_KEY = keyMessages.happenstance;
 
 export type NetworkSearchResult =
   | {

@@ -5,6 +5,7 @@ import { hasApiKey } from "@/lib/claude/client";
 import { parsePaste } from "@/lib/claude/parse-paste";
 import { confirmImport, flagDuplicates, type PreparedCandidate } from "@/lib/imports/candidates";
 import { csvToCandidates } from "@/lib/imports/csv";
+import { keyMessages } from "@/lib/keys/messages";
 import { CandidateJobSchema, type JobSource } from "@/lib/types";
 
 export type ParseActionResult =
@@ -47,7 +48,7 @@ export async function parsePasteAction(
   if (!await hasApiKey()) {
     return {
       ok: false,
-      error: "Paste parsing needs ANTHROPIC_API_KEY in .env.local (see Settings).",
+      error: keyMessages.pasteParse,
     };
   }
   try {

@@ -18,6 +18,7 @@ import {
   UserCircle,
   Gauge,
   Sunrise,
+  Zap,
 } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -41,6 +42,7 @@ const groups: { label: string; links: NavLink[] }[] = [
     label: "Pipeline",
     links: [
       { href: "/board", label: "Board", icon: KanbanSquare },
+      { href: "/apply", label: "Auto-Apply", icon: Zap },
       { href: "/outreach", label: "Outreach", icon: Send },
     ],
   },
@@ -77,9 +79,6 @@ export default function Nav() {
         <div className="flex flex-col leading-none">
           <span className="font-display text-[1.35rem] font-semibold tracking-tight text-foreground">
             Dayspring
-          </span>
-          <span className="mt-0.5 text-[10px] font-medium uppercase tracking-[0.22em] text-muted-foreground/70">
-            Command Center
           </span>
         </div>
       </Link>

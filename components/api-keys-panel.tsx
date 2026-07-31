@@ -80,7 +80,7 @@ function KeyRow({ row }: { row: KeyRowView }) {
           <div className="flex items-center gap-2">
             <p className="text-sm font-bold text-foreground">{row.label}</p>
             {status === "env" && (
-              <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-muted-foreground" title="Loaded from .env.local on this machine (local dev only)">
+              <span className="rounded bg-secondary px-1.5 py-0.5 text-[9px] font-black uppercase tracking-tighter text-muted-foreground" title="Loaded from your machine's .env.local for local CLI scripts (optional)">
                 env
               </span>
             )}

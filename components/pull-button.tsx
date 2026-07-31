@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Download, CheckCircle2, AlertCircle, Loader2 } from "lucide-react";
 import { Button } from "@heroui/react";
 import { pullJobsAction } from "@/lib/actions/pull";
@@ -43,7 +44,19 @@ function PullSummary({ result }: { result: PullResult }) {
         </p>
       )}
       {totalSkipped > 0 && (
-        <p className="text-muted-foreground/70">{totalSkipped} non-US skipped</p>
+        <p className="text-muted-foreground/70">
+          {totalSkipped} outside your targeting or the US skipped
+        </p>
+      )}
+      {result.skippedTooBig > 0 && (
+        <p className="text-muted-foreground/70">
+          {result.skippedTooBig} companies skipped as too big
+        </p>
+      )}
+      {result.limitReached && (
+        <p className="font-medium text-brand-600 dark:text-brand-400">
+          500-job batch limit reached
+        </p>
       )}
       {result.classified > 0 && (
         <p className="font-medium text-brand-600 dark:text-brand-400">
@@ -61,6 +74,7 @@ function PullSummary({ result }: { result: PullResult }) {
 }
 
 export default function PullButton() {
+  const router = useRouter();
   const [result, setResult] = useState<PullResult | null>(null);
   const [pending, startTransition] = useTransition();
 
@@ -72,6 +86,7 @@ export default function PullButton() {
         onPress={() =>
           startTransition(async () => {
             setResult(await pullJobsAction());
+            router.refresh();
           })
         }
       >

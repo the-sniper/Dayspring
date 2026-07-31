@@ -5,7 +5,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "vercel",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 580
   },
   {
     "name": "GitLab",
@@ -13,7 +14,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "gitlab",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 2400
   },
   {
     "name": "Cloudflare",
@@ -21,7 +23,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "cloudflare",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 4400
   },
   {
     "name": "Elastic",
@@ -29,7 +32,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "elastic",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 3500
   },
   {
     "name": "Datadog",
@@ -37,7 +41,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "datadog",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 8100
   },
   {
     "name": "MongoDB",
@@ -45,7 +50,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "mongodb",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 5600
   },
   {
     "name": "Postman",
@@ -53,7 +59,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "postman",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 1300
   },
   {
     "name": "Airbyte",
@@ -61,7 +68,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "airbyte",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 150
   },
   {
     "name": "PostHog",
@@ -69,7 +77,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "posthog",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 110
   },
   {
     "name": "Linear",
@@ -77,7 +86,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "linear",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 180
   },
   {
     "name": "Sourcegraph",
@@ -85,7 +95,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "sourcegraph91",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 190
   },
   {
     "name": "Render",
@@ -93,7 +104,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "render",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 150
   },
   {
     "name": "Supabase",
@@ -101,7 +113,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "supabase",
-    "industry": "Developer Tools & Infrastructure"
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 390
   },
   {
     "name": "OpenAI",
@@ -109,7 +122,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "openai",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 11000
   },
   {
     "name": "Anthropic",
@@ -117,7 +131,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "anthropic",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 5200
   },
   {
     "name": "Mistral",
@@ -125,7 +140,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "mistral",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 1500
   },
   {
     "name": "Scale AI",
@@ -133,7 +149,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "scaleai",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 1000
   },
   {
     "name": "Runway",
@@ -141,7 +158,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "runway",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 520
   },
   {
     "name": "Cohere",
@@ -149,7 +167,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "cohere",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 1200
   },
   {
     "name": "Perplexity",
@@ -157,7 +176,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "perplexity",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 250
   },
   {
     "name": "Databricks",
@@ -165,7 +185,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "databricks",
-    "industry": "Artificial Intelligence"
+    "industry": "Artificial Intelligence",
+    "headcount": 11000
   },
   {
     "name": "Asana",
@@ -173,7 +194,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "asana",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 1900
   },
   {
     "name": "Notion",
@@ -189,7 +211,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "airtable",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 940
   },
   {
     "name": "Calendly",
@@ -197,7 +220,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "calendly",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 560
   },
   {
     "name": "Gong",
@@ -205,7 +229,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "gongio",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 1400
   },
   {
     "name": "Twilio",
@@ -213,7 +238,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "twilio",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 5600
   },
   {
     "name": "Lattice",
@@ -221,7 +247,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "lattice",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 530
   },
   {
     "name": "Vanta",
@@ -229,7 +256,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "vanta",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 950
   },
   {
     "name": "Ramp",
@@ -237,7 +265,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "ramp",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 1600
   },
   {
     "name": "Deel",
@@ -245,7 +274,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "deel",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 8400
   },
   {
     "name": "Zapier",
@@ -253,7 +283,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "zapier",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 1500
   },
   {
     "name": "Verkada",
@@ -261,7 +292,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "verkada",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 2400
   },
   {
     "name": "Samsara",
@@ -269,7 +301,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "samsara",
-    "industry": "SaaS & Enterprise Software"
+    "industry": "SaaS & Enterprise Software",
+    "headcount": 3500
   },
   {
     "name": "Stripe",
@@ -277,7 +310,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "stripe",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 8000
   },
   {
     "name": "Robinhood",
@@ -285,7 +319,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "robinhood",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 2900
   },
   {
     "name": "Coinbase",
@@ -293,7 +328,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "coinbase",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 5000
   },
   {
     "name": "Brex",
@@ -301,7 +337,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "brex",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 1200
   },
   {
     "name": "Plaid",
@@ -309,7 +346,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "plaid",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 1400
   },
   {
     "name": "Affirm",
@@ -317,7 +355,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "affirm",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 2100
   },
   {
     "name": "Chime",
@@ -325,7 +364,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "chime",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 1500
   },
   {
     "name": "SoFi",
@@ -333,7 +373,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "sofi",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 5000
   },
   {
     "name": "Gusto",
@@ -341,7 +382,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "gusto",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 2700
   },
   {
     "name": "Marqeta",
@@ -349,7 +391,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "marqeta",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 930
   },
   {
     "name": "Mercury",
@@ -357,7 +400,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "mercury",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 910
   },
   {
     "name": "Betterment",
@@ -365,7 +409,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "betterment",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 620
   },
   {
     "name": "Nubank",
@@ -373,7 +418,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "nubank",
-    "industry": "Fintech"
+    "industry": "Fintech",
+    "headcount": 8100
   },
   {
     "name": "DoorDash",
@@ -381,7 +427,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "doordashusa",
-    "industry": "Commerce & Retail"
+    "industry": "Commerce & Retail",
+    "headcount": 32000
   },
   {
     "name": "Instacart",
@@ -389,7 +436,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "instacart",
-    "industry": "Commerce & Retail"
+    "industry": "Commerce & Retail",
+    "headcount": 3600
   },
   {
     "name": "Faire",
@@ -397,7 +445,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "faire",
-    "industry": "Commerce & Retail"
+    "industry": "Commerce & Retail",
+    "headcount": 940
   },
   {
     "name": "Gopuff",
@@ -405,7 +454,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "gopuff",
-    "industry": "Commerce & Retail"
+    "industry": "Commerce & Retail",
+    "headcount": 3800
   },
   {
     "name": "Sweetgreen",
@@ -413,7 +463,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "sweetgreen",
-    "industry": "Commerce & Retail"
+    "industry": "Commerce & Retail",
+    "headcount": 6500
   },
   {
     "name": "Toast",
@@ -421,7 +472,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "toast",
-    "industry": "Commerce & Retail"
+    "industry": "Commerce & Retail",
+    "headcount": 5700
   },
   {
     "name": "Pinterest",
@@ -429,7 +481,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "pinterest",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 4800
   },
   {
     "name": "Lyft",
@@ -437,7 +490,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "lyft",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 3000
   },
   {
     "name": "Reddit",
@@ -445,7 +499,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "reddit",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 2300
   },
   {
     "name": "Discord",
@@ -453,7 +508,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "discord",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 1000
   },
   {
     "name": "Airbnb",
@@ -461,7 +517,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "airbnb",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 7300
   },
   {
     "name": "Dropbox",
@@ -469,7 +526,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "dropbox",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 2300
   },
   {
     "name": "SeatGeek",
@@ -477,7 +535,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "seatgeek",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 830
   },
   {
     "name": "Eventbrite",
@@ -485,7 +544,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "eventbriteinc",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 750
   },
   {
     "name": "Peloton",
@@ -493,7 +553,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "peloton",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 2900
   },
   {
     "name": "Calm",
@@ -501,7 +562,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "calm",
-    "industry": "Consumer & Social"
+    "industry": "Consumer & Social",
+    "headcount": 410
   },
   {
     "name": "Ro",
@@ -509,7 +571,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "ro",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 1500
   },
   {
     "name": "Oscar Health",
@@ -517,7 +580,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "oscar",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 2400
   },
   {
     "name": "Cedar",
@@ -525,7 +589,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "cedar",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 420
   },
   {
     "name": "Cityblock Health",
@@ -533,7 +598,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "cityblock",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 2500
   },
   {
     "name": "Benchling",
@@ -541,7 +607,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "benchling",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 800
   },
   {
     "name": "Ginkgo Bioworks",
@@ -549,7 +616,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "ginkgobioworks",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 840
   },
   {
     "name": "Recursion",
@@ -557,7 +625,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "recursionpharmaceuticals",
-    "industry": "Healthcare & Biotech"
+    "industry": "Healthcare & Biotech",
+    "headcount": 800
   },
   {
     "name": "Flexport",
@@ -565,7 +634,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "flexport",
-    "industry": "Mobility, Logistics & Hardware"
+    "industry": "Mobility, Logistics & Hardware",
+    "headcount": 2300
   },
   {
     "name": "Nuro",
@@ -573,7 +643,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "nuro",
-    "industry": "Mobility, Logistics & Hardware"
+    "industry": "Mobility, Logistics & Hardware",
+    "headcount": 750
   },
   {
     "name": "Anduril",
@@ -581,7 +652,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "andurilindustries",
-    "industry": "Mobility, Logistics & Hardware"
+    "industry": "Mobility, Logistics & Hardware",
+    "headcount": 2500
   },
   {
     "name": "Motive",
@@ -589,7 +661,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "motive",
-    "industry": "Mobility, Logistics & Hardware"
+    "industry": "Mobility, Logistics & Hardware",
+    "headcount": 4600
   },
   {
     "name": "Roblox",
@@ -597,7 +670,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "roblox",
-    "industry": "Media, Gaming & XR"
+    "industry": "Media, Gaming & XR",
+    "headcount": 2500
   },
   {
     "name": "Riot Games",
@@ -605,7 +679,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "riotgames",
-    "industry": "Media, Gaming & XR"
+    "industry": "Media, Gaming & XR",
+    "headcount": 4200
   },
   {
     "name": "Netflix",
@@ -613,7 +688,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "netflix",
-    "industry": "Media, Gaming & XR"
+    "industry": "Media, Gaming & XR",
+    "headcount": 14000
   },
   {
     "name": "Squarespace",
@@ -621,7 +697,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "squarespace",
-    "industry": "Media, Gaming & XR"
+    "industry": "Media, Gaming & XR",
+    "headcount": 2300
   },
   {
     "name": "Watershed",
@@ -629,7 +706,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "watershed",
-    "industry": "Climate & Energy"
+    "industry": "Climate & Energy",
+    "headcount": 430
   },
   {
     "name": "Arcadia",
@@ -637,7 +715,8 @@
     "roleTypes": null,
     "atsType": "lever",
     "atsSlug": "arcadia",
-    "industry": "Climate & Energy"
+    "industry": "Climate & Energy",
+    "headcount": 680
   },
   {
     "name": "Form Energy",
@@ -645,7 +724,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "formenergy",
-    "industry": "Climate & Energy"
+    "industry": "Climate & Energy",
+    "headcount": 900
   },
   {
     "name": "Wiz",
@@ -653,7 +733,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "wizinc",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 2200
   },
   {
     "name": "Tailscale",
@@ -661,7 +742,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "tailscale",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 280
   },
   {
     "name": "Abnormal Security",
@@ -669,7 +751,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "abnormalsecurity",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 1100
   },
   {
     "name": "Chainguard",
@@ -677,7 +760,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "chainguard",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 840
   },
   {
     "name": "Cribl",
@@ -685,7 +769,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "cribl",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 1100
   },
   {
     "name": "Huntress",
@@ -693,7 +778,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "huntress",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 630
   },
   {
     "name": "1Password",
@@ -701,7 +787,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "1password",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 2900
   },
   {
     "name": "Socket",
@@ -709,7 +796,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "socket",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 120
   },
   {
     "name": "Doppler",
@@ -717,7 +805,8 @@
     "roleTypes": null,
     "atsType": "ashby",
     "atsSlug": "doppler",
-    "industry": "Cybersecurity"
+    "industry": "Cybersecurity",
+    "headcount": 46
   },
   {
     "name": "Epic Games",
@@ -725,7 +814,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "epicgames",
-    "industry": "Media, Gaming & XR"
+    "industry": "Media, Gaming & XR",
+    "headcount": 3500
   },
   {
     "name": "Magic Leap",
@@ -733,7 +823,8 @@
     "roleTypes": null,
     "atsType": "greenhouse",
     "atsSlug": "magicleap",
-    "industry": "Media, Gaming & XR"
+    "industry": "Media, Gaming & XR",
+    "headcount": 1200
   },
   {
     "name": "Niantic",
@@ -742,5 +833,392 @@
     "atsType": "ashby",
     "atsSlug": "niantic",
     "industry": "Media, Gaming & XR"
+  },
+  {
+    "name": "Speakeasy",
+    "domain": "speakeasy.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "speakeasy",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 47
+  },
+  {
+    "name": "Composio",
+    "domain": "composio.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "composio",
+    "industry": "Artificial Intelligence",
+    "headcount": 81
+  },
+  {
+    "name": "Stytch",
+    "domain": "stytch.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "stytch",
+    "industry": "Cybersecurity",
+    "headcount": 30
+  },
+  {
+    "name": "Browserbase",
+    "domain": "browserbase.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "browserbase",
+    "industry": "Artificial Intelligence",
+    "headcount": 80
+  },
+  {
+    "name": "Firecrawl",
+    "domain": "firecrawl.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "firecrawl",
+    "industry": "Artificial Intelligence",
+    "headcount": 49
+  },
+  {
+    "name": "E2B",
+    "domain": "e2b.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "e2b",
+    "industry": "Artificial Intelligence",
+    "headcount": 43
+  },
+  {
+    "name": "Braintrust",
+    "domain": "braintrust.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "braintrust",
+    "industry": "Artificial Intelligence",
+    "headcount": 180
+  },
+  {
+    "name": "Modal",
+    "domain": "modal.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "modal",
+    "industry": "Artificial Intelligence",
+    "headcount": 80
+  },
+  {
+    "name": "Baseten",
+    "domain": "baseten.co",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "baseten",
+    "industry": "Artificial Intelligence",
+    "headcount": 180
+  },
+  {
+    "name": "Together AI",
+    "domain": "together.ai",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "togetherai",
+    "industry": "Artificial Intelligence",
+    "headcount": 210
+  },
+  {
+    "name": "LangChain",
+    "domain": "langchain.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "langchain",
+    "industry": "Artificial Intelligence",
+    "headcount": 98
+  },
+  {
+    "name": "LlamaIndex",
+    "domain": "llamaindex.ai",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "llamaindex",
+    "industry": "Artificial Intelligence",
+    "headcount": 81
+  },
+  {
+    "name": "Pinecone",
+    "domain": "pinecone.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "pinecone",
+    "industry": "Artificial Intelligence",
+    "headcount": 170
+  },
+  {
+    "name": "Weaviate",
+    "domain": "weaviate.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "weaviate",
+    "industry": "Artificial Intelligence",
+    "headcount": 74
+  },
+  {
+    "name": "Unstructured",
+    "domain": "unstructured.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "unstructured",
+    "industry": "Artificial Intelligence",
+    "headcount": 130
+  },
+  {
+    "name": "Greptile",
+    "domain": "greptile.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "greptile",
+    "industry": "Artificial Intelligence",
+    "headcount": 32
+  },
+  {
+    "name": "Cursor",
+    "domain": "cursor.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "cursor",
+    "industry": "Artificial Intelligence",
+    "headcount": 300
+  },
+  {
+    "name": "Resend",
+    "domain": "resend.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "resend",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 76
+  },
+  {
+    "name": "Neon",
+    "domain": "neon.tech",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "neon",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 180
+  },
+  {
+    "name": "Mintlify",
+    "domain": "mintlify.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "mintlify",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 100
+  },
+  {
+    "name": "Orb",
+    "domain": "withorb.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "orb",
+    "industry": "Fintech",
+    "headcount": 83
+  },
+  {
+    "name": "Warp",
+    "domain": "warp.dev",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "warp",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 110
+  },
+  {
+    "name": "Hex",
+    "domain": "hex.tech",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "hextechnologies",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 170
+  },
+  {
+    "name": "Prefect",
+    "domain": "prefect.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "prefect",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 97
+  },
+  {
+    "name": "Astronomer",
+    "domain": "astronomer.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "astronomer",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 500
+  },
+  {
+    "name": "Metabase",
+    "domain": "metabase.com",
+    "roleTypes": null,
+    "atsType": "lever",
+    "atsSlug": "metabase",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 140
+  },
+  {
+    "name": "Depot",
+    "domain": "depot.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "depot",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 61
+  },
+  {
+    "name": "Knock",
+    "domain": "knock.app",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "knock",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 28
+  },
+  {
+    "name": "Merge",
+    "domain": "merge.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "merge",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 140
+  },
+  {
+    "name": "Nango",
+    "domain": "nango.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "nango",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 18
+  },
+  {
+    "name": "Paragon",
+    "domain": "useparagon.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "paragon",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 160
+  },
+  {
+    "name": "WorkOS",
+    "domain": "workos.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "workos",
+    "industry": "Cybersecurity",
+    "headcount": 200
+  },
+  {
+    "name": "Propel",
+    "domain": "propeldata.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "propel",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 6
+  },
+  {
+    "name": "Tinybird",
+    "domain": "tinybird.co",
+    "roleTypes": null,
+    "atsType": "lever",
+    "atsSlug": "tinybird",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 51
+  },
+  {
+    "name": "ClickHouse",
+    "domain": "clickhouse.com",
+    "roleTypes": null,
+    "atsType": "greenhouse",
+    "atsSlug": "clickhouse",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 620
+  },
+  {
+    "name": "Zed",
+    "domain": "zed.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "zed",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 57
+  },
+  {
+    "name": "Sentry",
+    "domain": "sentry.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "sentry",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 400
+  },
+  {
+    "name": "Temporal",
+    "domain": "temporal.io",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "temporal",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 350
+  },
+  {
+    "name": "Inngest",
+    "domain": "inngest.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "inngest",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 28
+  },
+  {
+    "name": "Trigger.dev",
+    "domain": "trigger.dev",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "triggerdev",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 15
+  },
+  {
+    "name": "Railway",
+    "domain": "railway.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "railway",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 34
+  },
+  {
+    "name": "Replit",
+    "domain": "replit.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "replit",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 600
+  },
+  {
+    "name": "Coder",
+    "domain": "coder.com",
+    "roleTypes": null,
+    "atsType": "ashby",
+    "atsSlug": "coder",
+    "industry": "Developer Tools & Infrastructure",
+    "headcount": 650
   }
 ]

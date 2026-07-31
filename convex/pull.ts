@@ -7,7 +7,9 @@ import {
 } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { heuristicRoleType } from "../shared/role-types";
-import { companyByNameForUser } from "./onboarding";
+import { levelOrDefault } from "../shared/seniority";
+import { companyByNameForUser, getOnboardingPrefs } from "./onboarding";
+import { DEFAULT_MAX_HEADCOUNT } from "../shared/company-size";
 
 type NormalizedJob = {
   externalId: string;
@@ -23,10 +25,12 @@ type WatchedCompany = {
   name: string;
   atsType: string;
   atsSlug: string;
+  headcount?: number;
 };
 
 const ATS_CONCURRENCY = 8;
 const UPSERT_CHUNK = 15;
+const MAX_NEW_JOBS_PER_PULL = 500;
 
 const US_HINT =
   /united states|\busa\b|\bu\.s\.|remote.*\bus\b|, (AL|AK|AZ|AR|CA|CO|CT|DE|FL|GA|HI|ID|IL|IN|IA|KS|KY|LA|ME|MD|MA|MI|MN|MS|MO|MT|NE|NV|NH|NJ|NM|NY|NC|ND|OH|OK|OR|PA|RI|SC|SD|TN|TX|UT|VT|VA|WA|WV|WI|WY|DC)\b/i;
@@ -210,7 +214,34 @@ export const watchedForUser = internalQuery({
         name: c.name,
         atsType: c.atsType!,
         atsSlug: c.atsSlug!,
+        headcount: c.headcount,
       }));
+  },
+});
+
+// Headcount ceiling for ingestion. Unset = DEFAULT_MAX_HEADCOUNT; an explicit
+// "none" is stored as the string "none" so it is distinguishable from unset.
+export const targetMaxHeadcountForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }): Promise<number | null> => {
+    const row = await ctx.db
+      .query("settings")
+      .withIndex("by_user_key", (q) =>
+        q.eq("userId", userId).eq("key", "targetMaxHeadcount"),
+      )
+      .unique();
+    if (!row) return DEFAULT_MAX_HEADCOUNT;
+    if (row.value === "none") return null;
+    const n = Number(row.value);
+    return Number.isFinite(n) && n > 0 ? n : DEFAULT_MAX_HEADCOUNT;
+  },
+});
+
+export const preferredRolesForUser = internalQuery({
+  args: { userId: v.id("users") },
+  handler: async (ctx, { userId }) => {
+    const prefs = await getOnboardingPrefs(ctx, userId);
+    return prefs?.roleTypes ?? [];
   },
 });
 
@@ -307,12 +338,44 @@ export const pullForUser = internalAction({
   handler: async (
     ctx,
     { userId },
-  ): Promise<{ added: number; companies: number; errors: number }> => {
-    const watched: WatchedCompany[] = await ctx.runQuery(
+  ): Promise<{
+    added: number;
+    companies: number;
+    errors: number;
+    skippedTooBig?: number;
+  }> => {
+    const all: WatchedCompany[] = await ctx.runQuery(
       internal.pull.watchedForUser,
       { userId },
     );
-    if (watched.length === 0) return { added: 0, companies: 0, errors: 0 };
+    if (all.length === 0) return { added: 0, companies: 0, errors: 0 };
+    const preferredRoles = new Set<string>(
+      await ctx.runQuery(internal.pull.preferredRolesForUser, { userId }),
+    );
+    const maxHeadcount: number | null = await ctx.runQuery(
+      internal.pull.targetMaxHeadcountForUser,
+      { userId },
+    );
+
+    // Ingestion-time targeting. Without this the per-pull job cap is spent on
+    // whichever company happens to come first — one enterprise board with
+    // thousands of postings (Cloudflare, Datadog) can consume the entire
+    // budget before a single startup is reached.
+    const watched = all
+      .filter(
+        (c) =>
+          maxHeadcount === null ||
+          c.headcount === undefined ||
+          c.headcount <= maxHeadcount,
+      )
+      // Smallest first, unknown-size last: known-small companies get the
+      // budget, and a company of unproven size never outranks them.
+      .sort((a, b) => (a.headcount ?? Infinity) - (b.headcount ?? Infinity));
+
+    const skippedTooBig = all.length - watched.length;
+    if (watched.length === 0) {
+      return { added: 0, companies: 0, errors: 0, skippedTooBig };
+    }
 
     const settled = await mapPool(watched, ATS_CONCURRENCY, async (c: WatchedCompany) => ({
       company: c,
@@ -332,6 +395,16 @@ export const pullForUser = internalAction({
       const { company, fetched } = s.value;
       const docs = [];
       for (const nj of fetched) {
+        const roleType = heuristicRoleType(nj.title);
+        // Unknown titles remain eligible for later classification; only titles
+        // that definitely target another role family are discarded.
+        if (
+          preferredRoles.size > 0 &&
+          roleType !== null &&
+          !preferredRoles.has(roleType)
+        ) {
+          continue;
+        }
         const isUs = isUsLocation(nj.location);
         if (isUs === false) continue;
         // Schema fields are v.optional(...) — omit unknowns entirely, since
@@ -348,28 +421,33 @@ export const pullForUser = internalAction({
           createdAt: now,
           updatedAt: now,
         };
-        const roleType = heuristicRoleType(nj.title);
         if (roleType !== null) doc.roleType = roleType;
+        doc.level = levelOrDefault(nj.title);
         if (nj.location !== null) doc.location = nj.location;
         if (isUs !== null) doc.isUs = isUs;
         if (nj.postedAt !== null) doc.postedAt = nj.postedAt;
         docs.push(doc);
       }
 
-      for (let j = 0; j < docs.length; j += UPSERT_CHUNK) {
-        const chunk = docs.slice(j, j + UPSERT_CHUNK);
+      for (
+        let j = 0;
+        j < docs.length && totalAdded < MAX_NEW_JOBS_PER_PULL;
+      ) {
+        const remaining = MAX_NEW_JOBS_PER_PULL - totalAdded;
+        const chunk = docs.slice(j, j + Math.min(UPSERT_CHUNK, remaining));
+        j += chunk.length;
         const { added } = await ctx.runMutation(internal.pull.upsertBatchForUser, {
           userId,
           docs: chunk,
         });
         totalAdded += added;
-        if (j + UPSERT_CHUNK < docs.length) {
+        if (j < docs.length && totalAdded < MAX_NEW_JOBS_PER_PULL) {
           await new Promise((r) => setTimeout(r, 150));
         }
       }
     }
 
     await ctx.runMutation(internal.pull.touchLastPull, { userId });
-    return { added: totalAdded, companies: watched.length, errors };
+    return { added: totalAdded, companies: watched.length, errors, skippedTooBig };
   },
 });

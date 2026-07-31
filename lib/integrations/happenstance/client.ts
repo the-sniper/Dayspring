@@ -1,4 +1,5 @@
 import { getKey } from "@/lib/keys";
+import { keyNotSet } from "@/lib/keys/messages";
 
 export async function hasHappenstanceKey(): Promise<boolean> {
   return !!(await getKey("HAPPENSTANCE_API_KEY"));
@@ -13,7 +14,7 @@ export async function hpFetch<T>(
   body?: unknown,
 ): Promise<T> {
   const key = await getKey("HAPPENSTANCE_API_KEY");
-  if (!key) throw new Error("HAPPENSTANCE_API_KEY is not set (env or Settings → API Keys)");
+  if (!key) throw new Error(keyNotSet("HAPPENSTANCE_API_KEY"));
 
   const res = await fetch(`${BASE}${path}`, {
     method,

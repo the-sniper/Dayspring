@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { getKey } from "@/lib/keys";
+import { keyNotSet } from "@/lib/keys/messages";
 
 // Model picks (checked against the claude-api reference 2026-07-05).
 //
@@ -20,8 +21,7 @@ export async function hasApiKey(): Promise<boolean> {
   return !!(await getKey("ANTHROPIC_API_KEY"));
 }
 
-// Env first, then the encrypted key saved in Settings → API Keys. The client
-// is rebuilt if the key changes (e.g. saved/rotated in Settings mid-session).
+// Per-user key from Settings → API Keys. Rebuilt if the key changes mid-session.
 // Server-side only — nothing in lib/claude may be imported by a client
 // component.
 let client: Anthropic | null = null;
@@ -29,7 +29,7 @@ let clientKey: string | null = null;
 
 export async function getClient(): Promise<Anthropic> {
   const key = await getKey("ANTHROPIC_API_KEY");
-  if (!key) throw new Error("ANTHROPIC_API_KEY is not set (env or Settings → API Keys).");
+  if (!key) throw new Error(keyNotSet("ANTHROPIC_API_KEY"));
   if (!client || clientKey !== key) {
     client = new Anthropic({ apiKey: key });
     clientKey = key;

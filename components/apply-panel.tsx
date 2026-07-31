@@ -20,11 +20,13 @@ import {
   cancelApplyAction,
   manualSubmittedAction,
   readOtpAction,
+  skipFillAction,
   startApplyAction,
   vaultWorkdayAccountAction,
   verdictAction,
 } from "@/lib/actions/apply";
 import type { ApplySessionState } from "@/lib/apply/session";
+import ApplyLiveView from "@/components/apply-live-view";
 import { cn } from "@/lib/utils";
 
 // Button-driven apply. A browser window opens ON THE MACHINE RUNNING
@@ -44,6 +46,7 @@ export default function ApplyPanel({
   applyStatus: string | null;
 }) {
   const [state, setState] = useState<ApplySessionState | null>(null);
+  const [realWindow, setRealWindow] = useState(false);
   const [tosHost, setTosHost] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [otp, setOtp] = useState<string | null>(null);
@@ -83,7 +86,7 @@ export default function ApplyPanel({
     setOtp(null);
     setVaulted(false);
     startTransition(async () => {
-      const res = await startApplyAction(jobId);
+      const res = await startApplyAction(jobId, !realWindow);
       if (res.ok) setState(res.state);
       else if (res.needsTosFor) setTosHost(res.needsTosFor);
       else setError(res.error);
@@ -93,7 +96,7 @@ export default function ApplyPanel({
   function acceptTos() {
     if (!tosHost) return;
     startTransition(async () => {
-      const res = await acceptTosAction(tosHost, jobId);
+      const res = await acceptTosAction(tosHost, jobId, !realWindow);
       setTosHost(null);
       if (res.ok) setState(res.state);
       else setError(res.error);
@@ -139,11 +142,20 @@ export default function ApplyPanel({
       {!isActive && !tosHost && (
         <>
           <p className="mb-3 text-[11px] font-medium text-muted-foreground leading-relaxed">
-            Opens a browser window on this machine and fills the application —
-            your details, this job&apos;s resume, tailored answers. You review
-            everything (CAPTCHA and EEO stay yours), then approve here and{" "}
+            The agent opens the application right here and fills it — your
+            details, this job&apos;s resume, tailored answers. You review
+            everything (CAPTCHA and EEO stay yours), then approve and{" "}
             <span className="font-bold">it submits for you</span>.
           </p>
+          <label className="mb-3 flex w-fit cursor-pointer items-center gap-2 text-[11px] font-medium text-muted-foreground">
+            <input
+              type="checkbox"
+              checked={realWindow}
+              onChange={(e) => setRealWindow(e.target.checked)}
+              className="h-3.5 w-3.5 accent-[var(--accent)]"
+            />
+            Open a real browser window instead of the embedded view
+          </label>
           <ul className="mb-3 space-y-1">
             <Prereq ok={hasProfile} label="Profile set (fills name/email/links)" />
             <Prereq ok={hasResume} label="Resume ready (tailored → master → fallback)" />
@@ -259,6 +271,34 @@ export default function ApplyPanel({
                 }[state.resumeSource]
               }
             </p>
+          )}
+
+          {state.phase === "awaiting_review" && (state.review?.length ?? 0) > 0 && (
+            <div className="mt-3 overflow-hidden rounded-lg border border-border bg-card">
+              <p className="border-b border-border bg-secondary/30 px-3 py-1.5 text-[9px] font-black uppercase tracking-widest text-muted-foreground">
+                What will be submitted
+              </p>
+              <div className="max-h-44 overflow-y-auto">
+                {state.review!.map((r, i) => (
+                  <div key={i} className="flex gap-3 border-b border-border/50 px-3 py-1.5 text-[11px] last:border-0">
+                    <span className="w-2/5 shrink-0 truncate font-semibold text-muted-foreground" title={r.label}>{r.label}</span>
+                    <span className="min-w-0 truncate font-medium text-foreground" title={r.value}>{r.value}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <ApplyLiveView active={state.mode === "embedded" && isActive} />
+
+          {state.phase === "filling" && (
+            <button
+              type="button"
+              onClick={() => decide(() => skipFillAction())}
+              className={cn(btn, "mt-4 border border-border bg-card text-muted-foreground text-xs px-3 py-2")}
+            >
+              Taking too long? Skip to review
+            </button>
           )}
 
           {/* Workday credential + OTP helpers */}

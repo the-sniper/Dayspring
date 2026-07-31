@@ -19,27 +19,31 @@ watch the browser, solve CAPTCHAs, and submit).
 ```sh
 nvm use              # Node 20 (see .nvmrc; machine default 18 is EOL)
 npm install
-cp .env.example .env.local   # then fill in the keys below
+cp .env.example .env.local   # Convex URL + CLI credentials (see below)
 npm run db:push      # create SQLite schema in data/dayspring.db
 npm run seed         # watched companies (Vercel, Mistral, Linear) + profile stub
 npm run dev          # http://localhost:3000
 ```
 
-Then, in the app: **Settings → paste your resume + targets** (everything
-Claude does is grounded in that text).
+Then, in the app: **Settings → paste your resume, targets, and API keys**
+(each user brings their own keys; they are stored encrypted in your account).
 
 If Node versions get switched later, rebuild the native SQLite bindings:
 `npm rebuild better-sqlite3`.
 
-### Keys (each feature stays off until its key exists)
+### Keys (each feature stays off until you add it in Settings → API Keys)
 
-| Env var | Unlocks |
+| Key | Unlocks |
 |---|---|
-| `ANTHROPIC_API_KEY` | match scoring, paste-parse, tailoring, outreach drafts, **research briefs** |
-| `APOLLO_API_KEY` (master key) | cold-contact search (free) + email reveal (1 credit each) |
-| `HAPPENSTANCE_API_KEY` (`hpn_…`) | **warm-network search** (2 credits) + person research (1 credit); free tier at happenstance.ai |
-| `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET`, then `npm run gmail:auth` | Gmail send, reply detection, emailed digest, **OTP reader** |
-| `DAYSPRING_VAULT_KEY` (any passphrase) | **encrypted credential vault** for apply-assist (never commit it) |
+| Anthropic | match scoring, paste-parse, tailoring, outreach drafts, **research briefs** |
+| Apollo (master key) | cold-contact search (free) + email reveal (1 credit each) |
+| Happenstance (`hpn_…`) | **warm-network search** (2 credits) + person research (1 credit); free tier at happenstance.ai |
+| Google client ID + secret | paste in API Keys, then **Connect Gmail** in Settings |
+| `DAYSPRING_VAULT_KEY` (host env only) | encrypts saved API keys and vault passwords — set on Vercel, not per-user |
+
+For local CLI scripts only (`npm run seed`, `pull-jobs`, `daily`), you may
+optionally set keys in `.env.local` when running unauthenticated. The web app
+always uses keys from **Settings → API Keys**.
 
 Gmail prereq: Google Cloud project → **enable the Gmail API in the API
 Library** (separate from OAuth consent — if you skip it, every Gmail call

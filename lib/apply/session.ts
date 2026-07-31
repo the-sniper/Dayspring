@@ -8,7 +8,7 @@
 // The registry lives on globalThis so dev HMR doesn't orphan a live session.
 // This is a one-machine, one-human-at-a-time design — the browser opens on
 // the machine running Dayspring.
-import type { Browser, Page } from "playwright";
+import type { Browser, CDPSession, Page } from "playwright";
 import {
   appendApplyLog,
   loadApplyContext,
@@ -36,6 +36,9 @@ export type ApplySessionState = {
   companyName: string;
   host: string;
   ats: string;
+  // headed = a real window opens on this machine; embedded = headless with a
+  // live view streamed into the app (CDP screencast + input passthrough).
+  mode: "headed" | "embedded";
   phase: ApplyPhase;
   outcome: ApplyOutcome | null;
   message: string; // current step / error / confirmation evidence, human-readable
@@ -43,6 +46,9 @@ export type ApplySessionState = {
   skipped: string[];
   resumeSource: "tailored" | "master" | "settings" | null;
   workday: { existingUsername: string | null; hasMaster: boolean } | null;
+  // Tsenta-style review summary: every answered field on the form at review
+  // time — what will actually be submitted.
+  review: { label: string; value: string }[] | null;
   startedAt: string;
 };
 
@@ -50,6 +56,12 @@ type ActiveSession = {
   state: ApplySessionState;
   browser: Browser | null;
   page: Page | null;
+  cdp: CDPSession | null;
+  // Latest screencast frame (embedded mode) — served by /api/apply/frame.
+  lastFrame: { data: Buffer; ts: number; width: number; height: number } | null;
+  // Set by skipFill(): the fill pass stops at the next field and the session
+  // jumps to review — a stuck field must never wedge the run.
+  fillAbort?: boolean;
   ctx: ApplyContext;
 };
 
@@ -74,6 +86,8 @@ async function closeBrowser(s: ActiveSession): Promise<void> {
   }
   s.browser = null;
   s.page = null;
+  s.cdp = null;
+  s.lastFrame = null;
 }
 
 function finish(s: ActiveSession, outcome: ApplyOutcome, message: string): void {
@@ -98,7 +112,10 @@ export type StartResult =
   | { ok: true; state: ApplySessionState }
   | { ok: false; error: string; needsTosFor?: string; activeJobId?: string };
 
-export async function startSession(jobId: string): Promise<StartResult> {
+export async function startSession(
+  jobId: string,
+  opts: { masterResumeId?: string | null; embedded?: boolean } = {},
+): Promise<StartResult> {
   if (isHosted()) {
     return {
       ok: false,
@@ -123,7 +140,7 @@ export async function startSession(jobId: string): Promise<StartResult> {
     await setApplyStatus(existing.state.jobId, "abandoned", "browser closed mid-session");
   }
 
-  const loaded = await loadApplyContext(jobId);
+  const loaded = await loadApplyContext(jobId, { masterResumeId: opts.masterResumeId });
   if (!loaded.ok) return { ok: false, error: loaded.error };
   const { ctx } = loaded;
 
@@ -141,19 +158,25 @@ export async function startSession(jobId: string): Promise<StartResult> {
     ctx,
     browser: null,
     page: null,
+    cdp: null,
+    lastFrame: null,
     state: {
       jobId,
       jobTitle: ctx.job.title,
       companyName: ctx.job.companyName,
       host,
       ats,
+      mode: opts.embedded ? "embedded" : "headed",
       phase: "launching",
       outcome: null,
-      message: "Opening a browser window on this machine…",
+      message: opts.embedded
+        ? "Opening a browser session (streamed below)…"
+        : "Opening a browser window on this machine…",
       filled: [],
       skipped: [],
       resumeSource: ctx.resumeSource,
       workday: null,
+      review: null,
       startedAt: new Date().toISOString(),
     },
   };
@@ -174,8 +197,27 @@ export async function startSession(jobId: string): Promise<StartResult> {
 
 async function runToReview(s: ActiveSession): Promise<void> {
   const { chromium } = await import("playwright");
-  s.browser = await chromium.launch({ headless: false });
-  s.page = await s.browser.newPage();
+  const embedded = s.state.mode === "embedded";
+  // Anti-detection basics (per research: real Chrome binary kills the
+  // headless-shell tells; the flags kill navigator.webdriver; matching
+  // locale/timezone feeds reCAPTCHA's consistency checks). Heavy stealth
+  // forks are overkill for low-volume attended use on a residential IP.
+  const launchOpts = {
+    headless: embedded,
+    args: ["--disable-blink-features=AutomationControlled"],
+    ignoreDefaultArgs: ["--enable-automation"],
+  };
+  try {
+    s.browser = await chromium.launch({ ...launchOpts, channel: "chrome" });
+  } catch {
+    s.browser = await chromium.launch(launchOpts); // no real Chrome installed
+  }
+  s.page = await s.browser.newPage({
+    locale: "en-US",
+    timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
+    ...(embedded ? { viewport: { width: 1280, height: 1400 } } : {}),
+  });
+  if (embedded) await startScreencast(s);
   await s.page.goto(s.ctx.job.url!, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
   if (s.state.ats === "workday") {
@@ -193,19 +235,139 @@ async function runToReview(s: ActiveSession): Promise<void> {
     await appendApplyLog(s.state.jobId, "workday session — manual fill with helpers");
   } else {
     s.state.phase = "filling";
+    s.state.message = "Waiting for the application form to load…";
+    const { waitForFormReady } = await import("@/lib/apply/ats-forms");
+    await waitForFormReady(s.page);
     s.state.message = "Autofilling from your profile + tailored materials…";
+    // Hard bounds: the selector pass gets 60s total, the AI mapping call 45s.
+    // Whatever isn't filled by then is the human's at review — never wedge.
+    const fillDeadline = Date.now() + 60_000;
+    const aborted = () => !!s.fillAbort || Date.now() > fillDeadline;
     const { fillCommonForm } = await import("@/lib/apply/ats-forms");
-    const res = await fillCommonForm(s.page, s.ctx);
+    const res = await fillCommonForm(s.page, s.ctx, {
+      isAborted: aborted,
+      onProgress: (label) => {
+        s.state.message = `Filling: ${label}…`;
+      },
+    });
     s.state.filled = res.filled;
     s.state.skipped = res.skipped;
-    s.state.message =
-      "Review the browser window: solve any CAPTCHA, answer EEO questions yourself, fix anything missed — then approve here.";
+    // AI fallback: one cheap structured call maps profile facts onto fields
+    // the selectors missed (EEO filtered out before the model sees anything).
+    if (!aborted()) {
+      try {
+        s.state.message = "Answering screening questions (memory + AI)…";
+        const { aiFillRemaining } = await import("@/lib/apply/ai-fill");
+        const ai = await aiFillRemaining(s.page, s.ctx, {
+          timeoutMs: 45_000,
+          isAborted: () => !!s.fillAbort,
+        });
+        if (ai.fromMemory.length > 0) {
+          s.state.filled.push(...ai.fromMemory.map((l) => `${l} (saved answer)`));
+          await appendApplyLog(s.state.jobId, `answered from memory: ${ai.fromMemory.join(", ")}`);
+        }
+        if (ai.filled.length > 0) {
+          s.state.filled.push(...ai.filled.map((l) => `${l} (AI)`));
+          await appendApplyLog(s.state.jobId, `ai-filled: ${ai.filled.join(", ")}`);
+        }
+      } catch {
+        // best-effort — the review gate catches anything missed
+      }
+    }
+    if (s.fillAbort) {
+      await appendApplyLog(s.state.jobId, "autofill skipped to review by user");
+    } else if (Date.now() > fillDeadline) {
+      await appendApplyLog(s.state.jobId, "autofill hit its time budget — went to review");
+    }
+    s.state.message = embedded
+      ? "Review the live view below — click any field to fix it, solve any CAPTCHA, answer EEO questions yourself — then approve."
+      : "Review the browser window: solve any CAPTCHA, answer EEO questions yourself, fix anything missed — then approve here.";
+    const missing = [
+      !s.ctx.fields.fullName && "name",
+      !s.ctx.fields.email && "email",
+      !s.ctx.fields.phone && "phone",
+    ].filter(Boolean);
+    if (missing.length > 0) {
+      s.state.message += ` Heads-up: no ${missing.join(", ")} found in your profile — add them on the Profile page for fuller autofill.`;
+    }
+    // Tsenta-style review summary — what's actually on the form right now.
+    const { captureFormAnswers } = await import("@/lib/apply/ats-forms");
+    s.state.review = await captureFormAnswers(s.page);
+    await appendApplyLog(s.state.jobId, `review capture: ${s.state.review.length} answered fields`);
     await appendApplyLog(
       s.state.jobId,
       `autofilled: ${res.filled.join(", ") || "(nothing)"} [resume: ${s.state.resumeSource ?? "none"}]`,
     );
   }
   s.state.phase = "awaiting_review";
+}
+
+// ── Embedded live view (Tsenta-style) ───────────────────────────────────────
+// CDP screencast streams JPEG frames of the headless page; the client renders
+// the latest frame (~2 fps via /api/apply/frame) and forwards clicks/keys
+// (/api/apply/input) so the human can still fix fields and solve CAPTCHAs.
+async function startScreencast(s: ActiveSession): Promise<void> {
+  const cdp = await s.page!.context().newCDPSession(s.page!);
+  s.cdp = cdp;
+  cdp.on("Page.screencastFrame", (frame) => {
+    s.lastFrame = {
+      data: Buffer.from(frame.data, "base64"),
+      ts: Date.now(),
+      width: frame.metadata.deviceWidth,
+      height: frame.metadata.deviceHeight,
+    };
+    void cdp.send("Page.screencastFrameAck", { sessionId: frame.sessionId }).catch(() => {});
+  });
+  await cdp.send("Page.startScreencast", {
+    format: "jpeg",
+    quality: 60,
+    maxWidth: 1280,
+    maxHeight: 1400,
+    everyNthFrame: 2,
+  });
+}
+
+export function getSessionFrame(): { data: Buffer; ts: number; width: number; height: number } | null {
+  const s = active();
+  if (!s || s.state.mode !== "embedded" || s.state.phase === "done") return null;
+  return s.lastFrame;
+}
+
+export type SessionInput =
+  | { kind: "click"; x: number; y: number }
+  | { kind: "wheel"; x: number; y: number; deltaY: number }
+  | { kind: "text"; text: string }
+  | { kind: "key"; key: string };
+
+// Whitelisted non-printable keys the live view forwards.
+const FORWARDABLE_KEYS = new Set([
+  "Enter", "Backspace", "Tab", "Delete", "Escape",
+  "ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight",
+  "Home", "End", "PageUp", "PageDown",
+]);
+
+export async function dispatchSessionInput(ev: SessionInput): Promise<{ ok: boolean; error?: string }> {
+  const s = active();
+  if (!s || s.state.mode !== "embedded" || s.state.phase === "done" || !browserAlive(s)) {
+    return { ok: false, error: "No embedded session." };
+  }
+  try {
+    const page = s.page!;
+    if (ev.kind === "click") {
+      await page.mouse.click(ev.x, ev.y);
+    } else if (ev.kind === "wheel") {
+      await page.mouse.move(ev.x, ev.y);
+      await page.mouse.wheel(0, ev.deltaY);
+    } else if (ev.kind === "text") {
+      await page.keyboard.type(ev.text.slice(0, 200));
+    } else if (ev.kind === "key") {
+      if (!FORWARDABLE_KEYS.has(ev.key)) return { ok: false, error: "Key not forwardable." };
+      await page.keyboard.press(ev.key);
+    }
+    return { ok: true };
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "input failed" };
+  }
 }
 
 // ── Poll ─────────────────────────────────────────────────────────────────────
@@ -233,9 +395,11 @@ const SUBMIT_SELECTORS = [
 ];
 
 async function clickSubmit(page: Page): Promise<{ ok: boolean; how: string }> {
+  const { formScope } = await import("@/lib/apply/ats-forms");
+  const scope = await formScope(page); // the form may live inside an iframe
   for (const sel of SUBMIT_SELECTORS) {
     try {
-      const el = page.locator(sel).first();
+      const el = scope.locator(sel).first();
       if ((await el.count()) > 0 && (await el.isVisible())) {
         await el.click({ timeout: 5000 });
         return { ok: true, how: sel };
@@ -245,7 +409,7 @@ async function clickSubmit(page: Page): Promise<{ ok: boolean; how: string }> {
     }
   }
   try {
-    const byRole = page
+    const byRole = scope
       .getByRole("button", { name: /submit application|submit|apply now|apply/i })
       .first();
     if ((await byRole.count()) > 0 && (await byRole.isVisible())) {
@@ -265,9 +429,12 @@ async function detectConfirmation(page: Page): Promise<string | null> {
   while (Date.now() < deadline) {
     try {
       if (/confirmation|thank[-_]?you|success/i.test(page.url())) return `URL: ${page.url()}`;
-      const body = await page.locator("body").innerText({ timeout: 3000 });
-      const m = body.match(rx);
-      if (m) return `page shows “${m[0]}”`;
+      // Confirmation may render in the main document OR inside the ATS iframe.
+      for (const frame of page.frames()) {
+        const body = await frame.locator("body").innerText({ timeout: 2000 }).catch(() => "");
+        const m = body.match(rx);
+        if (m) return `page shows “${m[0]}”`;
+      }
     } catch {
       // mid-navigation — retry until deadline
     }
@@ -295,11 +462,28 @@ function requirePhase(phase: ApplyPhase): ActiveSession | { error: string } {
   return s;
 }
 
+// Whatever is on the form when the human approves IS their answer — bank the
+// screening questions for future applications (contact + EEO never banked).
+async function bankAnswersOnApproval(s: ActiveSession): Promise<void> {
+  try {
+    const { captureFormAnswers } = await import("@/lib/apply/ats-forms");
+    const { saveAnswers } = await import("@/lib/apply/answers");
+    const pairs = await captureFormAnswers(s.page!);
+    const saved = await saveAnswers(pairs);
+    if (saved > 0) {
+      await appendApplyLog(s.state.jobId, `banked ${saved} screening answers for reuse`);
+    }
+  } catch {
+    // memory is a convenience — never block a submission on it
+  }
+}
+
 // Approve → THE TOOL clicks Submit (the one place submission happens).
 export async function approveAndSubmit(): Promise<DecisionResult> {
   const s = requirePhase("awaiting_review");
   if ("error" in s) return { ok: false, error: s.error };
 
+  await bankAnswersOnApproval(s);
   s.state.phase = "submitting";
   s.state.message = "Clicking Submit and watching for confirmation…";
   const clicked = await clickSubmit(s.page!);
@@ -348,9 +532,22 @@ export async function recordManualSubmit(): Promise<DecisionResult> {
   if (!s || (s.state.phase !== "awaiting_review" && s.state.phase !== "awaiting_verdict")) {
     return { ok: false, error: "No session awaiting review." };
   }
+  await bankAnswersOnApproval(s); // page may already be past the form — best-effort
   await markApplied(s, "human submitted in the window → applied");
   await closeBrowser(s);
   finish(s, "manual", "Recorded as applied ✓ (you submitted).");
+  return { ok: true, state: s.state };
+}
+
+// Escape hatch while filling: stop the autofill pass at the next field and
+// go straight to review. The human finishes the form in the live view.
+export async function skipFill(): Promise<DecisionResult> {
+  const s = active();
+  if (!s || s.state.phase !== "filling") {
+    return { ok: false, error: "No fill pass is running." };
+  }
+  s.fillAbort = true;
+  s.state.message = "Skipping ahead — finish the form yourself, then approve.";
   return { ok: true, state: s.state };
 }
 

@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { Sparkles, Loader2, CheckCircle2 } from "lucide-react";
 import { Button } from "@heroui/react";
 import { scoreUnscoredAction } from "@/lib/actions/score";
 import { motion, AnimatePresence } from "framer-motion";
 
 export default function ScoreButton({ unscoredCount }: { unscoredCount: number }) {
+  const router = useRouter();
   const [result, setResult] = useState<{
     scored: number;
     errors: number;
@@ -26,6 +28,7 @@ export default function ScoreButton({ unscoredCount }: { unscoredCount: number }
             const res = await scoreUnscoredAction();
             if (res.ok) {
               setResult({ scored: res.scored, errors: res.failed });
+              router.refresh();
             } else {
               alert(res.error);
             }

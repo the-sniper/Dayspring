@@ -27,6 +27,13 @@ export default defineSchema({
     atsTenant: v.optional(v.string()),
     atsHost: v.optional(v.string()),
     atsSite: v.optional(v.string()),
+    // Applicant-competition proxy. headcount comes from Apollo organization
+    // enrichment (1 credit each); enrichedAt lets the backfill skip companies
+    // already done so a re-run costs nothing. Absent = unknown, and unknown is
+    // never silently filtered out of the feed.
+    headcount: v.optional(v.number()),
+    foundedYear: v.optional(v.number()),
+    enrichedAt: v.optional(v.string()),
     createdAt: v.string(),
   })
     .index("by_user", ["userId"])
@@ -37,6 +44,9 @@ export default defineSchema({
     companyId: v.id("companies"),
     title: v.string(),
     roleType: v.optional(v.string()),
+    // Seniority band parsed from the title (shared/seniority.ts). Absent on
+    // rows pulled before the field existed — backfillLevels fills those in.
+    level: v.optional(v.string()),
     url: v.optional(v.string()),
     source: v.string(),
     externalId: v.optional(v.string()),
@@ -142,6 +152,21 @@ export default defineSchema({
     channel: v.optional(v.string()),
     subject: v.optional(v.string()),
     draft: v.optional(v.string()),
+    // The untouched AI proposal, frozen at draft time. humanEditedPct is the
+    // edit distance between this and what actually went out, as a % of the
+    // final body — the floor gate reads it, and the metrics segment by it.
+    // Absent on pre-ledger rows; the floor only applies when it exists.
+    aiDraft: v.optional(v.string()),
+    humanEditedPct: v.optional(v.number()),
+    // Touch model: touchNumber 1–3 within a thread, parentId links a follow-up
+    // to the touch before it. Absent = legacy row = touch 1. The 3-touch cap
+    // is enforced in lib/outreach/core.ts, not here.
+    touchNumber: v.optional(v.number()),
+    parentId: v.optional(v.id("outreach")),
+    // Per-channel plus-alias the send went out under (attribution).
+    aliasUsed: v.optional(v.string()),
+    // no_reply | reply_no | reply_yes | call_booked | interview | offer
+    outcome: v.optional(v.string()),
     sentAt: v.optional(v.string()),
     repliedAt: v.optional(v.string()),
     followUpDue: v.optional(v.string()),
@@ -152,6 +177,24 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_contact", ["contactId"])
     .index("by_job", ["jobId"]),
+
+  // The reply trigger, one row per verified overlap with a contact. The
+  // outreach research is unambiguous that shared affiliation is what earns
+  // replies, so drafts cite these and the composer warns when a contact has
+  // none. strength 1–3; an OSS overlap you created (merged PR in their repo)
+  // outranks a shared alma mater because it also proves competence.
+  affiliations: defineTable({
+    userId: v.optional(v.id("users")),
+    contactId: v.id("contacts"),
+    // alma_mater | ex_employer | oss_repo | mutual | conference | content
+    kind: v.string(),
+    detail: v.string(),
+    strength: v.number(),
+    evidenceUrl: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_contact", ["contactId"]),
 
   researchBriefs: defineTable({
     userId: v.optional(v.id("users")),
@@ -231,6 +274,34 @@ export default defineSchema({
     createdAt: v.string(),
     updatedAt: v.string(),
   }).index("by_user", ["userId"]),
+
+  // Auto-apply bucket: jobs the user queued for assisted batch applying.
+  // masterResumeId absent = "auto" (per-job tailored PDF → primary master).
+  // status: queued | applying | submitted | manual | skipped | failed.
+  applyQueue: defineTable({
+    userId: v.optional(v.id("users")),
+    jobId: v.id("jobs"),
+    masterResumeId: v.optional(v.id("masterResumes")),
+    status: v.string(),
+    note: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_job", ["userId", "jobId"]),
+
+  // Screening-question answer bank (the Jobright/Simplify "answer memory"):
+  // answers captured at apply-approval time, reused on future applications.
+  // key = normalized question text; question = raw label for display.
+  applyAnswers: defineTable({
+    userId: v.optional(v.id("users")),
+    key: v.string(),
+    question: v.string(),
+    answer: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_key", ["userId", "key"]),
 
   // Key-value settings (profile blob, Gmail tokens, sealed API keys, ToS acks,
   // lastDailyRun) — per user. Sensitive values are AES-256-GCM sealed by their

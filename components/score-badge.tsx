@@ -1,3 +1,6 @@
+"use client";
+
+import Tip from "@/components/tip";
 import { cn } from "@/lib/utils";
 
 const bands = [
@@ -17,14 +20,15 @@ export default function ScoreBadge({ score }: { score: number | null }) {
   }
   const band = bands.find((b) => score >= b.min) ?? bands[bands.length - 1];
   return (
-    <span
-      className={cn(
-        "inline-flex h-6 w-10 items-center justify-center rounded-full border text-[11px] font-bold tabular-nums shadow-sm",
-        band.cls
-      )}
-      title="Match score"
-    >
-      {score}
-    </span>
+    <Tip label="Match score">
+      <span
+        className={cn(
+          "inline-flex h-6 w-10 items-center justify-center rounded-full border text-[11px] font-bold tabular-nums shadow-sm",
+          band.cls,
+        )}
+      >
+        {score}
+      </span>
+    </Tip>
   );
 }

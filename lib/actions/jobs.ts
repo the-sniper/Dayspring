@@ -117,3 +117,17 @@ export async function deleteJobAction(jobId: string) {
   revalidatePath("/", "layout");
   redirect("/board");
 }
+
+export async function deleteJobsAction(jobIds: string[]) {
+  const ids = [...new Set(jobIds.filter(Boolean))].slice(0, 100);
+  let deleted = 0;
+  for (let i = 0; i < ids.length; i += 10) {
+    const result = await convex().mutation(api.jobs.deleteManyCascade, {
+      ids: ids.slice(i, i + 10) as never,
+    });
+    deleted += result.deleted;
+  }
+  revalidatePath("/feed");
+  revalidatePath("/", "layout");
+  return { deleted };
+}

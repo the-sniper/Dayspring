@@ -5,13 +5,14 @@ import { hasApiKey } from "@/lib/claude/client";
 import { tailorJob } from "@/lib/claude/tailor";
 import { api, convex } from "@/lib/convex/server";
 import { getProfile, MIN_JD_CHARS } from "@/lib/jobs/score";
+import { keyMessages } from "@/lib/keys/messages";
 import { latestCompanyBrief } from "@/lib/research/core";
 
 export async function tailorJobAction(
   jobId: string,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!await hasApiKey()) {
-    return { ok: false, error: "Needs ANTHROPIC_API_KEY in .env.local (see Settings)." };
+    return { ok: false, error: keyMessages.tailoring };
   }
   const profile = await getProfile();
   if (!profile) {

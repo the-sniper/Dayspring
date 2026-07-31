@@ -2,6 +2,7 @@ import OpenAI from "openai";
 import { zodTextFormat } from "openai/helpers/zod";
 import type { z } from "zod";
 import { getKey } from "@/lib/keys";
+import { keyNotSet } from "@/lib/keys/messages";
 
 // OpenAI is the COST tier: analytical + mechanical work (scoring, ranking,
 // classification, extraction) where a strong general model matches Claude's
@@ -24,14 +25,13 @@ export async function hasOpenAIKey(): Promise<boolean> {
   return !!(await getKey("OPENAI_API_KEY"));
 }
 
-// Env first, then the encrypted Settings key. Rebuilt if the key rotates
-// mid-session. Server-side only — never import from a client component.
+// Per-user key from Settings → API Keys. Rebuilt if the key rotates mid-session.
 let client: OpenAI | null = null;
 let clientKey: string | null = null;
 
 export async function getOpenAIClient(): Promise<OpenAI> {
   const key = await getKey("OPENAI_API_KEY");
-  if (!key) throw new Error("OPENAI_API_KEY is not set (env or Settings → API Keys).");
+  if (!key) throw new Error(keyNotSet("OPENAI_API_KEY"));
   if (!client || clientKey !== key) {
     client = new OpenAI({ apiKey: key });
     clientKey = key;

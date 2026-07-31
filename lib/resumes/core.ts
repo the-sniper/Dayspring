@@ -322,10 +322,26 @@ export async function generateForJob(jobId: string): Promise<{
 // a file from disk): tailored PDF for this job → primary master's original
 // PDF → the static resumePath setting. Storage-backed PDFs are downloaded to
 // a temp file so the browser can attach them.
-export async function resumePdfForJob(jobId: string): Promise<{
+export async function resumePdfForJob(
+  jobId: string,
+  // Auto-apply queue entries can pin a specific master resume; it beats the
+  // tailored-first default resolution below.
+  masterResumeId?: string | null,
+): Promise<{
   path: string;
   source: "tailored" | "master" | "settings";
 } | null> {
+  if (masterResumeId) {
+    const pinned = (await listMasters()).find((m) => m.id === masterResumeId);
+    if (pinned?.sourceFileId) {
+      const local = await downloadToTemp(pinned.sourceFileId, `master-${pinned.id}.pdf`);
+      if (local) return { path: local, source: "master" };
+    }
+    if (pinned?.sourceFile && fs.existsSync(pinned.sourceFile)) {
+      return { path: pinned.sourceFile, source: "master" };
+    }
+    return null; // pinned resume has no PDF — surface that, don't silently swap
+  }
   const gen = await latestGeneratedForJob(jobId);
   if (gen?.pdfFileId) {
     const local = await downloadToTemp(gen.pdfFileId, gen.fileName ?? `resume-${gen.id}.pdf`);

@@ -63,12 +63,22 @@ export const queue = query({
       const contact = await ctx.db.get(o.contactId);
       const job = o.jobId ? await ctx.db.get(o.jobId) : null;
       const company = contact?.companyId ? await ctx.db.get(contact.companyId) : null;
+      // The composer cites these and blocks/warns when there are none.
+      const affiliations = contact
+        ? await ctx.db
+            .query("affiliations")
+            .withIndex("by_contact", (q) => q.eq("contactId", contact._id))
+            .take(20)
+        : [];
       out.push({
         ...o,
         id: o._id,
         contact: contact ? { ...contact, id: contact._id } : null,
         job: job ? { ...job, id: job._id } : null,
         company: company ? { ...company, id: company._id } : null,
+        affiliations: affiliations
+          .map((a) => ({ ...a, id: a._id }))
+          .sort((a, b) => b.strength - a.strength),
       });
     }
     return out;

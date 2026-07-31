@@ -4,7 +4,7 @@ import { extractFields, type ApplicantFields } from "@/lib/apply/fields";
 import { getProfile } from "@/lib/jobs/score";
 import { getDefaultProfile } from "@/lib/profiles/core";
 import { latestJobBrief } from "@/lib/research/core";
-import { resumePdfForJob } from "@/lib/resumes/core";
+import { listMasters, resumePdfForJob } from "@/lib/resumes/core";
 import type { ApplicationDefaults } from "@/lib/types";
 
 export type ApplyStatus = "in_progress" | "submitted" | "abandoned";
@@ -30,8 +30,15 @@ export type ApplyContext = {
   briefSummary: string | null;
 };
 
+export type ApplyOptions = {
+  // Pin a specific master resume (auto-apply queue); default resolution is
+  // tailored → primary master → resumePath setting.
+  masterResumeId?: string | null;
+};
+
 export async function loadApplyContext(
   jobId: string,
+  opts: ApplyOptions = {},
 ): Promise<{ ok: true; ctx: ApplyContext } | { ok: false; error: string }> {
   const profile = await getProfile();
   if (!profile) {
@@ -41,22 +48,37 @@ export async function loadApplyContext(
   if (!job) return { ok: false, error: "Job not found" };
   if (!job.url) return { ok: false, error: "Job has no application URL." };
 
-  const resume = await resumePdfForJob(jobId);
+  const resume = await resumePdfForJob(jobId, opts.masterResumeId ?? null);
+  if (opts.masterResumeId && !resume) {
+    return { ok: false, error: "The selected resume has no PDF attached — pick another." };
+  }
 
-  // Structured profile columns beat regex extraction; regex fills the gaps
-  // for anything the user hasn't set on the profile page yet.
+  // Contact-field fallback chain: structured profile columns → regex over
+  // the profile text → regex over the primary master resume → the signed-in
+  // account's own name/email. A bare profile (e.g. fresh onboarding) must
+  // never leave name and email unfillable — that data always exists.
   const p = await getDefaultProfile();
   const regex = extractFields(profile);
+  const masters = await listMasters().catch(() => []);
+  const primaryMaster = masters.find((m) => m.isPrimary) ?? masters[0] ?? null;
+  const fromResume = primaryMaster?.content
+    ? extractFields(primaryMaster.content)
+    : null;
+  const me = await convex().query(api.users.me, {}).catch(() => null);
+
+  const pick = (...vals: (string | null | undefined)[]) =>
+    vals.find((v) => !!v && v.trim().length > 0) ?? null;
+  const fullName = pick(p?.fullName, regex.fullName, fromResume?.fullName, me?.name);
   const fields: ApplicantFields = {
-    fullName: p?.fullName ?? regex.fullName,
-    firstName: p?.fullName?.split(/\s+/)[0] ?? regex.firstName,
-    lastName: p?.fullName?.split(/\s+/).slice(-1)[0] ?? regex.lastName,
-    email: p?.email ?? regex.email,
-    phone: p?.phone ?? regex.phone,
-    linkedin: p?.linkedin ?? regex.linkedin,
-    github: p?.github ?? regex.github,
-    portfolio: p?.website ?? regex.portfolio,
-    location: p?.location ?? regex.location,
+    fullName,
+    firstName: pick(fullName?.split(/\s+/)[0], regex.firstName, fromResume?.firstName),
+    lastName: pick(fullName?.split(/\s+/).slice(-1)[0], regex.lastName, fromResume?.lastName),
+    email: pick(p?.email, regex.email, fromResume?.email, me?.email),
+    phone: pick(p?.phone, regex.phone, fromResume?.phone),
+    linkedin: pick(p?.linkedin, regex.linkedin, fromResume?.linkedin),
+    github: pick(p?.github, regex.github, fromResume?.github),
+    portfolio: pick(p?.website, regex.portfolio, fromResume?.portfolio),
+    location: pick(p?.location, regex.location, fromResume?.location),
   };
 
   const brief = (await latestJobBrief(jobId))?.brief ?? null;

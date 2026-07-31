@@ -10,6 +10,7 @@ export type CatalogCompany = {
   atsSlug: string;
   industry: string;
   roleTypes?: RoleType[];
+  headcount?: number;
 };
 
 type RawEntry = {
@@ -19,6 +20,7 @@ type RawEntry = {
   atsType: string;
   atsSlug: string;
   industry: string;
+  headcount?: number;
 };
 
 const RAW = catalog as RawEntry[];
@@ -38,6 +40,7 @@ export const COMPANY_CATALOG: CatalogCompany[] = (() => {
       atsSlug: c.atsSlug,
       industry: c.industry,
       roleTypes: (c.roleTypes ?? undefined) as RoleType[] | undefined,
+      headcount: c.headcount,
     });
   }
   return flat;

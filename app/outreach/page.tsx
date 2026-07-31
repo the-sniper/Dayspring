@@ -1,12 +1,25 @@
 import Link from "next/link";
-import { Send, Inbox, Clock, CheckCircle2, PartyPopper } from "lucide-react";
+import {
+  Send,
+  Inbox,
+  Clock,
+  CheckCircle2,
+  PartyPopper,
+  BarChart3,
+  Archive,
+} from "lucide-react";
 import CheckRepliesButton from "@/components/check-replies-button";
 import OutreachEditor from "@/components/outreach-editor";
+import AffiliationChips from "@/components/affiliation-chips";
 import PageHeader from "@/components/page-header";
 import { markRepliedAction } from "@/lib/actions/outreach";
 import NudgeButton from "@/components/nudge-button";
 import { api, convex } from "@/lib/convex/server";
 import { hasGmail } from "@/lib/integrations/gmail/client";
+import {
+  DEAD_AFTER_LAST_TOUCH_DAYS,
+  MAX_TOUCHES,
+} from "@/shared/outreach-rules";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +32,10 @@ export default async function OutreachPage() {
       contactName: r.contact?.name ?? "(unknown)",
       contactTitle: r.contact?.title ?? null,
       contactEmail: r.contact?.email ?? null,
+      contactLinkedin: r.contact?.linkedin ?? null,
+      contactId: r.contact?.id ?? null,
+      affiliations: r.affiliations ?? [],
+      touchNumber: r.touchNumber ?? 1,
       jobTitle: r.job?.title ?? null,
       companyName: r.company?.name ?? null,
       jobId: r.job?.id ?? null,
@@ -26,14 +43,28 @@ export default async function OutreachPage() {
 
   const gmail = await hasGmail();
   const today = new Date().toISOString().slice(0, 10);
+  const deadCutoff = new Date(
+    Date.now() - DEAD_AFTER_LAST_TOUCH_DAYS * 86_400_000,
+  ).toISOString();
   const drafts = rows.filter((r) => !r.o.sentAt);
-  const awaiting = rows.filter((r) => r.o.sentAt && !r.o.repliedAt);
+  const unreplied = rows.filter((r) => r.o.sentAt && !r.o.repliedAt);
+  // A thread is dead once its final touch has waited out the window —
+  // touches 1–3 produce 93% of replies; after that it's cost with no return.
+  const dead = unreplied.filter(
+    (r) => r.touchNumber >= MAX_TOUCHES && (r.o.sentAt ?? "") < deadCutoff,
+  );
+  const awaiting = unreplied.filter((r) => !dead.includes(r));
   const replied = rows.filter((r) => r.o.repliedAt);
 
   const contextLine = (r: (typeof rows)[number]) => (
     <p className="text-xs font-medium text-muted-foreground">
       to <span className="font-semibold text-foreground">{r.contactName}</span>
       {r.contactTitle && ` (${r.contactTitle})`}
+      {r.touchNumber > 1 && (
+        <span className="ml-1.5 rounded-full bg-stone-200 px-1.5 py-0.5 text-[10px] font-bold text-stone-600 dark:bg-stone-800 dark:text-stone-300">
+          touch {r.touchNumber}/{MAX_TOUCHES}
+        </span>
+      )}
       {r.jobTitle && (
         <>
           {" · re "}
@@ -60,18 +91,29 @@ export default async function OutreachPage() {
         title="Outreach"
         description={
           <>
-            Claude drafts, you approve, nothing sends itself.
+            Claude scaffolds, you write, nothing sends itself. Three touches
+            max per thread.
             {!gmail &&
               " Gmail isn't connected — see Settings; mailto fallback active."}
           </>
         }
-        actions={<CheckRepliesButton enabled={gmail} />}
+        actions={
+          <span className="flex items-center gap-2">
+            <Link
+              href="/outreach/metrics"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
+            >
+              <BarChart3 size={13} /> Funnel
+            </Link>
+            <CheckRepliesButton enabled={gmail} />
+          </span>
+        }
       />
 
       <section>
         <h2 className={sectionLabel}>
           <Inbox size={14} className="text-brand-500" />
-          Drafts awaiting approval ({drafts.length})
+          Drafts awaiting your rewrite ({drafts.length})
         </h2>
         <div className="mt-3 space-y-4">
           {drafts.map((r) => (
@@ -80,12 +122,25 @@ export default async function OutreachPage() {
               className="rounded-2xl border border-border bg-card p-4 shadow-sm"
             >
               {contextLine(r)}
+              {r.contactId && (
+                <div className="mt-2">
+                  <AffiliationChips
+                    contactId={r.contactId}
+                    affiliations={r.affiliations}
+                  />
+                </div>
+              )}
               <div className="mt-2">
                 <OutreachEditor
                   id={r.o.id}
                   initialSubject={r.o.subject ?? ""}
                   initialBody={r.o.draft ?? ""}
+                  aiDraft={r.o.aiDraft ?? null}
                   contactEmail={r.contactEmail}
+                  contactName={r.contactName}
+                  contactLinkedin={r.contactLinkedin}
+                  touchNumber={r.touchNumber}
+                  hasAffiliations={r.affiliations.length > 0}
                   hasGmail={gmail}
                 />
               </div>
@@ -108,6 +163,7 @@ export default async function OutreachPage() {
         <div className="mt-3 space-y-2.5">
           {awaiting.map((r) => {
             const due = r.o.followUpDue && r.o.followUpDue <= today;
+            const capped = r.touchNumber >= MAX_TOUCHES;
             return (
               <div
                 key={r.o.id}
@@ -118,18 +174,23 @@ export default async function OutreachPage() {
                   {r.o.subject}
                 </p>
                 <div className="mt-2 flex flex-wrap items-center gap-3 text-xs font-medium text-muted-foreground">
-                  <span>sent {r.o.sentAt?.slice(0, 10)}</span>
-                  {r.o.followUpDue && (
+                  <span>
+                    sent {r.o.sentAt?.slice(0, 10)}
+                    {r.o.channel === "linkedin" && " · LinkedIn"}
+                  </span>
+                  {r.o.followUpDue && !capped && (
                     <span
                       className={
                         due ? "font-semibold text-brand-600 dark:text-brand-400" : ""
                       }
                     >
-                      follow up {due ? "due" : "on"} {r.o.followUpDue}
+                      touch {r.touchNumber + 1} {due ? "due" : "on"}{" "}
+                      {r.o.followUpDue}
                     </span>
                   )}
+                  {capped && <span>final touch — closes if no reply</span>}
                   <span className="ml-auto flex gap-2">
-                    {due && <NudgeButton originalId={r.o.id} />}
+                    {due && !capped && <NudgeButton originalId={r.o.id} />}
                     <form action={markRepliedAction.bind(null, r.o.id)}>
                       <button className="rounded-lg border border-emerald-300 px-2.5 py-1 text-emerald-700 transition-colors hover:bg-emerald-50 dark:border-emerald-800 dark:text-emerald-400 dark:hover:bg-emerald-950/40">
                         Got reply
@@ -174,6 +235,27 @@ export default async function OutreachPage() {
           )}
         </ul>
       </section>
+
+      {dead.length > 0 && (
+        <section className="mt-8">
+          <h2 className={sectionLabel}>
+            <Archive size={14} className="text-stone-400" />
+            Closed — 3 touches, no reply ({dead.length})
+          </h2>
+          <ul className="mt-3 space-y-1.5">
+            {dead.map((r) => (
+              <li
+                key={r.o.id}
+                className="flex items-center gap-2 rounded-xl border border-border bg-card px-4 py-2.5 text-sm font-medium text-muted-foreground opacity-70"
+              >
+                <span className="font-semibold">{r.contactName}</span>
+                {r.companyName && ` · ${r.companyName}`} — last touch{" "}
+                {r.o.sentAt?.slice(0, 10)}. Spend the time on a new contact.
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </div>
   );
 }

@@ -8,7 +8,10 @@
  * @module
  */
 
+import type * as affiliations from "../affiliations.js";
 import type * as applications from "../applications.js";
+import type * as applyAnswers from "../applyAnswers.js";
+import type * as applyQueue from "../applyQueue.js";
 import type * as auth from "../auth.js";
 import type * as catalog from "../catalog.js";
 import type * as companies from "../companies.js";
@@ -17,6 +20,7 @@ import type * as crons from "../crons.js";
 import type * as http from "../http.js";
 import type * as jobs from "../jobs.js";
 import type * as lib from "../lib.js";
+import type * as maintenance from "../maintenance.js";
 import type * as onboarding from "../onboarding.js";
 import type * as outreach from "../outreach.js";
 import type * as profiles from "../profiles.js";
@@ -25,6 +29,7 @@ import type * as research from "../research.js";
 import type * as resumes from "../resumes.js";
 import type * as settings from "../settings.js";
 import type * as stageEvents from "../stageEvents.js";
+import type * as targeting from "../targeting.js";
 import type * as users from "../users.js";
 import type * as vault from "../vault.js";
 
@@ -35,7 +40,10 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  affiliations: typeof affiliations;
   applications: typeof applications;
+  applyAnswers: typeof applyAnswers;
+  applyQueue: typeof applyQueue;
   auth: typeof auth;
   catalog: typeof catalog;
   companies: typeof companies;
@@ -44,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   http: typeof http;
   jobs: typeof jobs;
   lib: typeof lib;
+  maintenance: typeof maintenance;
   onboarding: typeof onboarding;
   outreach: typeof outreach;
   profiles: typeof profiles;
@@ -52,6 +61,7 @@ declare const fullApi: ApiFromModules<{
   resumes: typeof resumes;
   settings: typeof settings;
   stageEvents: typeof stageEvents;
+  targeting: typeof targeting;
   users: typeof users;
   vault: typeof vault;
 }>;

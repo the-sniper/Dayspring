@@ -31,6 +31,7 @@ import type { ResumeDocType } from "@/lib/claude/resume";
 import type { ResumeAudit } from "@/lib/resumes/audit-types";
 import { DEFAULT_STYLE } from "@/lib/resumes/style";
 import { cn } from "@/lib/utils";
+import { keyMessages } from "@/lib/keys/messages";
 
 // The studio pulls in @react-pdf/renderer + pdfjs — client-only, load on use.
 const ResumeEditor = dynamic(() => import("@/components/resume-editor"), {
@@ -285,7 +286,7 @@ export default function ResumeMatch({
       {!hasApiKey && (
         <div className="mb-4 flex items-start gap-2 rounded-xl border border-amber-300/40 bg-amber-50/50 p-3 text-xs font-medium text-amber-800 dark:border-amber-900/40 dark:bg-amber-950/20 dark:text-amber-300">
           <AlertCircle size={14} className="mt-0.5 shrink-0" />
-          Resume Match needs an ANTHROPIC_API_KEY — add one in Settings → API Keys.
+          {keyMessages.resumeMatch}
         </div>
       )}
 

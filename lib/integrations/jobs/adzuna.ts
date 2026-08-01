@@ -60,7 +60,7 @@ function config() {
     appId: process.env.ADZUNA_APP_ID!,
     appKey: process.env.ADZUNA_APP_KEY!,
     queries: queries.length > 0 ? queries : DEFAULT_QUERIES,
-    maxDays: Number(process.env.ADZUNA_MAX_DAYS ?? 14) || 14,
+    maxDays: Number(process.env.ADZUNA_MAX_DAYS ?? 15) || 15,
     pages: Math.max(1, Number(process.env.ADZUNA_PAGES ?? 2) || 2),
   };
 }

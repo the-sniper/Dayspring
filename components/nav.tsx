@@ -19,6 +19,7 @@ import {
   Gauge,
   Sunrise,
   Zap,
+  Target,
 } from "lucide-react";
 import ThemeToggle from "@/components/theme-toggle";
 import { cn } from "@/lib/utils";
@@ -43,6 +44,7 @@ const groups: { label: string; links: NavLink[] }[] = [
     links: [
       { href: "/board", label: "Board", icon: KanbanSquare },
       { href: "/apply", label: "Auto-Apply", icon: Zap },
+      { href: "/reach", label: "Reach", icon: Target },
       { href: "/outreach", label: "Outreach", icon: Send },
     ],
   },

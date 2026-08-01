@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowUpRight, Filter, Check } from "lucide-react";
 import ErrorBanner from "@/components/error-banner";
 import FeedFilters, { type FeedFilterValues } from "@/components/feed-filters";
+import FeedTabs from "@/components/feed-tabs";
 import PullButton from "@/components/pull-button";
 import RoleChip from "@/components/role-chip";
 import ScoreBadge from "@/components/score-badge";
@@ -29,6 +30,7 @@ import {
 } from "@/lib/types";
 import { LEVELS, LEVEL_LABELS, isLeadership, type Level } from "@/shared/seniority";
 import { SIZE_BANDS, SIZE_SHORT, sizeBand, type SizeBand } from "@/shared/company-size";
+import { JOB_MAX_AGE_DAYS } from "@/shared/job-retention";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
@@ -91,7 +93,12 @@ export default async function FeedPage({
   );
   const q = (sp.q ?? "").trim();
   const minSalary = posNum(sp.salary);
-  const postedDays = posNum(sp.posted);
+  const postedDaysRaw = posNum(sp.posted);
+  // Hard portal ceiling — never honor a filter window past JOB_MAX_AGE_DAYS.
+  const postedDays =
+    postedDaysRaw != null
+      ? Math.min(postedDaysRaw, JOB_MAX_AGE_DAYS)
+      : null;
   const minScore = posNum(sp.score);
   const sort = ["newest", "salary", "score"].includes(sp.sort ?? "")
     ? sp.sort!
@@ -105,7 +112,7 @@ export default async function FeedPage({
   const profile = await convex().query(api.profiles.getDefault, {});
   const profileUpdatedAt = profile?.updatedAt ?? null;
 
-  const [feedResult, scorable, staleScores, locationValues, coverage] = await Promise.all([
+  const [feedResult, scorable, staleScores, locationValues, coverage, postCounts] = await Promise.all([
     convex().query(api.jobs.feed, {
       status,
       roleTypes,
@@ -127,6 +134,7 @@ export default async function FeedPage({
     convex().query(api.jobs.staleScoreCount, { profileUpdatedAt }),
     convex().query(api.jobs.locationValues, {}),
     convex().query(api.targeting.targetingCoverage, {}),
+    convex().query(api.linkedinPosts.counts, {}),
   ]);
 
   // The ingestion ceiling is always shown, so the panel renders unconditionally.
@@ -186,6 +194,8 @@ export default async function FeedPage({
           </>
         }
       />
+
+      <FeedTabs postCount={postCounts.new ?? 0} />
 
       {sp.error && (
         <div className="mb-6">

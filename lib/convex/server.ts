@@ -5,6 +5,7 @@
 //   - In CLI scripts: a token obtained by signing in with env credentials
 //     (see lib/convex/cli-auth.ts), registered via setCliAuthToken.
 // Scripts must load .env.local (lib/env.ts) before import.
+import { AsyncLocalStorage } from "node:async_hooks";
 import { ConvexHttpClient } from "convex/browser";
 import type {
   FunctionReference,
@@ -19,7 +20,23 @@ export function setCliAuthToken(token: string | null): void {
   cliToken = token;
 }
 
+// Per-invocation identity for background work inside a Next server process
+// (e.g. the hosted cron route, which has no session cookie). A module-level
+// token would apply to every concurrent request in the same process and leak
+// one account's data into another's; async-local storage keeps it to the one
+// call tree.
+const asUser = new AsyncLocalStorage<string>();
+
+export async function runAsUser<T>(
+  token: string,
+  fn: () => Promise<T>,
+): Promise<T> {
+  return await asUser.run(token, fn);
+}
+
 async function authToken(): Promise<string | null> {
+  const scoped = asUser.getStore();
+  if (scoped) return scoped;
   if (cliToken) return cliToken;
   try {
     // Only resolvable inside a Next.js request (reads the session cookie set

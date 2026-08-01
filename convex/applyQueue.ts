@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { isWithinRetention } from "../shared/job-retention";
 import { owned, requireUser } from "./lib";
 
 // The auto-apply bucket. Users queue jobs (from the dashboard's top matches,
@@ -22,7 +23,7 @@ export const list = query({
     const out = [];
     for (const row of rows) {
       const job = await ctx.db.get(row.jobId);
-      if (!job) continue;
+      if (!job || !isWithinRetention(job)) continue;
       const company = await ctx.db.get(job.companyId);
       out.push({
         id: row._id,

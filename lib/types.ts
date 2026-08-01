@@ -63,6 +63,8 @@ export const JOB_SOURCES = [
   "ashby",
   "workday",
   "adzuna",
+  // Promoted from a LinkedIn hiring post on the feed's Posts tab.
+  "linkedin_post",
   "manual",
   "csv",
   "paste",

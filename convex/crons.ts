@@ -27,4 +27,14 @@ crons.cron(
   {},
 );
 
+// 8:00 AM Eastern — hard retention: cascade-delete jobs + LinkedIn posts older
+// than JOB_MAX_AGE_DAYS (shared/job-retention.ts). Runs after the pull so
+// freshly ingested stale listings are swept the same morning.
+crons.cron(
+  "daily retention purge",
+  "0 12 * * *",
+  internal.retention.scheduleRetentionPurge,
+  {},
+);
+
 export default crons;

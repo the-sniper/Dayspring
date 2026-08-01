@@ -11,6 +11,10 @@ async function main() {
   await prepareCli();
 
   const { pullAllJobs } = await import("../lib/jobs/pull");
+  const { pullLinkedinPosts } = await import("../lib/linkedin/pull");
+  const { hasLinkedinPostsKey } = await import(
+    "../lib/integrations/linkedin/posts"
+  );
   const { scoreUnscored } = await import("../lib/jobs/score");
   const { hasApiKey } = await import("../lib/claude/client");
   const { checkReplies } = await import("../lib/outreach/replies");
@@ -20,14 +24,47 @@ async function main() {
   const { assembleDigest } = await import("../lib/digest");
   const { setSetting } = await import("../lib/settings/store");
 
+  const { api, convex } = await import("../lib/convex/server");
+
   const errors: string[] = [];
   console.log(`[${new Date().toISOString()}] daily run starting`);
+
+  // 0. Hard retention — cascade-delete jobs + LinkedIn posts older than
+  // JOB_MAX_AGE_DAYS. Convex also runs this on a daily cron; doing it here
+  // keeps laptop-only installs clean even when cron isn't deployed.
+  try {
+    const purged = await convex().mutation(api.retention.purgeMyExpired, {});
+    console.log(
+      `retention: -${purged.jobsDeleted} jobs, -${purged.postsDeleted} posts` +
+        (purged.done ? "" : " (more scheduled)"),
+    );
+  } catch (err) {
+    errors.push(
+      `retention: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
 
   // 1. Pull
   const pull = await pullAllJobs();
   const added = pull.perCompany.reduce((n, c) => n + c.added, 0);
   for (const e of pull.errors) errors.push(`pull ${e.name}: ${e.message}`);
   console.log(`pulled: +${added} new (${pull.classified} titles classified)`);
+
+  // 1b. LinkedIn hiring posts — the second source. Skipped without a token;
+  // failures are reported, never fatal, so scoring and the digest still run.
+  if (await hasLinkedinPostsKey()) {
+    try {
+      const posts = await pullLinkedinPosts();
+      for (const e of posts.errors) errors.push(`posts ${e.query}: ${e.message}`);
+      console.log(
+        `linkedin posts: +${posts.hiring} hiring of ${posts.fetched} scanned`,
+      );
+    } catch (err) {
+      errors.push(
+        `linkedin posts: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
 
   // 2. Score, capped
   let scored = 0;

@@ -14,6 +14,7 @@ import { findOrCreateCompany } from "@/lib/jobs/create";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
 import { mapPool } from "@/lib/util/pool";
 import { getTargetMaxHeadcount } from "@/lib/jobs/targeting";
+import { isPastRetention } from "@/shared/job-retention";
 import { levelOrDefault } from "@/shared/seniority";
 
 // Cap concurrent ATS requests so a large watched set (hundreds of catalog
@@ -185,6 +186,11 @@ export async function pullAllJobs(): Promise<PullResult> {
         skipped++;
         continue;
       }
+      // Portal hard-caps listing age — never insert past JOB_MAX_AGE_DAYS.
+      if (isPastRetention({ postedAt: nj.postedAt, createdAt: now })) {
+        skipped++;
+        continue;
+      }
       docs.push(
         cleanDoc({
           companyId: company.id,
@@ -244,6 +250,10 @@ export async function pullAllJobs(): Promise<PullResult> {
           description: aj.descriptionText,
         });
         if (meta.isUs === false) {
+          skipped++;
+          continue;
+        }
+        if (isPastRetention({ postedAt: aj.postedAt, createdAt: now })) {
           skipped++;
           continue;
         }

@@ -38,6 +38,7 @@ If Node versions get switched later, rebuild the native SQLite bindings:
 | Anthropic | match scoring, paste-parse, tailoring, outreach drafts, **research briefs** |
 | Apollo (master key) | cold-contact search (free) + email reveal (1 credit each) |
 | Happenstance (`hpn_…`) | **warm-network search** (2 credits) + person research (1 credit); free tier at happenstance.ai |
+| Apify | **LinkedIn hiring posts** — the feed's second source (see below) |
 | Google client ID + secret | paste in API Keys, then **Connect Gmail** in Settings |
 | `DAYSPRING_VAULT_KEY` (host env only) | encrypts saved API keys and vault passwords — set on Vercel, not per-user |
 
@@ -72,7 +73,8 @@ PDF path in Settings.
 - `lib/db/schema.ts` — every table in one file (SQLite now, written to port to
   Supabase Postgres by swapping column-builder imports).
 - `lib/integrations/` — hub-and-spoke: `ats/` (Greenhouse/Lever/Ashby),
-  `apollo/` (people search + enrichment), `gmail/` (hand-rolled OAuth + REST).
+  `apollo/` (people search + enrichment), `gmail/` (hand-rolled OAuth + REST),
+  `linkedin/` (post search via Apify).
 - `lib/jobs/`, `lib/outreach/`, `lib/digest.ts` — Next-free cores shared by the
   UI actions, `scripts/*.ts`, and the MCP server.
 - `lib/claude/` — scoring (Sonnet), paste-parse + title classification (Haiku),
@@ -81,6 +83,42 @@ PDF path in Settings.
 - `scripts/mcp-server.ts` + `.mcp.json` — drive Dayspring by chatting with
   Claude (Claude Code auto-discovers it in this repo). Tools can pull, score,
   query, and draft — deliberately **cannot** send outreach or spend credits.
+
+## The feed's two sources
+
+**Boards** (`/feed`) — the original pull: every watched company's ATS board
+(Greenhouse / Lever / Ashby / Workday) plus Adzuna for the long tail.
+
+**LinkedIn posts** (`/feed/posts`) — posts where someone announces an open
+role, which is often where a job surfaces days before it reaches a board. Each
+post is shown in full with its permalink and, when the post contained one, a
+direct **job link**. `Add` promotes a post into the pipeline as a wishlist row.
+
+LinkedIn publishes no post-search API, so this source runs through an Apify
+actor (`harvestapi/linkedin-post-search` by default — keyword search, no
+LinkedIn cookie or account required) — a third-party scraper, billed per post,
+and scraping LinkedIn can violate its terms. It is off until you save an
+**Apify** token, and nothing about the boards pull depends on it. Swap the actor
+with `LINKEDIN_POSTS_ACTOR`; tune reach with `LINKEDIN_POSTS_MAX_DAYS` /
+`LINKEDIN_POSTS_PER_QUERY`.
+
+Search terms are editable on the tab (defaults derive from your onboarding role
+types), and each term is one paid run, so up to 8 are used. A cheap model call
+then decides whether each post is really a job announcement, and pulls out the
+company, titles, location, and apply link. That link is only ever chosen from
+URLs actually present in the post text — never generated — so a post with no
+link says so instead of pointing you somewhere invented. Non-hiring posts are
+filed as ignored rather than deleted, so later pulls skip them for free.
+
+Automation: `npm run daily` includes the post search. Hosted deployments can't
+run it inside Convex (the Apify token is sealed with `DAYSPRING_VAULT_KEY`,
+which only the Next process holds), so point Vercel Cron at
+`GET /api/cron/linkedin` with `Authorization: Bearer $CRON_SECRET`.
+
+**Retention:** nothing older than **15 days** (`postedAt`, else `createdAt`) is
+kept anywhere in the portal — feed, board, apply queue, or LinkedIn posts.
+Stale rows are cascade-deleted daily by a Convex cron (and again at the start
+of `npm run daily`); reads and ingest also refuse anything past that ceiling.
 
 ## Warm network (Happenstance + LinkedIn)
 

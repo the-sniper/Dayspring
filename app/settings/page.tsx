@@ -55,6 +55,12 @@ const KEY_ROWS: Omit<KeyRowView, "source" | "hasSaved">[] = [
     getUrl: "https://happenstance.ai",
   },
   {
+    name: "APIFY_API_TOKEN",
+    label: "Apify",
+    purpose: "LinkedIn hiring-post search — the feed's second source (optional)",
+    getUrl: "https://console.apify.com/account/integrations",
+  },
+  {
     name: "GOOGLE_CLIENT_ID",
     label: "Google client ID",
     purpose: "Gmail connect (Desktop OAuth client)",

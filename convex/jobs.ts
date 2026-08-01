@@ -4,6 +4,7 @@ import type { Id } from "./_generated/dataModel";
 import { owned, requireUser } from "./lib";
 import { getOnboardingPrefs } from "./onboarding";
 import { sizeBand as bandOf } from "../shared/company-size";
+import { isPastRetention, isWithinRetention } from "../shared/job-retention";
 
 // The JD text lives in the `jobDescriptions` side table (see schema). These
 // helpers read/write it by jobId so the rest of the app can keep treating
@@ -34,11 +35,14 @@ async function writeDescription(
 }
 
 // The user's jobs (whole set — job rows are small; the JD lives elsewhere).
+// Hard retention: rows older than JOB_MAX_AGE_DAYS never leave these helpers,
+// so every portal surface that reads through them stays clean between purges.
 async function userJobs(ctx: QueryCtx, userId: Id<"users">) {
-  return await ctx.db
+  const rows = await ctx.db
     .query("jobs")
     .withIndex("by_user", (q) => q.eq("userId", userId))
     .collect();
+  return rows.filter(isWithinRetention);
 }
 
 async function userJobsByStatus(
@@ -46,10 +50,13 @@ async function userJobsByStatus(
   userId: Id<"users">,
   status: string,
 ) {
-  return await ctx.db
+  const rows = await ctx.db
     .query("jobs")
-    .withIndex("by_user_status", (q) => q.eq("userId", userId).eq("status", status))
+    .withIndex("by_user_status", (q) =>
+      q.eq("userId", userId).eq("status", status),
+    )
     .collect();
+  return rows.filter(isWithinRetention);
 }
 
 // Company-name lookup map, scoped to the user's companies.
@@ -195,6 +202,20 @@ export const existingDedupeKeys = query({
   },
 });
 
+export const getByDedupeKey = query({
+  args: { dedupeKey: v.string() },
+  handler: async (ctx, { dedupeKey }) => {
+    const userId = await requireUser(ctx);
+    const row = await ctx.db
+      .query("jobs")
+      .withIndex("by_user_dedupe", (q) =>
+        q.eq("userId", userId).eq("dedupeKey", dedupeKey),
+      )
+      .first();
+    return row ? { id: row._id, title: row.title, companyId: row.companyId } : null;
+  },
+});
+
 // Compact, capped job list for the MCP `list_jobs` tool.
 export const briefList = query({
   args: {
@@ -233,7 +254,7 @@ export const getWithCompany = query({
   handler: async (ctx, { id }) => {
     const userId = await requireUser(ctx);
     const job = owned(await ctx.db.get(id), userId);
-    if (!job) return null;
+    if (!job || isPastRetention(job)) return null;
     const company = await ctx.db.get(job.companyId);
     return {
       ...job,
@@ -281,7 +302,7 @@ export const detail = query({
   handler: async (ctx, { id }) => {
     const userId = await requireUser(ctx);
     const job = owned(await ctx.db.get(id), userId);
-    if (!job) return null;
+    if (!job || isPastRetention(job)) return null;
     const company = await ctx.db.get(job.companyId);
     const application = await ctx.db
       .query("applications")
@@ -553,6 +574,18 @@ export const createOne = mutation({
     const userId = await requireUser(ctx);
     if (await dedupeHit(ctx, userId, doc)) return { inserted: false as const };
     const jobDoc: Record<string, unknown> = { ...(doc as Record<string, unknown>), userId };
+    // Never admit listings already past the portal-wide age ceiling.
+    if (
+      isPastRetention({
+        postedAt: typeof jobDoc.postedAt === "string" ? jobDoc.postedAt : null,
+        createdAt:
+          typeof jobDoc.createdAt === "string"
+            ? jobDoc.createdAt
+            : new Date().toISOString(),
+      })
+    ) {
+      return { inserted: false as const };
+    }
     const text = typeof jobDoc.description === "string" ? jobDoc.description : "";
     delete jobDoc.description;
     jobDoc.jdChars = text.length;
@@ -586,6 +619,17 @@ export const upsertBatch = mutation({
     for (const doc of docs) {
       if (await dedupeHit(ctx, userId, doc)) continue;
       const jobDoc: Record<string, unknown> = { ...(doc as Record<string, unknown>), userId };
+      if (
+        isPastRetention({
+          postedAt: typeof jobDoc.postedAt === "string" ? jobDoc.postedAt : null,
+          createdAt:
+            typeof jobDoc.createdAt === "string"
+              ? jobDoc.createdAt
+              : new Date().toISOString(),
+        })
+      ) {
+        continue;
+      }
       const text = typeof jobDoc.description === "string" ? jobDoc.description : "";
       delete jobDoc.description;
       jobDoc.jdChars = text.length;
@@ -677,6 +721,11 @@ async function deleteOwnedJobCascade(
       if ("pdfFileId" in row && row.pdfFileId) await ctx.storage.delete(row.pdfFileId);
       await ctx.db.delete(row._id);
     }
+  const queue = await ctx.db
+    .query("applyQueue")
+    .withIndex("by_user_job", (q) => q.eq("userId", userId).eq("jobId", id))
+    .collect();
+  for (const row of queue) await ctx.db.delete(row._id);
   await ctx.db.delete(id);
   return true;
 }

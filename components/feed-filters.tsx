@@ -63,7 +63,7 @@ const POSTED_OPTIONS = [
   ["3", "Past 3 days"],
   ["7", "Past week"],
   ["14", "Past 2 weeks"],
-  ["30", "Past month"],
+  // Portal hard-caps at 15 days (shared/job-retention.ts) — no older option.
 ] as const;
 
 const SCORE_OPTIONS = [

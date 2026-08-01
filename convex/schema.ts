@@ -98,6 +98,50 @@ export default defineSchema({
     text: v.string(),
   }).index("by_job", ["jobId"]),
 
+  // Second discovery source: LinkedIn posts where someone announces an open
+  // role. Fetched through a third-party scraping API, then AI-extracted into
+  // company / titles / apply link. Post bodies are capped at POST_TEXT_LIMIT
+  // (shared/linkedin-posts.ts) so they stay small enough to live on the row —
+  // unlike JDs, which need the jobDescriptions side table.
+  //
+  // status: new | saved | done | ignored. Posts the extractor judged non-hiring
+  // are stored as `ignored` rather than dropped. `done` is a user "I've handled
+  // this" archive. Pull dedupes on externalId for every status, so archived
+  // posts never reappear on the untriaged feed.
+  linkedinPosts: defineTable({
+    userId: v.optional(v.id("users")),
+    // Provider post id / URN — the dedupe key across pulls.
+    externalId: v.string(),
+    postUrl: v.string(),
+    authorName: v.string(),
+    authorHeadline: v.optional(v.string()),
+    authorProfileUrl: v.optional(v.string()),
+    text: v.string(),
+    postedAt: v.optional(v.string()),
+    reactions: v.optional(v.number()),
+    // Which search term surfaced this post.
+    query: v.optional(v.string()),
+    companyName: v.optional(v.string()),
+    roleTitles: v.optional(v.array(v.string())),
+    location: v.optional(v.string()),
+    // Set only when a real link was present in the post text — never a model
+    // guess (see lib/linkedin/extract.ts).
+    jobUrl: v.optional(v.string()),
+    extractedAt: v.optional(v.string()),
+    status: v.string(),
+    // Set once the post has been promoted into the pipeline as a job row.
+    jobId: v.optional(v.id("jobs")),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user_external", ["userId", "externalId"])
+    .searchIndex("search_text", {
+      searchField: "text",
+      filterFields: ["userId", "status"],
+    }),
+
   applications: defineTable({
     userId: v.optional(v.id("users")),
     jobId: v.id("jobs"),

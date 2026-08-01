@@ -10,6 +10,7 @@ import { heuristicRoleType } from "../shared/role-types";
 import { levelOrDefault } from "../shared/seniority";
 import { companyByNameForUser, getOnboardingPrefs } from "./onboarding";
 import { DEFAULT_MAX_HEADCOUNT } from "../shared/company-size";
+import { isPastRetention } from "../shared/job-retention";
 
 type NormalizedJob = {
   externalId: string;
@@ -259,7 +260,17 @@ export const upsertBatchForUser = internalMutation({
         source?: string;
         externalId?: string;
         description?: string;
+        postedAt?: string | null;
+        createdAt?: string;
       };
+      if (
+        isPastRetention({
+          postedAt: d.postedAt,
+          createdAt: d.createdAt ?? new Date().toISOString(),
+        })
+      ) {
+        continue;
+      }
       const byKey = await ctx.db
         .query("jobs")
         .withIndex("by_user_dedupe", (q) =>

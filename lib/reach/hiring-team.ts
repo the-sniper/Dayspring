@@ -1,4 +1,7 @@
-import { searchPeople, type ApolloPerson } from "@/lib/integrations/apollo/search";
+import {
+  searchPeopleAtCompany,
+  type ApolloPerson,
+} from "@/lib/integrations/apollo/search";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
 import {
   REACH_HM_TITLES_BY_ROLE,
@@ -34,20 +37,53 @@ export function titlesForHiringTeam(
 }
 
 export async function findHiringTeam(args: {
-  domain: string;
+  domain?: string | null;
+  organizationName?: string | null;
   titles: string[];
   limit?: number;
 }): Promise<HiringTeamMember[]> {
   const limit = args.limit ?? 8;
-  const res = await searchPeople({
-    domain: args.domain,
-    titles: args.titles,
-    page: 1,
-  });
+  const domain = args.domain?.trim() || null;
+  const organizationName = args.organizationName?.trim() || null;
+  if (!domain && !organizationName) return [];
+
+  let searchMode: "domain" | "name" = domain ? "domain" : "name";
+  let people = (
+    await searchPeopleAtCompany({
+      domain: searchMode === "domain" ? domain : null,
+      organizationName: searchMode === "name" ? organizationName : null,
+      titles: args.titles,
+      page: 1,
+    })
+  ).people;
+
+  // Wrong/empty domain (job board, stale save) → fall back to company name.
+  if (people.length === 0 && domain && organizationName) {
+    searchMode = "name";
+    people = (
+      await searchPeopleAtCompany({
+        domain: null,
+        organizationName,
+        titles: args.titles,
+        page: 1,
+      })
+    ).people;
+  }
+
+  const companyNorm = normalizeCompany(organizationName);
   const seen = new Set<string>();
   const out: HiringTeamMember[] = [];
-  for (const p of res.people) {
+  for (const p of people) {
     if (seen.has(p.apolloId)) continue;
+    // Name search is fuzzy — drop people at clearly different orgs.
+    if (
+      searchMode === "name" &&
+      companyNorm &&
+      p.company &&
+      nameOverlap(companyNorm, normalizeCompany(p.company)) < 0.45
+    ) {
+      continue;
+    }
     seen.add(p.apolloId);
     out.push({
       ...p,
@@ -65,6 +101,27 @@ export async function findHiringTeam(args: {
     other: 4,
   };
   return out.sort((a, b) => rank[a.role] - rank[b.role] || a.name.localeCompare(b.name));
+}
+
+function normalizeCompany(name: string | null | undefined): string {
+  return (name ?? "")
+    .toLowerCase()
+    .replace(/&/g, " and ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\b(inc|llc|ltd|corp|corporation|co|the)\b/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nameOverlap(a: string, b: string): number {
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const as = new Set(a.split(" ").filter((w) => w.length > 1));
+  const bs = new Set(b.split(" ").filter((w) => w.length > 1));
+  if (!as.size || !bs.size) return 0;
+  let n = 0;
+  for (const w of as) if (bs.has(w)) n++;
+  return n / Math.max(as.size, bs.size);
 }
 
 export function classifyRole(title: string | null): ReachContactRole {

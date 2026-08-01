@@ -7,12 +7,14 @@ import { hasApiKey } from "@/lib/claude/client";
 import { api, cleanDoc, convex } from "@/lib/convex/server";
 import { listContacts } from "@/lib/contacts/query";
 import { hasApolloKey } from "@/lib/integrations/apollo/client";
+import { resolveOrganizationDomain } from "@/lib/integrations/apollo/organizations";
 import {
   searchPeopleFlexible,
   type ApolloPerson,
 } from "@/lib/integrations/apollo/search";
 import { getProfile } from "@/lib/jobs/score";
 import { createJobCore } from "@/lib/jobs/create";
+import { extractCandidateDomains } from "@/lib/reach/extract-domains";
 import { fetchJobPage } from "@/lib/reach/fetch-job";
 import {
   classifyRole,
@@ -21,8 +23,14 @@ import {
   type HiringTeamMember,
 } from "@/lib/reach/hiring-team";
 import { keyMessages } from "@/lib/keys/messages";
+import { cleanEmployerDomain } from "@/shared/job-boards";
 import type { ReachChannel, ReachContactRole } from "@/shared/reach";
 import type { RoleType } from "@/shared/role-types";
+
+export type ReachDraftMessages = Record<
+  ReachChannel,
+  { subject: string | null; body: string }
+>;
 
 export type ReachContactResult = {
   apolloId: string | null;
@@ -37,8 +45,10 @@ export type ReachContactResult = {
   warmReason: string | null;
   source: "apollo" | "job_posting";
   savedContactId: string | null;
-  personAngle: string;
-  messages: Record<ReachChannel, { subject: string | null; body: string }>;
+  /** Populated only after "Write message with AI". */
+  personAngle: string | null;
+  messages: ReachDraftMessages | null;
+  affiliations: { kind: string; detail: string }[];
 };
 
 export type ReachAnalyzeResult =
@@ -149,22 +159,57 @@ export async function analyzeJobReachAction(input: {
   const companyId = await convex().mutation(api.companies.findOrCreate, {
     name: parsed.companyName,
   });
-  if (parsed.companyDomain) {
-    const company = await convex().query(api.companies.getById, {
-      id: companyId as never,
-    });
-    if (company && !company.domain) {
-      await convex().mutation(api.companies.update, {
-        id: companyId as never,
-        patch: { domain: parsed.companyDomain },
-      });
+  const existingCompany = await convex().query(api.companies.getById, {
+    id: companyId as never,
+  });
+
+  // Resolve employer domain automatically — never ask the user to type it.
+  // Never trust the job-board host (algora.io, greenhouse.io, …). Prefer
+  // Apollo org lookup by company name over weak page heuristics.
+  const savedDomain = cleanEmployerDomain(existingCompany?.domain ?? null);
+  let domain =
+    cleanEmployerDomain(parsed.companyDomain) ?? savedDomain ?? null;
+
+  if (!domain) {
+    const fromPage = extractCandidateDomains(text, sourceUrl);
+    domain = fromPage[0] ?? null;
+  }
+
+  // Apollo org search is the reliable path for name → real employer domain.
+  // Always try it when we still lack a domain, or when the only domain we
+  // have came from a previous bad save (already cleaned above).
+  if (!domain) {
+    try {
+      const resolved = await resolveOrganizationDomain(parsed.companyName);
+      if (resolved) domain = resolved.domain;
+    } catch (err) {
+      warnings.push(
+        err instanceof Error
+          ? `Company lookup issue: ${err.message}`
+          : "Company lookup failed.",
+      );
     }
+  }
+
+  // Persist / repair domain on the company row. Clear stale job-board hosts
+  // (e.g. a previous run that saved algora.io as the employer).
+  if (domain && domain !== existingCompany?.domain) {
+    await convex().mutation(api.companies.update, {
+      id: companyId as never,
+      patch: { domain },
+    });
+  } else if (
+    existingCompany?.domain &&
+    !cleanEmployerDomain(existingCompany.domain)
+  ) {
+    await convex().mutation(api.companies.update, {
+      id: companyId as never,
+      patch: { domain: null },
+    });
   }
 
   let jobId: string | null = null;
   if (input.saveJob !== false) {
-    const { dedupeKey } = await import("@/lib/jobs/dedupe");
-    const key = dedupeKey(companyId, parsed.title, sourceUrl);
     const created = await createJobCore({
       companyName: parsed.companyName,
       title: parsed.title,
@@ -175,14 +220,9 @@ export async function analyzeJobReachAction(input: {
       source: "manual",
       status: "wishlist",
     });
-    if (created.inserted) {
-      jobId = created.jobId;
-    } else {
-      const existing = await convex().query(api.jobs.getByDedupeKey, {
-        dedupeKey: key,
-      });
-      jobId = existing?.id ?? null;
-      if (jobId) warnings.push("Job already in your pipeline — reused it.");
+    jobId = created.jobId;
+    if (!created.inserted && jobId) {
+      warnings.push("Job already in your pipeline — reused it.");
     }
   }
 
@@ -190,34 +230,27 @@ export async function analyzeJobReachAction(input: {
     parsed.roleType,
     parsed.title,
   );
-  const domain =
-    parsed.companyDomain ??
-    (
-      await convex().query(api.companies.getById, { id: companyId as never })
-    )?.domain ??
-    null;
 
   const maxContacts = Math.min(Math.max(input.maxContacts ?? 6, 1), 8);
   let team: HiringTeamMember[] = [];
 
-  if (domain) {
-    try {
-      team = await findHiringTeam({ domain, titles, limit: maxContacts });
-    } catch (err) {
-      warnings.push(
-        err instanceof Error
-          ? `Apollo search issue: ${err.message}`
-          : "Apollo search failed.",
-      );
-    }
-  } else {
+  try {
+    team = await findHiringTeam({
+      domain,
+      organizationName: parsed.companyName,
+      titles,
+      limit: maxContacts,
+    });
+  } catch (err) {
     warnings.push(
-      "Couldn't determine the company domain — set it on the company page, or name contacts will be limited to people mentioned in the posting.",
+      err instanceof Error
+        ? `Apollo search issue: ${err.message}`
+        : "Apollo search failed.",
     );
   }
 
   // Resolve people named in the JD (often the best POCs).
-  if (parsed.namedContacts.length && domain) {
+  if (parsed.namedContacts.length) {
     for (const named of parsed.namedContacts.slice(0, 3)) {
       if (team.length >= maxContacts) break;
       if (team.some((t) => namesMatch(t.name, named.name))) {
@@ -246,26 +279,10 @@ export async function analyzeJobReachAction(input: {
           });
         }
       } catch {
-        // Non-fatal — keep Apollo domain results.
+        // Non-fatal — keep Apollo results.
       }
     }
     team = team.slice(0, maxContacts);
-  } else if (parsed.namedContacts.length && !domain) {
-    // No domain: still surface named contacts as synthetic rows (no Apollo id).
-    for (const named of parsed.namedContacts.slice(0, 3)) {
-      team.push({
-        apolloId: `named:${named.name}`,
-        name: named.name,
-        title: named.title,
-        company: parsed.companyName,
-        location: null,
-        linkedinUrl: null,
-        emailStatus: null,
-        photoUrl: null,
-        role: named.roleHint ?? "point_of_contact",
-        source: "job_posting",
-      });
-    }
   }
 
   if (team.length === 0) {
@@ -286,7 +303,9 @@ export async function analyzeJobReachAction(input: {
       contacts: [],
       warnings: [
         ...warnings,
-        "No hiring-team contacts found. Check the company domain or try a more specific job page.",
+        domain
+          ? `No hiring-team contacts found at ${domain}. Try pasting the full job description for named contacts.`
+          : `Couldn't find people at ${parsed.companyName} in Apollo. Paste the full JD if it names a recruiter.`,
       ],
     };
   }
@@ -302,17 +321,9 @@ export async function analyzeJobReachAction(input: {
     local.map((c) => [c.name.trim().toLowerCase(), c]),
   );
 
-  const researchBrief = [
-    `Role: ${parsed.title} at ${parsed.companyName}`,
-    parsed.location ? `Location: ${parsed.location}` : null,
-    "",
-    "Job context (from posting):",
-    parsed.description.slice(0, 2000),
-  ]
-    .filter((l) => l !== null)
-    .join("\n");
-
-  const enriched = await Promise.all(
+  // Skip AI message drafting here — contacts load cheaply; drafts run on
+  // demand via draftReachMessagesAction when the user clicks Write with AI.
+  const contacts: ReachContactResult[] = await Promise.all(
     team.map(async (person) => {
       const localHit =
         (person.linkedinUrl
@@ -338,32 +349,7 @@ export async function analyzeJobReachAction(input: {
           ? `Shared affiliation: ${affiliations[0]!.detail}`
           : null;
 
-      return { person, localHit, affiliations, warmth, warmReason };
-    }),
-  );
-
-  const drafted = await Promise.allSettled(
-    enriched.map(async ({ person, localHit, affiliations, warmth, warmReason }) => {
-      const drafts = await draftReachMessages({
-        profile,
-        job: {
-          title: parsed.title,
-          companyName: parsed.companyName,
-          location: parsed.location,
-          description: parsed.description,
-        },
-        contact: {
-          name: person.name,
-          title: person.title,
-          role: person.role,
-          warmth,
-          notes: warmReason,
-        },
-        brief: researchBrief,
-        affiliations,
-      });
-
-      const row: ReachContactResult = {
+      return {
         apolloId: person.apolloId.startsWith("named:")
           ? null
           : person.apolloId,
@@ -378,27 +364,12 @@ export async function analyzeJobReachAction(input: {
         warmReason,
         source: person.source,
         savedContactId: localHit?.id ?? null,
-        personAngle: drafts.personAngle,
-        messages: drafts.channels,
+        personAngle: null,
+        messages: null,
+        affiliations,
       };
-      return row;
     }),
   );
-
-  const contacts: ReachContactResult[] = [];
-  for (let i = 0; i < drafted.length; i++) {
-    const r = drafted[i]!;
-    if (r.status === "fulfilled") {
-      contacts.push(r.value);
-    } else {
-      const name = enriched[i]?.person.name ?? "a contact";
-      warnings.push(
-        `Couldn't draft messages for ${name}: ${
-          r.reason instanceof Error ? r.reason.message : "draft failed"
-        }`,
-      );
-    }
-  }
 
   if (jobId) revalidatePath("/board");
   revalidatePath(`/companies/${companyId}`);
@@ -420,6 +391,85 @@ export async function analyzeJobReachAction(input: {
     contacts,
     warnings,
   };
+}
+
+export async function draftReachMessagesAction(input: {
+  job: {
+    title: string;
+    companyName: string;
+    location: string | null;
+    description: string;
+  };
+  contact: {
+    name: string;
+    title: string | null;
+    role: ReachContactRole;
+    warmth: "cold" | "warm";
+    warmReason: string | null;
+    affiliations: { kind: string; detail: string }[];
+  };
+}): Promise<
+  | {
+      ok: true;
+      personAngle: string;
+      messages: ReachDraftMessages;
+    }
+  | { ok: false; error: string }
+> {
+  if (!(await hasApiKey())) {
+    return { ok: false, error: keyMessages.drafting };
+  }
+  const profile = await getProfile();
+  if (!profile) {
+    return {
+      ok: false,
+      error: "No profile yet — paste your resume in Settings first.",
+    };
+  }
+  if (!input.contact.name.trim() || !input.job.title.trim()) {
+    return { ok: false, error: "Missing contact or job context for drafting." };
+  }
+
+  const brief = [
+    `Role: ${input.job.title} at ${input.job.companyName}`,
+    input.job.location ? `Location: ${input.job.location}` : null,
+    "",
+    "Job context (from posting):",
+    input.job.description.slice(0, 2000),
+  ]
+    .filter((l) => l !== null)
+    .join("\n");
+
+  try {
+    const drafts = await draftReachMessages({
+      profile,
+      job: {
+        title: input.job.title,
+        companyName: input.job.companyName,
+        location: input.job.location,
+        description: input.job.description,
+      },
+      contact: {
+        name: input.contact.name,
+        title: input.contact.title,
+        role: input.contact.role,
+        warmth: input.contact.warmth,
+        notes: input.contact.warmReason,
+      },
+      brief,
+      affiliations: input.contact.affiliations,
+    });
+    return {
+      ok: true,
+      personAngle: drafts.personAngle,
+      messages: drafts.channels,
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      error: err instanceof Error ? err.message : "Drafting failed",
+    };
+  }
 }
 
 export async function saveReachContactAction(input: {

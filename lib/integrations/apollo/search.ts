@@ -68,12 +68,44 @@ export async function searchPeople({
   totalEntries: number;
   totalPages: number;
 }> {
-  const data = await apolloFetch<SearchResponse>("mixed_people/api_search", {
-    q_organization_domains_list: [domain],
-    person_titles: titles,
+  return searchPeopleAtCompany({ domain, titles, page });
+}
+
+// Domain is preferred (precise). When unknown, organizationName still finds
+// people at that employer via Apollo's name filter — no credits for search.
+export async function searchPeopleAtCompany({
+  domain,
+  organizationName,
+  titles,
+  page = 1,
+}: {
+  domain?: string | null;
+  organizationName?: string | null;
+  titles: string[];
+  page?: number;
+}): Promise<{
+  people: ApolloPerson[];
+  page: number;
+  totalEntries: number;
+  totalPages: number;
+}> {
+  const body: Record<string, unknown> = {
     page,
     per_page: 25,
-  });
+  };
+  if (titles.length) body.person_titles = titles;
+  if (domain?.trim()) {
+    body.q_organization_domains_list = [domain.trim()];
+  } else if (organizationName?.trim()) {
+    body.q_organization_name = organizationName.trim();
+  } else {
+    return { people: [], page, totalEntries: 0, totalPages: 0 };
+  }
+
+  const data = await apolloFetch<SearchResponse>(
+    "mixed_people/api_search",
+    body,
+  );
   return {
     people: (data.people ?? []).map(normalizePerson),
     page: data.pagination?.page ?? page,

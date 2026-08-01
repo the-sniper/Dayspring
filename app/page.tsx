@@ -17,6 +17,7 @@ import ScoreBadge from "@/components/score-badge";
 import JobQuickActions from "@/components/job-quick-actions";
 import Tip from "@/components/tip";
 import VerificationCodes from "@/components/verification-codes";
+import ApiUsagePanel from "@/components/api-usage-panel";
 import PageHeader from "@/components/page-header";
 import ButtonLink from "@/components/button-link";
 import { hasGmail } from "@/lib/integrations/gmail/client";
@@ -240,6 +241,8 @@ export default async function DashboardPage() {
 
         {/* Sidebar Column */}
         <div className="lg:col-span-4 space-y-8">
+          <ApiUsagePanel />
+
           <VerificationCodes hasGmail={gmailConnected} />
 
           {(dueOutreach.length > 0 || staleApps.length > 0) && (

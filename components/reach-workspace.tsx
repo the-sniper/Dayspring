@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useState, useTransition } from "react";
 import {
   analyzeJobReachAction,
+  draftReachMessagesAction,
   saveReachContactAction,
   type ReachAnalyzeResult,
   type ReachContactResult,
@@ -44,10 +45,12 @@ export default function ReachWorkspace({
   const [showPaste, setShowPaste] = useState(false);
   const [result, setResult] = useState<ReachAnalyzeResult | null>(null);
   const [pending, startTransition] = useTransition();
+  const [drafting, startDraftTransition] = useTransition();
   const [activeContact, setActiveContact] = useState(0);
   const [channel, setChannel] = useState<ReachChannel>("cold_dm");
   const [copied, setCopied] = useState<string | null>(null);
   const [saveMsg, setSaveMsg] = useState<string | null>(null);
+  const [draftError, setDraftError] = useState<string | null>(null);
 
   const ready = hasApiKey && hasApolloKey && hasProfile;
 
@@ -55,6 +58,7 @@ export default function ReachWorkspace({
     startTransition(async () => {
       setResult(null);
       setSaveMsg(null);
+      setDraftError(null);
       setActiveContact(0);
       setChannel("cold_dm");
       const res = await analyzeJobReachAction({
@@ -70,7 +74,50 @@ export default function ReachWorkspace({
     ok && ok.contacts.length > 0
       ? (ok.contacts[Math.min(activeContact, ok.contacts.length - 1)] ?? null)
       : null;
-  const draft = contact?.messages[channel];
+  const draft = contact?.messages?.[channel] ?? null;
+
+  function patchActiveContact(
+    patch: Partial<Pick<ReachContactResult, "personAngle" | "messages">>,
+  ) {
+    setResult((prev) => {
+      if (!prev?.ok) return prev;
+      const contacts = prev.contacts.map((c, i) =>
+        i === activeContact ? { ...c, ...patch } : c,
+      );
+      return { ...prev, contacts };
+    });
+  }
+
+  function writeMessages() {
+    if (!ok || !contact) return;
+    startDraftTransition(async () => {
+      setDraftError(null);
+      const res = await draftReachMessagesAction({
+        job: {
+          title: ok.job.title,
+          companyName: ok.job.companyName,
+          location: ok.job.location,
+          description: ok.job.description,
+        },
+        contact: {
+          name: contact.name,
+          title: contact.title,
+          role: contact.role,
+          warmth: contact.warmth,
+          warmReason: contact.warmReason,
+          affiliations: contact.affiliations,
+        },
+      });
+      if (!res.ok) {
+        setDraftError(res.error);
+        return;
+      }
+      patchActiveContact({
+        personAngle: res.personAngle,
+        messages: res.messages,
+      });
+    });
+  }
 
   async function copyText(label: string, text: string) {
     await navigator.clipboard.writeText(text);
@@ -256,6 +303,7 @@ export default function ReachWorkspace({
                     onClick={() => {
                       setActiveContact(i);
                       setChannel(c.warmth === "warm" ? "warm_dm" : "cold_dm");
+                      setDraftError(null);
                     }}
                     className={cn(
                       "flex w-full items-start gap-3 rounded-xl border px-3 py-3 text-left transition-colors",
@@ -282,6 +330,11 @@ export default function ReachWorkspace({
                         >
                           {c.warmth}
                         </span>
+                        {c.messages && (
+                          <span className="shrink-0 text-[10px] font-medium text-brand-700 dark:text-brand-300">
+                            drafted
+                          </span>
+                        )}
                       </div>
                       <p className="truncate text-xs text-muted-foreground">
                         {c.title ?? "Title unknown"}
@@ -306,9 +359,11 @@ export default function ReachWorkspace({
                           {contact.title ?? "Title unknown"}
                           {contact.location ? ` · ${contact.location}` : ""}
                         </p>
-                        <p className="mt-2 text-sm text-foreground/80">
-                          {contact.personAngle}
-                        </p>
+                        {contact.personAngle && (
+                          <p className="mt-2 text-sm text-foreground/80">
+                            {contact.personAngle}
+                          </p>
+                        )}
                         {contact.warmReason && (
                           <p className="mt-1 text-xs font-medium text-emerald-700 dark:text-emerald-300">
                             {contact.warmReason}
@@ -376,9 +431,39 @@ export default function ReachWorkspace({
                       {REACH_CHANNEL_HINTS[channel]}
                     </p>
 
-                    {draft && (
+                    {!contact.messages ? (
+                      <div className="mt-6 rounded-xl border border-dashed border-border bg-secondary/15 px-5 py-8 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          Messages are written on demand so you only spend tokens
+                          on people you actually reach out to.
+                        </p>
+                        <button
+                          type="button"
+                          disabled={drafting || !hasApiKey}
+                          onClick={writeMessages}
+                          className="mt-4 inline-flex items-center gap-2 rounded-xl bg-brand-600 px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition-colors hover:bg-brand-700 disabled:opacity-50"
+                        >
+                          {drafting ? (
+                            <>
+                              <Loader2 size={16} className="animate-spin" />
+                              Writing messages…
+                            </>
+                          ) : (
+                            <>
+                              <Sparkles size={16} />
+                              Write message with AI
+                            </>
+                          )}
+                        </button>
+                        {draftError && (
+                          <p className="mt-3 text-xs font-medium text-destructive">
+                            {draftError}
+                          </p>
+                        )}
+                      </div>
+                    ) : (
                       <div className="mt-4 space-y-3">
-                        {draft.subject && (
+                        {draft?.subject && (
                           <div className="rounded-xl border border-border bg-secondary/20 px-4 py-3">
                             <div className="mb-1 flex items-center justify-between">
                               <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
@@ -402,58 +487,82 @@ export default function ReachWorkspace({
                             <p className="text-sm font-medium">{draft.subject}</p>
                           </div>
                         )}
-                        <div className="rounded-xl border border-border bg-secondary/20 px-4 py-3">
-                          <div className="mb-2 flex items-center justify-between">
-                            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
-                              Message
-                              {channel === "cold_dm" && (
-                                <span className="ml-2 font-medium normal-case tracking-normal text-muted-foreground/80">
-                                  {draft.body.length}/300
-                                </span>
-                              )}
-                            </span>
-                            <div className="flex gap-3">
-                              <button
-                                type="button"
-                                onClick={() => void copyText("body", draft.body)}
-                                className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
-                              >
-                                {copied === "body" ? (
-                                  <Check size={12} />
-                                ) : (
-                                  <Copy size={12} />
+                        {draft && (
+                          <div className="rounded-xl border border-border bg-secondary/20 px-4 py-3">
+                            <div className="mb-2 flex items-center justify-between">
+                              <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                                Message
+                                {channel === "cold_dm" && (
+                                  <span className="ml-2 font-medium normal-case tracking-normal text-muted-foreground/80">
+                                    {draft.body.length}/300
+                                  </span>
                                 )}
-                                Copy
-                              </button>
-                              {channel === "email" && draft.subject && (
+                              </span>
+                              <div className="flex gap-3">
                                 <button
                                   type="button"
                                   onClick={() =>
-                                    void copyText(
-                                      "both",
-                                      `Subject: ${draft.subject}\n\n${draft.body}`,
-                                    )
+                                    void copyText("body", draft.body)
                                   }
                                   className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
                                 >
-                                  {copied === "both" ? (
+                                  {copied === "body" ? (
                                     <Check size={12} />
                                   ) : (
                                     <Copy size={12} />
                                   )}
-                                  Copy all
+                                  Copy
                                 </button>
-                              )}
+                                {channel === "email" && draft.subject && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      void copyText(
+                                        "both",
+                                        `Subject: ${draft.subject}\n\n${draft.body}`,
+                                      )
+                                    }
+                                    className="inline-flex items-center gap-1 text-[11px] font-semibold text-muted-foreground hover:text-foreground"
+                                  >
+                                    {copied === "both" ? (
+                                      <Check size={12} />
+                                    ) : (
+                                      <Copy size={12} />
+                                    )}
+                                    Copy all
+                                  </button>
+                                )}
+                              </div>
                             </div>
+                            <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
+                              {draft.body}
+                            </pre>
                           </div>
-                          <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed text-foreground">
-                            {draft.body}
-                          </pre>
+                        )}
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[11px] text-muted-foreground">
+                            Scaffolding only — rewrite in your voice before sending.
+                            LinkedIn sends stay manual (copy → paste).
+                          </p>
+                          <button
+                            type="button"
+                            disabled={drafting}
+                            onClick={writeMessages}
+                            className="inline-flex items-center gap-1.5 text-[11px] font-semibold text-muted-foreground transition-colors hover:text-foreground disabled:opacity-50"
+                          >
+                            {drafting ? (
+                              <Loader2 size={12} className="animate-spin" />
+                            ) : (
+                              <Sparkles size={12} />
+                            )}
+                            Rewrite with AI
+                          </button>
                         </div>
-                        <p className="text-[11px] text-muted-foreground">
-                          Scaffolding only — rewrite in your voice before sending.
-                          LinkedIn sends stay manual (copy → paste).
-                        </p>
+                        {draftError && (
+                          <p className="text-xs font-medium text-destructive">
+                            {draftError}
+                          </p>
+                        )}
                       </div>
                     )}
                   </>

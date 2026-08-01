@@ -202,20 +202,6 @@ export const existingDedupeKeys = query({
   },
 });
 
-export const getByDedupeKey = query({
-  args: { dedupeKey: v.string() },
-  handler: async (ctx, { dedupeKey }) => {
-    const userId = await requireUser(ctx);
-    const row = await ctx.db
-      .query("jobs")
-      .withIndex("by_user_dedupe", (q) =>
-        q.eq("userId", userId).eq("dedupeKey", dedupeKey),
-      )
-      .first();
-    return row ? { id: row._id, title: row.title, companyId: row.companyId } : null;
-  },
-});
-
 // Compact, capped job list for the MCP `list_jobs` tool.
 export const briefList = query({
   args: {
@@ -539,17 +525,17 @@ export const staleScoreCount = query({
 
 // ---- writes ------------------------------------------------------------
 
-// Per-user dedupe checks for inserts.
-async function dedupeHit(
+// Per-user dedupe lookup for inserts — returns the existing id when present.
+async function findDedupeHit(
   ctx: QueryCtx,
   userId: Id<"users">,
   doc: { dedupeKey: string; source?: string; externalId?: string },
-): Promise<boolean> {
+): Promise<Id<"jobs"> | null> {
   const byKey = await ctx.db
     .query("jobs")
     .withIndex("by_user_dedupe", (q) => q.eq("userId", userId).eq("dedupeKey", doc.dedupeKey))
     .unique();
-  if (byKey) return true;
+  if (byKey) return byKey._id;
   if (doc.externalId) {
     const byExt = await ctx.db
       .query("jobs")
@@ -557,9 +543,9 @@ async function dedupeHit(
         q.eq("userId", userId).eq("source", doc.source!).eq("externalId", doc.externalId),
       )
       .unique();
-    if (byExt) return true;
+    if (byExt) return byExt._id;
   }
-  return false;
+  return null;
 }
 
 // Dedupe-aware single insert (manual entry + import bridges). Mirrors
@@ -572,7 +558,8 @@ export const createOne = mutation({
   },
   handler: async (ctx, { doc, initialStatus, submittedAt }) => {
     const userId = await requireUser(ctx);
-    if (await dedupeHit(ctx, userId, doc)) return { inserted: false as const };
+    const existingId = await findDedupeHit(ctx, userId, doc);
+    if (existingId) return { inserted: false as const, jobId: existingId };
     const jobDoc: Record<string, unknown> = { ...(doc as Record<string, unknown>), userId };
     // Never admit listings already past the portal-wide age ceiling.
     if (
@@ -584,7 +571,7 @@ export const createOne = mutation({
             : new Date().toISOString(),
       })
     ) {
-      return { inserted: false as const };
+      return { inserted: false as const, jobId: null };
     }
     const text = typeof jobDoc.description === "string" ? jobDoc.description : "";
     delete jobDoc.description;
@@ -617,7 +604,7 @@ export const upsertBatch = mutation({
     const insertedIds: string[] = [];
     let added = 0;
     for (const doc of docs) {
-      if (await dedupeHit(ctx, userId, doc)) continue;
+      if (await findDedupeHit(ctx, userId, doc)) continue;
       const jobDoc: Record<string, unknown> = { ...(doc as Record<string, unknown>), userId };
       if (
         isPastRetention({

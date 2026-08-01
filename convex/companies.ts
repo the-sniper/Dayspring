@@ -65,7 +65,12 @@ export const update = mutation({
   handler: async (ctx, { id, patch }) => {
     const userId = await requireUser(ctx);
     if (!owned(await ctx.db.get(id), userId)) throw new Error("Company not found");
-    await ctx.db.patch(id, patch);
+    // `null` means unset optional fields (JSON can't carry undefined).
+    const next: Record<string, unknown> = { ...(patch as Record<string, unknown>) };
+    for (const [k, val] of Object.entries(next)) {
+      if (val === null) next[k] = undefined;
+    }
+    await ctx.db.patch(id, next);
   },
 });
 

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HUMAN_MESSAGE_VOICE, sanitizeAiProse } from "@/lib/ai/human-message";
 import { structuredComplete } from "@/lib/ai/complete";
 import type { AffiliationFact } from "@/lib/claude/outreach";
 import type { ReachChannel, ReachContactRole } from "@/shared/reach";
@@ -21,11 +22,13 @@ export type ReachMessageSet = {
   personAngle: string;
 };
 
-const SYSTEM = `You write scaffolding outreach for one candidate contacting one person about one job. The user will edit before sending — your job is structure, research recall, and removing the blank page.
+const SYSTEM = `You write scaffolding outreach for one candidate contacting one person about one job. The user will edit before sending. Your job is structure, research recall, and removing the blank page.
+
+${HUMAN_MESSAGE_VOICE}
 
 HARD RULES for every channel:
 - Never fabricate. Candidate facts only from the profile; company/job facts only from the description and research; person facts only from the contact block and any verified affiliations.
-- No invented mutuals, no pretended familiarity, no stock phrases ("I'm a big fan of what you're building", "I came across your profile", "I'd love to pick your brain").
+- No invented mutuals, no pretended familiarity.
 - Greet by first name.
 - Sign with the candidate's name if the profile states one; otherwise "[Your name]".
 - Plain text. No markdown bullets.
@@ -48,7 +51,7 @@ CHANNEL SPECS — write all four:
    - subject: null (or a short InMail subject ≤6 words if helpful)
    - body: 50–140 words. Tighter than email; still specific.
 
-Also return personAngle: one sentence on why THIS person is the right contact for THIS role (role-aware).`;
+Also return personAngle: one plain sentence on why THIS person is the right contact for THIS role (role-aware). Same voice rules apply.`;
 
 export async function draftReachMessages(args: {
   profile: string;
@@ -100,20 +103,24 @@ ${args.job.description.slice(0, 7000)}${briefBlock}`,
   });
 
   return {
-    personAngle: data.personAngle.trim(),
+    personAngle: sanitizeAiProse(data.personAngle),
     channels: {
       cold_dm: {
         subject: null,
-        body: clampChars(data.cold_dm.body.trim(), 300),
+        body: clampChars(sanitizeAiProse(data.cold_dm.body), 300),
       },
-      warm_dm: { subject: null, body: data.warm_dm.body.trim() },
+      warm_dm: { subject: null, body: sanitizeAiProse(data.warm_dm.body) },
       email: {
-        subject: data.email.subject?.trim() || null,
-        body: data.email.body.trim(),
+        subject: data.email.subject
+          ? sanitizeAiProse(data.email.subject)
+          : null,
+        body: sanitizeAiProse(data.email.body),
       },
       linkedin: {
-        subject: data.linkedin.subject?.trim() || null,
-        body: data.linkedin.body.trim(),
+        subject: data.linkedin.subject
+          ? sanitizeAiProse(data.linkedin.subject)
+          : null,
+        body: sanitizeAiProse(data.linkedin.body),
       },
     },
   };

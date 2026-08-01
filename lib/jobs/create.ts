@@ -24,10 +24,13 @@ export type NewJobInput = {
 };
 
 // Shared insert core for manual entry and the import bridges (the ATS pull
-// has its own bulk path). Dedupe-aware: returns inserted=false on conflict.
+// has its own bulk path). Dedupe-aware: on conflict returns the existing jobId.
 export async function createJobCore(
   input: NewJobInput,
-): Promise<{ inserted: true; jobId: string } | { inserted: false }> {
+): Promise<
+  | { inserted: true; jobId: string }
+  | { inserted: false; jobId: string | null }
+> {
   const companyId = await findOrCreateCompany(input.companyName);
   const title = input.title.trim();
   const url = input.url?.trim() || null;
@@ -67,6 +70,6 @@ export async function createJobCore(
     submittedAt: submitted,
   });
 
-  if (!res.inserted) return { inserted: false };
+  if (!res.inserted) return { inserted: false, jobId: res.jobId ?? null };
   return { inserted: true, jobId: res.jobId };
 }

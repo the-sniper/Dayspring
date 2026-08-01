@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { structuredComplete } from "@/lib/ai/complete";
+import { cleanEmployerDomain } from "@/shared/job-boards";
 import { ROLE_TYPES } from "@/shared/role-types";
 
 const NamedContact = z.object({
@@ -32,7 +33,7 @@ const SYSTEM = `You extract a single job posting from page text or a pasted desc
 
 Rules:
 - Only use facts present in the text. Never invent companies, titles, domains, or people.
-- companyDomain: public website hostname only (e.g. "stripe.com"), no protocol/path. Omit if unknown. Prefer the employer's domain over the job-board host (boards.greenhouse.io, jobs.lever.co, linkedin.com, etc.).
+- companyDomain: public website hostname only (e.g. "stripe.com"), no protocol/path. Extract when the posting shows a company site, careers subdomain, or work email domain. Prefer the employer's domain over job-board hosts (boards.greenhouse.io, jobs.lever.co, linkedin.com, etc.). Omit only if truly absent — do not guess a slug.
 - description: clean plain-text job description, keep requirements and team context; drop nav/cookie chrome.
 - roleType: only when the title/description makes it obvious — FS/FE/BE/FDE/MOBILE/DATA/AIML/INFRA/SEC/QA/EMB/XR/GAME/PM/DESIGN.
 - namedContacts: people explicitly named as hiring contacts, recruiters, or "reach out to X" in the posting. Empty array if none. Never invent names.
@@ -63,7 +64,7 @@ export async function parseJobFromText(args: {
     ...data,
     title: data.title.trim(),
     companyName: data.companyName.trim(),
-    companyDomain: cleanDomain(data.companyDomain),
+    companyDomain: cleanEmployerDomain(data.companyDomain),
     description: data.description.trim(),
     namedContacts: data.namedContacts
       .map((c) => ({
@@ -73,20 +74,4 @@ export async function parseJobFromText(args: {
       }))
       .filter((c) => c.name.length > 1),
   };
-}
-
-function cleanDomain(raw: string | null): string | null {
-  if (!raw?.trim()) return null;
-  let d = raw.trim().toLowerCase();
-  d = d.replace(/^https?:\/\//, "").replace(/^www\./, "").split("/")[0] ?? d;
-  if (!d.includes(".") || d.includes(" ")) return null;
-  // Job-board hosts are not employer domains.
-  if (
-    /(greenhouse\.io|lever\.co|ashbyhq\.com|myworkdayjobs\.com|linkedin\.com|indeed\.com|glassdoor\.com|jobs\.|boards\.)/i.test(
-      d,
-    )
-  ) {
-    return null;
-  }
-  return d;
 }

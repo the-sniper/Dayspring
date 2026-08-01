@@ -53,6 +53,21 @@ export async function assembleDigest(run?: RunInfo): Promise<{ subject: string; 
     lines.push("");
   }
 
+  // Agent-orchestra daily report (docs/agent-orchestra-final-plan.md). Best
+  // effort: a missing report (orchestra disabled / not yet run) adds nothing.
+  try {
+    const orch = await convex().query(api.orchestra.latestReport, {
+      runDate: today(),
+    });
+    if (orch) {
+      lines.push("COMPANY REPORT (agent orchestra)");
+      lines.push(orch.body);
+      lines.push("");
+    }
+  } catch {
+    // table not deployed yet — digest stays orchestra-free
+  }
+
   lines.push(`NEEDS A DECISION (${decisions} items, ~10 minutes)`);
   lines.push("");
 

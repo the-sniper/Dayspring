@@ -92,6 +92,25 @@ async function main() {
     console.log(`replies: ${replies.found} of ${replies.checked} threads`);
   }
 
+  // 3.5 Agent orchestra — Atlas plans, Radar researches, Sentinel verifies.
+  // Idempotent per day; Ledger-capped; failures are reported, never fatal.
+  // Disable with ORCHESTRA_ENABLED=0.
+  if (process.env.ORCHESTRA_ENABLED !== "0" && (await hasApiKey())) {
+    try {
+      const { runOrchestra } = await import("../lib/orchestra/run");
+      const orch = await runOrchestra();
+      console.log(
+        `orchestra: ${orch.ran ? "ran" : "already ran"} — ` +
+          `verified=${orch.stats.verified} escalated=${orch.stats.escalated} ` +
+          `cost=$${orch.stats.costUsd.toFixed(2)}`,
+      );
+    } catch (err) {
+      errors.push(
+        `orchestra: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
   // 4. Digest
   const digest = await assembleDigest({ added, scored, repliesFound, errors });
   await setSetting("lastDailyRun", new Date().toISOString());

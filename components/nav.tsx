@@ -8,6 +8,7 @@ import { api } from "@/convex/_generated/api";
 import { motion } from "framer-motion";
 import {
   LayoutDashboard,
+  Bot,
   Rss,
   KanbanSquare,
   Send,
@@ -29,7 +30,10 @@ type NavLink = { href: string; label: string; icon: typeof LayoutDashboard };
 const groups: { label: string; links: NavLink[] }[] = [
   {
     label: "Overview",
-    links: [{ href: "/", label: "Dashboard", icon: LayoutDashboard }],
+    links: [
+      { href: "/", label: "Dashboard", icon: LayoutDashboard },
+      { href: "/company", label: "Company", icon: Bot },
+    ],
   },
   {
     label: "Discover",

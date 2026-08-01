@@ -357,4 +357,109 @@ export default defineSchema({
     value: v.string(),
     updatedAt: v.string(),
   }).index("by_user_key", ["userId", "key"]),
+
+  // ---- Agent orchestra (docs/agent-orchestra-final-plan.md) ----------------
+  // The task board: one row per delegation. The contract fields (objective,
+  // definitionOfDone, boundaries, budgets) are written BEFORE work starts and
+  // never edited after — accountability requires the brief to be immutable.
+  // status: queued | in_progress | blocked | delivered | verified | rejected |
+  // escalated | failed. Agents cannot self-certify: only a Sentinel verdict
+  // flips a task to `verified` (see convex/orchestra.ts).
+  orchTasks: defineTable({
+    userId: v.optional(v.id("users")),
+    runDate: v.string(), // YYYY-MM-DD — the daily run this task belongs to
+    role: v.string(), // atlas | radar | sentinel
+    objective: v.string(),
+    definitionOfDone: v.array(v.string()),
+    boundaries: v.array(v.string()),
+    budgets: v.object({
+      maxOutputTokens: v.number(),
+      maxToolCalls: v.number(),
+      maxUsd: v.number(),
+    }),
+    status: v.string(),
+    statusReason: v.optional(v.string()),
+    attempts: v.number(),
+    artifactId: v.optional(v.id("orchArtifacts")),
+    verdict: v.optional(v.string()), // confirmed | needs_work | refuted
+    verificationNotes: v.optional(v.string()),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_runDate", ["userId", "runDate"])
+    .index("by_user_status", ["userId", "status"]),
+
+  // Typed handoffs. Every artifact carries the honest-status envelope
+  // (complete | partial | blocked | low_confidence) plus the evidence that
+  // justifies it. Citations travel intact — never summarized away.
+  orchArtifacts: defineTable({
+    userId: v.optional(v.id("users")),
+    taskId: v.id("orchTasks"),
+    runDate: v.string(),
+    role: v.string(),
+    kind: v.string(), // plan | brief | verdict | report
+    honestStatus: v.string(),
+    summary: v.string(),
+    body: v.string(), // markdown payload
+    citations: v.array(v.object({ title: v.string(), url: v.string() })),
+    missing: v.optional(v.array(v.string())),
+    uncertainties: v.optional(v.array(v.string())),
+    model: v.string(),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    costUsd: v.number(),
+    createdAt: v.string(),
+  })
+    .index("by_task", ["taskId"])
+    .index("by_user_runDate", ["userId", "runDate"]),
+
+  // One row per daily run — what Atlas reports to the human. Feeds the
+  // morning digest and the /company page later.
+  orchReports: defineTable({
+    userId: v.optional(v.id("users")),
+    runDate: v.string(),
+    body: v.string(),
+    stats: v.object({
+      tasksTotal: v.number(),
+      verified: v.number(),
+      rejected: v.number(),
+      blocked: v.number(),
+      escalated: v.number(),
+      costUsd: v.number(),
+    }),
+    createdAt: v.string(),
+  }).index("by_user_runDate", ["userId", "runDate"]),
+
+  // The company's failure memory: hallucinations caught, unsourced claims,
+  // budget breaches. Every charter edit should trace back to a row here
+  // (fail-once-fix-forever).
+  orchIncidents: defineTable({
+    userId: v.optional(v.id("users")),
+    runDate: v.string(),
+    taskId: v.optional(v.id("orchTasks")),
+    role: v.string(),
+    kind: v.string(), // unsourced_claim | hallucination | budget_breach | runaway | parse_failure | other
+    severity: v.string(), // low | medium | high
+    detail: v.string(),
+    createdAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_runDate", ["userId", "runDate"]),
+
+  // Spend ledger — one row per model call. Hard daily caps are enforced in
+  // lib/orchestra/ledger.ts by summing today's rows BEFORE each call.
+  orchLedger: defineTable({
+    userId: v.optional(v.id("users")),
+    runDate: v.string(),
+    role: v.string(),
+    taskId: v.optional(v.id("orchTasks")),
+    model: v.string(),
+    tokensIn: v.number(),
+    tokensOut: v.number(),
+    cacheReadTokens: v.number(),
+    cacheWriteTokens: v.number(),
+    costUsd: v.number(),
+    createdAt: v.string(),
+  }).index("by_user_runDate", ["userId", "runDate"]),
 });

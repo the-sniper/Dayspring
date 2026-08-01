@@ -23,6 +23,7 @@ import type * as lib from "../lib.js";
 import type * as linkedinPosts from "../linkedinPosts.js";
 import type * as maintenance from "../maintenance.js";
 import type * as onboarding from "../onboarding.js";
+import type * as orchestra from "../orchestra.js";
 import type * as outreach from "../outreach.js";
 import type * as profiles from "../profiles.js";
 import type * as pull from "../pull.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   linkedinPosts: typeof linkedinPosts;
   maintenance: typeof maintenance;
   onboarding: typeof onboarding;
+  orchestra: typeof orchestra;
   outreach: typeof outreach;
   profiles: typeof profiles;
   pull: typeof pull;

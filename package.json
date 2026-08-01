@@ -17,6 +17,8 @@
     "backfill": "tsx scripts/backfill-jobs.ts",
     "gmail:auth": "tsx scripts/gmail-auth.ts",
     "daily": "tsx scripts/daily.ts",
+    "orchestra": "tsx scripts/orchestra.ts",
+    "orchestra:eval": "tsx scripts/orchestra-eval.ts",
     "apply": "tsx scripts/apply.ts",
     "cron:install": "sh scripts/cron-install.sh",
     "cron:uninstall": "sh scripts/cron-uninstall.sh"

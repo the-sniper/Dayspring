@@ -1,39 +1,45 @@
 # Project Knowledge Dump
 
-Evidence-only extraction from local codebases (2026-08-02). Claims are sourced from files, configs, or git history. Unverifiable items are marked `UNKNOWN — ask Areef`. Code was read before READMEs; mismatches are noted.
+Evidence-only extraction from local codebases. Claims are sourced from files, configs, or git history. Unverifiable items are marked `UNKNOWN — ask Areef`. Code was read before READMEs; mismatches are noted.
 
-**Repos scanned:** `Code/Dayspring`, `Code/Klyro`, `Code/hound`, `Code/grit`, `Code/portfolio`, `Code/career-ops`, `Code/job-scraper`, `Code/Old/{ecomedai,fact-checker,forecast_my_park,gesturepro}`, `Code/NoteOrg/echo_test` (AirLog), `Code/NoteOrg/Collidascope/airlog-base`, `Code/ESM Tool/{Backend,Client}`, `Misc/Django/poolside` (Conduit). Prior dumps under `Old/` and project folders were re-verified, not blindly copied.
+**Last full scan:** 2026-08-02 (initial). **Re-run:** 2026-08-02 after Dayspring commit `fa415bd` (LaTeX/Connect/MCP apply). Sibling repos unchanged since initial scan — only Dayspring section refreshed.
+
+**Repos scanned:** `Code/Dayspring`, `Code/Klyro`, `Code/hound`, `Code/grit`, `Code/portfolio`, `Code/career-ops`, `Code/job-scraper`, `Code/Old/{ecomedai,fact-checker,forecast_my_park,gesturepro}`, `Code/NoteOrg/echo_test` (AirLog), `Code/NoteOrg/Collidascope/airlog-base`, `Code/ESM Tool/{Backend,Client}`, `Misc/Django/poolside` (Conduit).
 
 ---
 
 ## Project: Dayspring
 
-- **One-line pitch:** Personal job-search command center that unifies ATS/LinkedIn intake, match scoring, resume tailoring, warm/cold outreach, attended apply automation, and a multi-agent “company” orchestra—automate prep, keep a human on the trigger (`README.md`; `components/nav.tsx`).
-- **Status & dates:** Active solo build; first commit `2026-07-05`, latest committed `2026-08-01`; **50 commits**, sole author **Areef Syed**; package `0.1.0` private. Substantial uncommitted work may exist beyond HEAD (working tree at research time). README “Status” claims blueprint + pass-3 + pass-4 shipped — **reconcile:** README still documents SQLite/`npm run db:push`/`lib/db/schema.ts` while code/backend is Convex (`convex/schema.ts`; no `db:*` scripts in `package.json`).
-- **Links:** Repo `https://github.com/the-sniper/Dayspring.git`. Fly app name `dayspring-latex`, region `iad` (`services/latex/fly.toml`). Hosted deploy implied by `VERCEL` / `DAYSPRING_HOSTED` (`lib/hosted.ts`, `.env.example`). Live prod URL / visibility: `UNKNOWN — ask Areef`.
+- **One-line pitch:** Personal job-search command center that unifies ATS/LinkedIn intake, match scoring, resume tailoring (React-PDF + LaTeX), warm/cold outreach, attended apply automation, and a multi-agent “company” orchestra—automate prep, keep a human on the trigger (`README.md`; `components/nav.tsx`).
+- **Status & dates:** Active solo build; first commit `2026-07-05`, latest HEAD `2026-08-02` (`fa415bd`); **51 commits**, sole author **Areef Syed**; package `dayspring` `0.1.0` private. Working tree clean on `main` at re-run time. README “Status” claims blueprint + pass-3 + pass-4 (21 MCP tools) — **reconcile:** README still documents SQLite/`npm run db:push`/`lib/db/schema.ts` while code/backend is Convex (`convex/schema.ts`; no `db:*` scripts; no `better-sqlite3` in `package.json`; `lib/db` absent). README Status does **not** mention the LaTeX Fly/k8s sidecar.
+- **Links:** Repo `https://github.com/the-sniper/Dayspring.git`. Fly app name `dayspring-latex`, region `iad` (`services/latex/fly.toml`). Optional k8s + KEDA manifests (`services/latex/k8s/{deployment,keda,kind}.yaml`). Hosted deploy implied by `VERCEL` / `DAYSPRING_HOSTED` (`lib/hosted.ts`, `.env.example`). Live prod URL / whether latex sidecar is deployed: `UNKNOWN — ask Areef`.
+
+**Delta since prior dump (commit `fa415bd`, ~6.5k insertions / 62 files):** Prior dump described much of this from a dirty working tree; HEAD now **commits** that surface. Net new vs prior *committed* parent: LaTeX pipeline end-to-end (Protobuf + Buf + ConnectRPC client + Fly/k8s tectonic sidecar + UI + `resumeAssets` + `generatedResumes` latex fields), MCP apply HTTP bridge (`app/api/apply/agent`), apply stack (`answer-class`, `browser`, `email-apply`, session growth), MCP tools **14→21**, deps `@bufbuild/*` + `@connectrpc/*`, script `proto`, `.env.example` LaTeX/`DAYSPRING_AGENT_SECRET` blocks. Git: **50→51** commits; last date **2026-08-01→2026-08-02**. Corrected `defineTable` count to **24** (+ `authTables`), not 25. Orchestra unchanged: **12 active / 1 planned**.
 
 ### Purpose & problem
-Dayspring optimizes for *warmer* applications, not volume: pull roles from company ATS boards + LinkedIn hiring posts + Adzuna; score/tailor materials; research with citations; find cold (Apollo) and warm (Happenstance + LinkedIn Connections CSV) contacts; draft outreach with Gmail send/reply detection under a human-edit floor; assist applications in a headed browser without auto-submit; run a daily digest; and operate an agent orchestra with immutable task contracts and budget hard-stops (`README.md`; `convex/schema.ts`; `lib/orchestra/run.ts`).
+Dayspring optimizes for *warmer* applications, not volume: pull roles from company ATS boards + LinkedIn hiring posts + Adzuna; score/tailor materials (structured React-PDF path **and** LaTeX path with compiler-verified page count); research with citations; find cold (Apollo) and warm (Happenstance + LinkedIn Connections CSV) contacts; draft outreach with Gmail send/reply detection under a human-edit floor; assist applications in a headed browser without auto-submit; run a daily digest; and operate an agent orchestra with immutable task contracts and budget hard-stops (`README.md`; `convex/schema.ts`; `lib/orchestra/run.ts`; `lib/resumes/latex-core.ts`).
 
 ### Tech stack (be exhaustive and specific)
-- **Languages / runtime:** TypeScript `^5.8.3`; Node `>=20` (`.nvmrc` = `20`); JS in `services/latex/server.js`
+- **Languages / runtime:** TypeScript `^5.8.3`; Node `>=20` (`.nvmrc` = `20`); JS in `services/latex/server.js`; Protobuf IDL (`proto/dayspring/latex/v1/latex.proto`)
 - **App:** Next.js `^15.3.3` (Turbopack dev), React `^19.1.0`, Tailwind CSS v4 (`^4.1.8`), HeroUI v3, Framer Motion, Lucide, Zod `^4.4.3`, `clsx` / `tailwind-merge` / `tailwind-variants`
-- **Backend / data:** Convex `^1.42.1` + `@convex-dev/auth` `^0.0.94` + `@auth/core`; Convex File Storage for resume PDFs; migrated from earlier SQLite/Drizzle (git `05761ce`, `15259d8`)
+- **Backend / data:** Convex `^1.42.1` + `@convex-dev/auth` `^0.0.94` + `@auth/core`; Convex File Storage for resume PDFs; migrated from earlier SQLite/Drizzle (git history; README still stale)
 - **Auth:** Password + Google providers (`convex/auth.ts`); middleware via `@convex-dev/auth/nextjs` (`middleware.ts`)
-- **AI:** `@anthropic-ai/sdk` — defaults include `claude-sonnet-5`, `claude-haiku-4-5`, `claude-opus-4-8` (`lib/claude/client.ts`); orchestra tiers also reference `claude-opus-5` (`lib/orchestra/tiers.ts`); optional OpenAI path (`openai` SDK, `lib/ai/openai.ts`, `lib/ai/complete.ts`)
+- **AI:** `@anthropic-ai/sdk` — `MODEL_SCORE=claude-sonnet-5`, `MODEL_CHEAP=claude-haiku-4-5`, `MODEL_PREMIUM=claude-opus-4-8` (`lib/claude/client.ts`); orchestra tiers also reference `claude-opus-5`; optional OpenAI path (`openai` `^6.46.0`, `lib/ai/openai.ts`, `lib/ai/complete.ts`)
 - **Browser automation:** Playwright `^1.61.1` (devDependency; `serverExternalPackages` in `next.config.ts`)
-- **Documents:** `@react-pdf/renderer`, `react-pdf`, `pdfjs-dist`, `docx`; LaTeX via Claude + Fly tectonic sidecar or local TeX (`lib/resumes/latex.ts`, `services/latex/`)
-- **Integrations:** Greenhouse / Lever / Ashby / Workday ATS; Adzuna; Apify LinkedIn posts; Apollo; Happenstance; Gmail OAuth REST; MCP (`@modelcontextprotocol/sdk`, `scripts/mcp-server.ts`)
-- **Security:** AES-256-GCM vault (`lib/vault/crypto.ts`); `CRON_SECRET` / `DAYSPRING_AGENT_SECRET`
-- **Infra:** Convex crons (`convex/crons.ts`); Vercel cron routes (`app/api/cron/*`); Fly.io LaTeX (`services/latex/fly.toml` — 512MB, scale-to-zero); local launchd (`scripts/cron-install.sh`). No `.github/workflows` found.
+- **Documents:** `@react-pdf/renderer`, `react-pdf`, `pdfjs-dist`, `docx`; **LaTeX** via Claude rewrite + compile sidecar or local TeX (`lib/claude/latex-resume.ts`, `lib/resumes/latex*.ts`, `services/latex/`)
+- **RPC / IDL:** Protobuf + Buf (`buf.yaml`, `buf.gen.yaml`, `npm run proto`); `@bufbuild/protobuf` `2.13.0`, `@connectrpc/connect` / `@connectrpc/connect-node` `2.1.2`; `@bufbuild/buf` / `@bufbuild/protoc-gen-es` (dev); generated stubs under `shared/gen/`
+- **Integrations:** Greenhouse / Lever / Ashby / Workday ATS; Adzuna; Apify LinkedIn posts; Apollo; Happenstance; Gmail OAuth REST; MCP (`@modelcontextprotocol/sdk` `^1.29.0`, `scripts/mcp-server.ts`, `.mcp.json`)
+- **Security:** AES-256-GCM vault (`lib/vault/crypto.ts`); `CRON_SECRET` / `DAYSPRING_AGENT_SECRET` / `DAYSPRING_LATEX_SERVICE_SECRET` (+ service `LATEX_SERVICE_SECRET`)
+- **Infra:** Convex crons (`convex/crons.ts`); Vercel cron routes (`app/api/cron/*`); Fly.io LaTeX (`services/latex/fly.toml` — 512MB, 1 shared CPU, `min_machines_running=0`); **Kubernetes + KEDA** manifests as alternate scale-to-zero target (`services/latex/k8s/*`); local launchd (`scripts/cron-install.sh`). No `.github/workflows` found.
 
 ### Architecture
-- UI (`app/*`, `components/*`) → Server Actions (`lib/actions/*`) → Next-free cores (`lib/jobs`, `lib/apply`, `lib/outreach`, `lib/orchestra`, …) → Convex + external APIs. CLI/MCP/cron reuse the same cores.
-- Multi-user tenancy via `userId` on app tables; public exceptions for `/signin`, `/api/auth`, `/api/cron`, `/api/apply/agent` (`middleware.ts`).
-- Job intake hub-and-spoke: `pullAllJobs` concurrency 10, chunked Convex upserts, max 500 new jobs/pull; LinkedIn posts max 300/pull; JD text in side-table `jobDescriptions` for Convex read limits (`lib/jobs/pull.ts`, `convex/schema.ts`).
-- Apply: Playwright session singleton (`lib/apply/session.ts` ~720 LOC); human-gated submit; MCP fill cannot submit; email-apply is the only full machine path (`lib/apply/email-apply.ts`) with `HUMAN_EDIT_FLOOR_PCT = 60`.
+- UI (`app/*`, `components/*`) → Server Actions (`lib/actions/*`) → Next-free cores (`lib/jobs`, `lib/apply`, `lib/outreach`, `lib/orchestra`, `lib/resumes`, …) → Convex + external APIs. CLI/MCP/cron reuse the same cores.
+- Multi-user tenancy via `userId` on app tables; public exceptions for `/signin`, `/api/auth`, `/api/cron`, `/api/apply/agent` (`middleware.ts`) — agent route is cookie-public but Bearer-secret-gated.
+- Job intake hub-and-spoke: ATS concurrency 10, chunked Convex upserts, max 500 new jobs/pull; LinkedIn max 300 posts/pull; JD text in side-table `jobDescriptions` (`lib/jobs/pull.ts`, `lib/linkedin/pull.ts`, `convex/schema.ts`).
+- **LaTeX path:** Settings stores `latex_template` + `knowledge_base` in `resumeAssets` → job page triggers generate → Claude rewrites `.tex` → `compileLatex` (remote Connect/gRPC/gRPC-Web or local tectonic/pdflatex/xelatex/lualatex) → real `pages` → optional one repair pass → store in `generatedResumes` with `format: "latex"` (`lib/resumes/latex-core.ts`, `lib/resumes/latex-client.ts`, `services/latex/server.js`).
+- Apply: Playwright session singleton (`lib/apply/session.ts` ~720 LOC); human-gated submit; MCP fill via `/api/apply/agent` cannot submit; email-apply is the only full machine path (`lib/apply/email-apply.ts`) with `HUMAN_EDIT_FLOOR_PCT = 60`.
 - Orchestra: registry → daily `runOrchestra` (~997 LOC); Ledger hard-cap default **$5/day**; immutable `orchTasks` contracts.
-- Deploy split: Convex holds data/public ATS pull; sealed API keys only unsealable in Next → hosted LinkedIn/orchestra via secret-gated API routes.
+- Deploy split: Convex holds data/public ATS pull; sealed API keys only unsealable in Next → hosted LinkedIn/orchestra via secret-gated API routes; LaTeX compile offloaded to Fly/k8s sidecar so hosted users need no TeX.
 
 ### What was actually built (feature inventory)
 - Auth (email/password + Google) + onboarding gate — `convex/auth.ts`, `app/onboarding/page.tsx`, `components/onboarding-gate.tsx`
@@ -46,29 +52,31 @@ Dayspring optimizes for *warmer* applications, not volume: pull roles from compa
 - US-location affirmative filter — `shared/us-location.ts`
 - Import CSV + Claude paste-parse + LinkedIn Connections CSV — `lib/imports/*`, `app/import/page.tsx`
 - Match scoring + profile studio + application defaults — `lib/jobs/score.ts`, `app/profile/page.tsx`
-- Master/generated resumes; React-PDF + DOCX + LaTeX Fly sidecar — `lib/resumes/*`, `services/latex/*`, `components/latex-resume-section.tsx`
+- Master/generated resumes; React-PDF + DOCX path — `lib/resumes/*`, `app/api/resumes/[id]/route.ts`, `app/api/docx/route.ts`
+- **LaTeX resume path:** template + knowledge base assets, Claude tailor + length repair, Connect compile client, Fly/k8s tectonic sidecar, Settings + job UI — `convex/resumeAssets.ts`, `lib/resumes/latex.ts` / `latex-core.ts` / `latex-client.ts`, `lib/claude/latex-resume.ts`, `lib/actions/latex-resume.ts`, `components/resume-sources-panel.tsx`, `components/latex-resume-section.tsx`, `services/latex/*`, `proto/dayspring/latex/v1/latex.proto`
 - Research briefs (cited) — `lib/research/core.ts`, `researchBriefs` table
 - Apollo cold contacts + Happenstance warm network — `app/network/page.tsx`, `lib/integrations/{apollo,happenstance}/*`
 - Outreach queue / 3-touch cadence / reply detection / human-edit floor — `lib/outreach/*`, `shared/outreach-rules.ts`
 - Gmail send + OTP reader — `lib/integrations/gmail/*`, `lib/gmail/otp.ts`
 - Credential vault + site accounts UI — `lib/vault/*`, `components/vault-panel.tsx`
-- Attended apply-assist (Playwright) + answer bank (13 meaning classes) — `lib/apply/*`, `applyAnswers` table, `lib/apply/answer-class.ts`
+- Attended apply-assist (Playwright) + answer bank (**13** meaning classes) — `lib/apply/*`, `applyAnswers` table, `lib/apply/answer-class.ts`
 - Email-apply lane — `lib/apply/email-apply.ts`
-- MCP server (**21** tools) — `scripts/mcp-server.ts`, `.mcp.json`
+- MCP server (**21** tools) + apply agent HTTP bridge — `scripts/mcp-server.ts`, `app/api/apply/agent/route.ts`, `.mcp.json`
 - Daily run + digest + launchd — `scripts/daily.ts`, `lib/digest.ts`
-- Agent orchestra + company pages + content approval + spend ledger — `lib/orchestra/*`, `app/company/*`, `orch*` tables
+- Agent orchestra + company pages + content approval + spend ledger — `lib/orchestra/*`, `app/company/*`, `orch*` tables; spend reset hint UI — `components/spend-reset-hint.tsx`
 - Reach workspace — `app/reach/page.tsx`, `lib/reach/*`
 - Role taxonomy (**15** types) — `shared/role-types.ts`
 - 15-day job retention hard-cap — `shared/job-retention.ts`, `convex/crons.ts`
+- Sanity check scripts — `scripts/check-apply-logic.ts`, `check-latex-resume.ts`, `check-us-location.ts`, `triage-us.ts`
 
 ### Quantifiable facts (for XYZ-format resume bullets)
 | Fact | Value | Source |
 |------|-------|--------|
-| Commits / author | 50 / Areef Syed only | `git` |
-| Date span (committed) | 2026-07-05 → 2026-08-01 | `git log` |
-| App TS/JS LOC (excl. `_generated`) | **47,514** | walk: app 4803, components 16858, lib 18215, convex 4912, scripts 1643, shared 902, services 181 |
+| Commits / author | **51** / Areef Syed only | `git` |
+| Date span (committed) | 2026-07-05 → **2026-08-02** | `git log` |
+| App TS/JS LOC (excl. `_generated`) | **47,731** | walk: app 4803, components 16858, lib 18270, convex 4912, scripts 1643, shared 1068 (incl. gen), services 177 |
 | `page.tsx` / `route.ts` | 21 / 11 | `find app` |
-| Convex `defineTable` app entities | 25 (+ `authTables`) | `convex/schema.ts` |
+| Convex `defineTable` app entities | **24** (+ `authTables`) | `convex/schema.ts` |
 | MCP tools | 21 | `registerTool` count in `scripts/mcp-server.ts` |
 | Catalog companies | 136 (71 GH / 56 Ashby / 9 Lever) | `shared/company-catalog.json` |
 | Role types / answer classes | 15 / 13 | `shared/role-types.ts`, `lib/apply/answer-class.ts` |
@@ -79,36 +87,44 @@ Dayspring optimizes for *warmer* applications, not volume: pull roles from compa
 | Retention | 15 days | `shared/job-retention.ts` |
 | Largest modules | `lib/orchestra/run.ts` ~997 LOC; `lib/apply/session.ts` ~720 LOC | `wc -l` |
 | Automated tests / GH Actions | 0 / 0 | find |
-| Fly LaTeX VM | 512mb, 1 shared CPU, `min_machines_running=0` | `services/latex/fly.toml` |
+| Fly LaTeX VM | 512mb, 1 shared CPU, `min_machines_running=0`, health `/health` | `services/latex/fly.toml` |
+| LaTeX service interface | `LatexService.Compile` + `Health`; Connect (default) / gRPC / gRPC-Web | `latex.proto`, `services/latex/README.md` |
+| k8s latex manifests | deployment + KEDA + kind | `services/latex/k8s/` |
+| `fa415bd` diff size | +6475 / −269 across 62 files | `git show --stat` |
 
 ### Engineering challenges & solutions
 1. **Convex write/read limits** — chunked/paced upserts + retries; JD side-table (`lib/jobs/pull.ts`, `convex/schema.ts`).
 2. **React ATS forms discarding fill** — `fillSticky` verify-after-blur + keystroke fallback; iframe `formScope` (`lib/apply/ats-forms.ts`).
 3. **Workday session walls** — persistent Chrome profile / CDP attach (`lib/apply/browser.ts`).
-4. **No candidate-side ATS submit API** — human-gated browser submit; separate email-apply (`lib/apply/email-apply.ts`).
+4. **No candidate-side ATS submit API** — human-gated browser submit; separate email-apply (`lib/apply/email-apply.ts`); MCP agent route deliberately omits submit (`app/api/apply/agent/route.ts`).
 5. **Answer replay hazard** — meaning-class matching + `reusable: false` for employer-specific essays (`lib/apply/answer-class.ts`).
-6. **Vault vs Convex crons** — sealed keys only in Next → secret-gated cron/agent routes (`app/api/cron/*`).
-7. **LaTeX without local TeX** — Fly tectonic sidecar + package-cache Dockerfile (`services/latex/`).
-8. **Agent accountability** — immutable task contracts; Ledger hard-stop; Sentinel verify path (`lib/orchestra/*`).
-9. **SQLite → Convex migration** — git `15259d8` / `907f5cd`; README lagging.
+6. **Vault vs Convex crons** — sealed keys only in Next → secret-gated cron/agent routes (`app/api/cron/*`, `app/api/apply/agent/route.ts`).
+7. **LaTeX page-length without local TeX / no good npm compiler** — Fly tectonic sidecar with package-cache warmup Dockerfile; Connect over HTTP/1.1 for Vercel; dual listeners because Node h2c cannot also serve HTTP/1.1 (`services/latex/`, `lib/resumes/latex-client.ts`).
+8. **Model cannot measure page count** — compile → real `pages` → one repair pass only (`lib/resumes/latex-core.ts`).
+9. **k8s scale-to-zero** — KEDA manifests as alternate to Fly’s free scale-to-zero (`services/latex/k8s/keda.yaml` comments).
+10. **Agent accountability** — immutable task contracts; Ledger hard-stop; Sentinel verify path (`lib/orchestra/*`).
+11. **SQLite → Convex migration** — code/deps are Convex; README still documents SQLite (`README.md`).
 
 ### Testing, CI/CD & quality
 - No `.github/workflows`; no `*.test.*` / Jest / Vitest.
-- Sanity check scripts (not in `package.json`): `scripts/check-apply-logic.ts`, `check-latex-resume.ts`, `check-us-location.ts`.
+- Sanity check scripts (not wired into `package.json`): `scripts/check-apply-logic.ts`, `check-latex-resume.ts`, `check-us-location.ts`.
 - Orchestra “Probe” role claims typecheck/tests as Layer 0 (`lib/orchestra/registry.ts`) — repo-level CI effectively absent.
-- Deploy scripts: `convex:deploy`, Fly latex, launchd cron, hosted Vercel cron routes.
+- Deploy scripts: `convex:deploy`, Fly latex (`services/latex/README.md`), `npm run proto`, launchd cron, hosted Vercel cron routes; optional k8s/KEDA/kind.
+
+**`package.json` scripts:** `dev`, `build`, `start`, `convex:dev`, `convex:deploy`, `seed`, `seed:catalog`, `pull-jobs`, `backfill`, `gmail:auth`, `daily`, `orchestra`, `eng`, `eng:review`, `retro`, `orchestra:eval`, `apply`, `cron:install`, `cron:uninstall`, **`proto`**.
+
+**`.env.example` LaTeX/apply vars:** `DAYSPRING_LATEX_SERVICE_URL`, `DAYSPRING_LATEX_SERVICE_SECRET`, optional `DAYSPRING_LATEX_PROTOCOL` / `DAYSPRING_LATEX_GRPC_URL` / `DAYSPRING_TEX_ENGINE`; browser `DAYSPRING_BROWSER_PROFILE` / `DAYSPRING_CDP_URL`; MCP apply `DAYSPRING_AGENT_SECRET`, optional `DAYSPRING_APP_URL`.
 
 ### Gaps / questions for Areef
 1. Live prod URL / public vs private GitHub?
-2. Is `dayspring-latex` actually deployed and wired in prod?
-3. Any real second users beyond operator cron?
-4. Quantified outcomes (jobs pulled/scored/applied, reply rates, $ spend, interviews)?
-5. Claim “migrated SQLite→Convex” as shipped milestone? (code yes; docs stale)
-6. Orchestra / LaTeX / apply: daily-driver vs WIP?
-7. Confirm scoring daily-cap / cost-per-job figures before resume use (`README.md` vs code).
-8. Relationship to `job-scraper` auto-apply — which is canonical?
-
----
+2. Is `dayspring-latex` actually deployed and wired in prod (`DAYSPRING_LATEX_SERVICE_URL` set)?
+3. Has the k8s/KEDA path been exercised, or Fly-only so far?
+4. Any real second users beyond operator cron?
+5. Quantified outcomes (jobs pulled/scored/applied, reply rates, $ spend, interviews, LaTeX one-page hit rate)?
+6. Claim “migrated SQLite→Convex” as shipped milestone? (code yes; README still SQLite)
+7. Orchestra / LaTeX / apply: daily-driver vs WIP?
+8. Confirm scoring daily-cap / cost-per-job figures before resume use (`README.md` vs code).
+9. Relationship to `job-scraper` auto-apply — which is canonical?
 
 ## Project: AirLog
 
@@ -834,25 +850,25 @@ Evidence seen across the scanned repos (not employer-only claims):
 
 **Frontend:** React 18/19, Next.js 14/15 (App Router, Turbopack, standalone), Tailwind CSS 3/4, HeroUI v3, MUI 5/6 (+ X Data Grid/Charts), Radix/shadcn, Framer Motion, GSAP, Three.js + R3F/drei, Recharts, Leaflet, mapbox-gl/maplibre-gl/cobe, Formik/Yup, PWA (next-pwa, custom SW), CRA (ESM Tool), Chart.js (Conduit), `@dnd-kit`, react-webcam, react-pdf / `@react-pdf/renderer`, docx
 
-**Backend & distributed:** Node.js, Next.js API routes / Server Actions / BFF, Convex (+ Convex Auth, crons, file storage), FastAPI, Flask, Django 5, Celery 5, Spring Boot 2.7 / Spring Data JPA / Spring WebFlux, REST, WebSocket (`ws`, binary CDP frames), SSE, JWT (jose, python-jose, jjwt), NextAuth v4/v5, Clerk, OAuth (Google, GitHub, Gmail), MCP (Model Context Protocol), Playwright automation, Redis 7 (Celery), nginx rate limiting
+**Backend & distributed:** Node.js, Next.js API routes / Server Actions / BFF, Convex (+ Convex Auth, crons, file storage), FastAPI, Flask, Django 5, Celery 5, Spring Boot 2.7 / Spring Data JPA / Spring WebFlux, REST, WebSocket (`ws`, binary CDP frames), SSE, JWT (jose, python-jose, jjwt), NextAuth v4/v5, Clerk, OAuth (Google, GitHub, Gmail), MCP (Model Context Protocol), Playwright automation, Redis 7 (Celery), nginx rate limiting, **Protobuf + Buf + ConnectRPC** (Dayspring LaTeX sidecar; Connect / gRPC / gRPC-Web)
 
 **Databases & storage:** PostgreSQL (16; Prisma; SQLAlchemy; Django ORM; Supabase), MySQL (ESM), Supabase (Postgres/Storage/Realtime), **pgvector**, FAISS, Turso/libSQL, IndexedDB, MinIO / S3-compatible (`@aws-sdk/client-s3`), Convex storage, joblib artifacts, Redis
 
 **AI/ML:** OpenAI (`gpt-4o-mini`, `text-embedding-3-small`, newer model id strings in Dayspring/portfolio configs), Anthropic Claude (Sonnet/Haiku/Opus family ids in Dayspring/Hound/portfolio), Google Gemini 2.0 Flash, LangChain, RAG (chunking, embeddings, re-rank, grounding, citations), tool/function calling, agent suites (Hound; Dayspring orchestra), Vercel AI SDK, Ultralytics YOLOv8, PyTorch/torchvision ResNet50, Facebook Prophet, faster-whisper (self-hosted ASR), MediaPipe (offline track), spaCy/NLTK, sentence-transformers/CrossEncoders, RoBERTa NLI, HuggingFace embeddings (`all-MiniLM-L6-v2`), OpenFactCheck solver registry, Calendly tool loop
 
-**Cloud & DevOps:** Vercel (+ cron), Fly.io (Whisper, LaTeX), AWS (ECR/ECS deploy scripts; S3 SDK), GCP (Artifact Registry + Cloud Run Actions), Hugging Face Spaces (+ keep-warm cron), Docker & Docker Compose (multi-service stacks), Ansible, Vector (log pipeline), GitHub Actions (selective repos), esbuild, npm packaging (`@klyro/widget`, `@hound-ai/cli`), launchd cron
+**Cloud & DevOps:** Vercel (+ cron), Fly.io (Whisper, LaTeX), AWS (ECR/ECS deploy scripts; S3 SDK), GCP (Artifact Registry + Cloud Run Actions), Hugging Face Spaces (+ keep-warm cron), Docker & Docker Compose (multi-service stacks), **Kubernetes + KEDA manifests** (Dayspring LaTeX alternate target; Fly remains documented default), Ansible, Vector (log pipeline), GitHub Actions (selective repos), esbuild, npm packaging (`@klyro/widget`, `@hound-ai/cli`), launchd cron, Buf codegen
 
 **Testing & quality:** Vitest (Klyro 26 tests; portfolio analytics 4), pytest (Conduit 6), Playwright (product + tooling), axe-core, pixelmatch, fault-injection stub (Conduit), ESLint / `next lint`, TypeScript, structured JSON logging; **most personal repos have no automated test suite**
 
 **Integrations seen:** Greenhouse, Lever, Ashby, Workday, Adzuna, Apify, Apollo, Happenstance, Gmail, GitHub, Serper, Calendly, Auth0/JWT (ESM), F5 BIG-IP iControl REST (target + stub)
 
-**Notable absences in scanned repos (don't claim without other evidence):** Kubernetes manifests, Terraform, Django REST Framework, MongoDB, ELK. Power BI / Tableau / Snowflake / NPS API appear in resume/LinkedIn narratives but are **not evidenced** in the corresponding project trees (AirLog / Forecast My Park) — treat as `UNKNOWN — ask Areef`.
+**Notable absences / caution:** Terraform, Django REST Framework, MongoDB, ELK not found. Kubernetes **is** now evidenced as manifests under `Dayspring/services/latex/k8s/` (with KEDA) — do **not** claim production k8s ops unless Areef confirms a live cluster; Fly is the documented default. Power BI / Tableau / Snowflake / NPS API appear in resume/LinkedIn narratives but are **not evidenced** in the corresponding project trees (AirLog / Forecast My Park) — treat as `UNKNOWN — ask Areef`.
 
 ---
 
 ## Consolidated gaps for Areef (high priority)
 
-1. **Dayspring** — live URL, usage outcomes, deploy status of latex Fly app, resume-ready metrics.
+1. **Dayspring** — live URL, usage outcomes, deploy status of latex Fly app (and whether k8s/KEDA was ever exercised), LaTeX one-page hit rate, resume-ready metrics.
 2. **AirLog** — canonical domain (`airlog.live` vs `airlog-pro.vercel.app`); commercial license naming rights; Power BI claim source.
 3. **Klyro** — `klyro.com` DNS; third-party adoption counts; npm download verification; widget byte size.
 4. **Hound** — deploy/publish status; honesty framing for 2-day build burst.

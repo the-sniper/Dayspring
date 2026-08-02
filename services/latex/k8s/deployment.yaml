@@ -70,15 +70,16 @@ spec:
             allowPrivilegeEscalation: false
             capabilities: { drop: ["ALL"] }
           volumeMounts:
-            # tectonic writes its package cache and scratch files; the root
-            # filesystem is read-only so those need explicit homes.
+            # Scratch space for each compile (the .tex, .aux, .log, .pdf).
             - { name: tmp, mountPath: /tmp }
-            - { name: cache, mountPath: /home/node/.cache }
+            # NOTE: deliberately NO volume over the tectonic cache. The image
+            # bakes the TeX bundle into /opt/tex-cache (XDG_CACHE_HOME), and
+            # mounting an emptyDir there would hide it behind an empty
+            # directory — turning a pre-warmed image back into one that
+            # re-downloads the bundle on every pod start.
       volumes:
         - name: tmp
           emptyDir: { sizeLimit: 512Mi }
-        - name: cache
-          emptyDir: { sizeLimit: 1Gi }
 ---
 apiVersion: v1
 kind: Service

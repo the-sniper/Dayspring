@@ -25,6 +25,8 @@ import os from "node:os";
 import path from "node:path";
 import { connectNodeAdapter } from "@connectrpc/connect-node";
 import { Code, ConnectError } from "@connectrpc/connect";
+// Same relative path in a checkout (services/latex → shared/gen) and in the
+// container (/app → /shared/gen), so there is no build-only rewriting.
 import { LatexService } from "../../shared/gen/dayspring/latex/v1/latex_pb.js";
 
 const PORT = Number(process.env.PORT || 8080);
@@ -169,9 +171,31 @@ function h1Handler(req, res) {
   connect(req, res);
 }
 
-createH1(h1Handler).listen(PORT, () => {
-  console.log(`latex sidecar: http/1.1 (connect, grpc-web, json) on :${PORT}`);
-});
-createH2c(connect).listen(GRPC_PORT, () => {
-  console.log(`latex sidecar: h2c (grpc) on :${GRPC_PORT}`);
+// 0.0.0.0, not "::". A container with IPv6 disabled rejects "::" outright with
+// EAFNOSUPPORT, and the only symptom a platform shows for that is "timeout
+// reached waiting for health checks" — a long hunt for a one-line cause.
+// 0.0.0.0 binds everywhere that matters and is what Fly's proxy expects.
+// Override with HOST=:: if you specifically need IPv6-only.
+const HOST = process.env.HOST || "0.0.0.0";
+
+function listen(server, port, label) {
+  // Without this, a bind failure emits an unhandled 'error' event, which kills
+  // the process with a bare stack trace. On a platform that reports crashes as
+  // "health checks failed", that turns a one-line cause into a hunt.
+  server.on("error", (err) => {
+    console.error(`latex sidecar: ${label} failed to bind :${port} — ${err.message}`);
+    process.exit(1);
+  });
+  server.listen(port, HOST, () => {
+    console.log(`latex sidecar: ${label} listening on ${HOST}:${port}`);
+  });
+}
+
+listen(createH1(h1Handler), PORT, "http/1.1 (connect, grpc-web, json, /health)");
+listen(createH2c(connect), GRPC_PORT, "h2c (grpc)");
+
+// A rejected promise that escapes a handler would otherwise take the whole
+// process down on Node 20+, restarting the machine mid-compile.
+process.on("unhandledRejection", (err) => {
+  console.error("latex sidecar: unhandled rejection —", err);
 });

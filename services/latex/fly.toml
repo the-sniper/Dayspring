@@ -1,32 +1,43 @@
-# fly launch --no-deploy  will rewrite app/primary_region; everything else here
-# is the part that matters.
-app = "dayspring-latex"
-primary_region = "iad"
+# fly.toml app configuration file generated for dayspring-latex on 2026-08-02T02:28:47-04:00
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'dayspring-latex'
+primary_region = 'iad'
 
 [build]
-  dockerfile = "Dockerfile"
+  # Relative to THIS FILE's directory, not to the working directory. (Proven the
+  # hard way: 'services/latex/Dockerfile' resolved to
+  # services/latex/services/latex/Dockerfile and the deploy failed.)
+  #
+  # The build CONTEXT is separately the working directory, which must be the
+  # repo root because the image needs shared/gen as well as services/latex. So
+  # always deploy from the repo root:
+  #   fly deploy --config services/latex/fly.toml
+  # The root .dockerignore keeps node_modules/.next/data out of the upload.
+  dockerfile = 'Dockerfile'
 
 [http_service]
   internal_port = 8080
   force_https = true
-  # Scale to zero: this compiles a handful of resumes a day, so paying for an
-  # always-on machine is waste. The cold start costs a few seconds on the first
-  # request — which is why the Dockerfile pre-warms tectonic's package cache,
-  # so a cold start is a container boot and not a TeX Live download.
-  auto_stop_machines = "stop"
+  # Scale to zero: this compiles a handful of resumes a day, so an always-on
+  # machine is waste. The cold start costs a few seconds, which is why the
+  # Dockerfile pre-warms tectonic's package cache — a cold start is a container
+  # boot, not a TeX Live download.
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout = "10s"
-    grace_period = "20s"
-    method = "GET"
-    path = "/health"
+    interval = '30s'
+    timeout = '10s'
+    grace_period = '20s'
+    method = 'GET'
+    path = '/health'
 
 [[vm]]
-  # tectonic is single-threaded per document and a resume is small; 512MB is
-  # comfortable and 256MB is not (font cache blows it on first compile).
-  memory = "512mb"
-  cpu_kind = "shared"
+  memory = '512mb'
+  cpu_kind = 'shared'
   cpus = 1
+  memory_mb = 512

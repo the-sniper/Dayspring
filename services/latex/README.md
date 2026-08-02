@@ -49,12 +49,24 @@ token or speak Connect.
 
 ## Deploy: Fly.io (the default)
 
+Run these from the **repo root**, not from this directory — the image needs both
+`services/latex/` and `shared/gen/`, so the build context has to be the root.
+
 ```sh
-cd services/latex
-fly launch --no-deploy          # accept the existing fly.toml
-fly secrets set LATEX_SERVICE_SECRET="$(openssl rand -hex 32)"
-fly deploy
+fly launch --no-deploy --config services/latex/fly.toml
+fly secrets set LATEX_SERVICE_SECRET="$(openssl rand -hex 32)" --config services/latex/fly.toml
+fly deploy --config services/latex/fly.toml
 ```
+
+Two paths, resolved against two different roots, which is easy to get backwards:
+
+- `build.dockerfile` in `fly.toml` is relative to **the fly.toml's directory**,
+  so it's plain `Dockerfile`.
+- The build **context** is the **working directory**, so the deploy has to run
+  from the repo root — hence `--config` rather than `cd services/latex`.
+
+The root `.dockerignore` (written by `fly launch`) keeps `node_modules`, `.next`
+and `data` out of that upload, so the context is small despite being the root.
 
 Then in Dayspring's `.env.local` and your Vercel env:
 

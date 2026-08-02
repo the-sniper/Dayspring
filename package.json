@@ -25,7 +25,8 @@
     "apply": "tsx scripts/apply.ts",
     "cron:install": "sh scripts/cron-install.sh",
     "cron:uninstall": "sh scripts/cron-uninstall.sh",
-    "proto": "buf generate"
+    "proto": "buf generate",
+    "whoami": "tsx scripts/whoami.ts"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",

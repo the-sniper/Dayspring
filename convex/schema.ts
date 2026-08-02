@@ -128,6 +128,14 @@ export default defineSchema({
     // guess (see lib/linkedin/extract.ts).
     jobUrl: v.optional(v.string()),
     extractedAt: v.optional(v.string()),
+    // Are the openings in the US? Requires affirmative evidence — a bare
+    // "Remote" is not a yes (shared/us-location.ts). Absent on rows pulled
+    // before the filter existed, and on posts that were never extracted.
+    inUs: v.optional(v.boolean()),
+    // Why a post is `ignored`: "not_hiring" (not a job announcement) or
+    // "not_us" (a real opening, just not one you can take). Lets the feed
+    // explain itself instead of posts vanishing for unclear reasons.
+    ignoredReason: v.optional(v.string()),
     status: v.string(),
     // Set once the post has been promoted into the pipeline as a job row.
     jobId: v.optional(v.id("jobs")),
@@ -296,8 +304,36 @@ export default defineSchema({
     audit: v.optional(v.string()),
     tailoringNote: v.optional(v.string()),
     model: v.optional(v.string()),
+    // "structured" (the ResumeDoc → React-PDF path) or "latex". Absent on rows
+    // written before the LaTeX path existed, which are all structured.
+    format: v.optional(v.string()),
+    // LaTeX path only: the .tex source, so it can be re-compiled or hand-edited
+    // without re-running the model.
+    latex: v.optional(v.string()),
+    lengthMode: v.optional(v.string()),
+    // Real page count from the compiled PDF, not an estimate.
+    pages: v.optional(v.number()),
+    // JSON: the five-part rubric score and the gap list. Stored as strings for
+    // the same reason `audit` is — they're display payloads, never queried on.
+    score: v.optional(v.string()),
+    gaps: v.optional(v.string()),
     createdAt: v.string(),
   }).index("by_job", ["jobId"]),
+
+  // The two inputs to the LaTeX tailoring path, kept in Convex so they're
+  // editable in the app and survive across machines:
+  //   latex_template — the candidate's own .tex resume, providing typography
+  //   knowledge_base — the curated master knowledge base, the source of truth
+  // One row per kind per user.
+  resumeAssets: defineTable({
+    userId: v.optional(v.id("users")),
+    kind: v.string(),
+    label: v.optional(v.string()),
+    content: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_kind", ["userId", "kind"]),
 
   profiles: defineTable({
     userId: v.optional(v.id("users")),
@@ -337,15 +373,29 @@ export default defineSchema({
   // Screening-question answer bank (the Jobright/Simplify "answer memory"):
   // answers captured at apply-approval time, reused on future applications.
   // key = normalized question text; question = raw label for display.
+  //
+  // reusable: false means "keep this for reference, never auto-fill it
+  // somewhere else". Essay answers about a specific employer are the reason
+  // this exists — "Why are you interested in this role?" is company-agnostic
+  // as a QUESTION but the ANSWER is not, and replaying it verbatim at the next
+  // company is worse than leaving the field blank.
+  //
+  // qclass: a closed-enum meaning tag (see lib/apply/answer-class.ts) so a
+  // question matches by meaning rather than exact wording — "Will you require
+  // sponsorship?" and "Do you now or in the future require visa sponsorship?"
+  // are one answer, not two. Optional on legacy rows.
   applyAnswers: defineTable({
     userId: v.optional(v.id("users")),
     key: v.string(),
     question: v.string(),
     answer: v.string(),
+    reusable: v.optional(v.boolean()),
+    qclass: v.optional(v.string()),
     updatedAt: v.string(),
   })
     .index("by_user", ["userId"])
-    .index("by_user_key", ["userId", "key"]),
+    .index("by_user_key", ["userId", "key"])
+    .index("by_user_class", ["userId", "qclass"]),
 
   // Key-value settings (profile blob, Gmail tokens, sealed API keys, ToS acks,
   // lastDailyRun) — per user. Sensitive values are AES-256-GCM sealed by their

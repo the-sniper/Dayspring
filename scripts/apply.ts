@@ -310,13 +310,28 @@ async function main() {
     process.exit(0);
   }
 
-  const { chromium } = await import("playwright");
-  const browser = await chromium.launch({ headless: false });
+  // Same browser the in-app sessions use: a persistent Dayspring profile (or
+  // your own Chrome via DAYSPRING_CDP_URL), so account-based boards like
+  // Workday arrive already signed in.
+  const { closeApplyBrowser, openApplyBrowser } = await import("../lib/apply/browser");
+  const opened = await openApplyBrowser({ embedded: false });
+  console.log(`   Browser: ${opened.describe}`);
   const tally: Record<string, number> = {};
+  // A persistent context starts with one blank tab — use it for the first job
+  // rather than leaving it stranded.
+  let seedPage: typeof opened.page | null = opened.page;
+  const nextPage = async () => {
+    if (seedPage) {
+      const p = seedPage;
+      seedPage = null;
+      return p;
+    }
+    return opened.context.newPage();
+  };
 
   try {
     for (const jobId of jobIds) {
-      const page = await browser.newPage();
+      const page = await nextPage();
       try {
         const outcome = await applyOneJob(page, jobId, deps);
         tally[outcome] = (tally[outcome] ?? 0) + 1;
@@ -335,7 +350,13 @@ async function main() {
       .join(" · ");
     console.log(`\n   ── Run summary: ${summary || "nothing processed"}`);
     const keep = await prompt(`\n   Close the browser now? [Y/n] `);
-    if (keep.toLowerCase() !== "n") await browser.close();
+    if (keep.toLowerCase() !== "n") {
+      await closeApplyBrowser({
+        context: opened.context,
+        page: null,
+        attached: opened.attached,
+      });
+    }
   }
 }
 

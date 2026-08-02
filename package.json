@@ -24,11 +24,15 @@
     "orchestra:eval": "tsx scripts/orchestra-eval.ts",
     "apply": "tsx scripts/apply.ts",
     "cron:install": "sh scripts/cron-install.sh",
-    "cron:uninstall": "sh scripts/cron-uninstall.sh"
+    "cron:uninstall": "sh scripts/cron-uninstall.sh",
+    "proto": "buf generate"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.110.0",
     "@auth/core": "^0.41.1",
+    "@bufbuild/protobuf": "2.13.0",
+    "@connectrpc/connect": "2.1.2",
+    "@connectrpc/connect-node": "2.1.2",
     "@convex-dev/auth": "^0.0.94",
     "@heroui/react": "^3.2.2",
     "@heroui/styles": "^3.2.2",
@@ -50,6 +54,8 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@bufbuild/buf": "1.72.0",
+    "@bufbuild/protoc-gen-es": "2.13.0",
     "@tailwindcss/postcss": "^4.1.8",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",

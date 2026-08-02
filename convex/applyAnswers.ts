@@ -20,14 +20,26 @@ export const list = query({
       key: r.key,
       question: r.question,
       answer: r.answer,
+      // Absent on rows banked before meaning-classes existed; the caller
+      // recomputes when they're missing.
+      reusable: r.reusable,
+      qclass: r.qclass,
       updatedAt: r.updatedAt,
     }));
   },
 });
 
 export const upsert = mutation({
-  args: { key: v.string(), question: v.string(), answer: v.string() },
-  handler: async (ctx, { key, question, answer }) => {
+  args: {
+    key: v.string(),
+    question: v.string(),
+    answer: v.string(),
+    // Optional so any older caller keeps working; lib/apply/answers.ts always
+    // sends both.
+    reusable: v.optional(v.boolean()),
+    qclass: v.optional(v.string()),
+  },
+  handler: async (ctx, { key, question, answer, reusable, qclass }) => {
     const userId = await requireUser(ctx);
     if (!key.trim() || !answer.trim()) return;
     const now = new Date().toISOString();
@@ -36,13 +48,21 @@ export const upsert = mutation({
       .withIndex("by_user_key", (q) => q.eq("userId", userId).eq("key", key))
       .unique();
     if (existing) {
-      await ctx.db.patch(existing._id, { question, answer, updatedAt: now });
+      await ctx.db.patch(existing._id, {
+        question,
+        answer,
+        reusable,
+        qclass,
+        updatedAt: now,
+      });
     } else {
       await ctx.db.insert("applyAnswers", {
         userId,
         key,
         question: question.slice(0, 300),
         answer: answer.slice(0, 1000),
+        reusable,
+        qclass,
         updatedAt: now,
       });
     }

@@ -11,10 +11,16 @@ import AutomationPanel from "@/components/automation-panel";
 import MasterResumesPanel from "@/components/master-resumes-panel";
 import ProfileForm from "@/components/profile-form";
 import ResumePathForm from "@/components/resume-path-form";
+import ResumeSourcesPanel from "@/components/resume-sources-panel";
 import VaultPanel from "@/components/vault-panel";
 import PageHeader from "@/components/page-header";
 import { dailyRunStatusAction } from "@/lib/actions/automation";
 import { listMasters, masterHasPdf } from "@/lib/resumes/core";
+import {
+  assetSummary,
+  getDefaultLengthMode,
+  latexReadiness,
+} from "@/lib/resumes/latex-core";
 import { hasVaultKey } from "@/lib/vault/crypto";
 import { hasMasterPassword, listCredentials } from "@/lib/vault/core";
 import { MODEL_CHEAP, MODEL_SCORE, hasApiKey } from "@/lib/claude/client";
@@ -95,6 +101,9 @@ export default async function SettingsPage({
   const resumePath = (await getSetting("resumePath")) ?? "";
   const resumeExists = resumePath ? fs.existsSync(resumePath) : false;
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL ?? "(not configured)";
+  const latex = await latexReadiness();
+  const latexAssets = await assetSummary();
+  const latexLengthMode = await getDefaultLengthMode();
 
   return (
     <div className="mx-auto max-w-4xl stagger-load">
@@ -175,6 +184,17 @@ export default async function SettingsPage({
               updatedAt: m.updatedAt,
             }))}
             hasApiKey={hasKey}
+          />
+
+          <ResumeSourcesPanel
+            assets={latexAssets}
+            backend={latex.backend}
+            serviceUrl={latex.serviceUrl}
+            engine={latex.engine}
+            engineBin={latex.engineBin}
+            searched={latex.searched}
+            hosted={latex.hosted}
+            defaultLengthMode={latexLengthMode}
           />
 
           <section className="rounded-2xl border border-border bg-card p-6 shadow-sm">

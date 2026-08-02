@@ -1,0 +1,8 @@
+version: v2
+plugins:
+  # js+dts rather than ts: the sidecar runs plain Node with no build step, and
+  # Dayspring's TypeScript consumes .js with adjacent .d.ts happily. Generated
+  # output is committed so neither build needs the buf toolchain.
+  - local: protoc-gen-es
+    out: shared/gen
+    opt: target=js+dts

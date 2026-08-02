@@ -20,6 +20,7 @@ import {
 } from "@/lib/linkedin/extract";
 import { getSetting, setSetting } from "@/lib/settings/store";
 import { isPastRetention } from "@/shared/job-retention";
+import { isUsOpening, usLocationVerdict } from "@/shared/us-location";
 import {
   MAX_POST_QUERIES,
   POST_QUERIES_KEY,
@@ -37,9 +38,14 @@ export const LAST_POST_PULL_KEY = "lastLinkedinPostPullAt";
 export type PostPullResult = {
   fetched: number;
   added: number;
-  // Of the added rows, how many are actual hiring posts (the rest were stored
-  // as `ignored` so they are never re-classified).
+  // Of the added rows, how many are US hiring posts — the only ones that reach
+  // the feed. Everything else is stored as `ignored` with a reason, so it is
+  // never re-classified and never paid for twice.
   hiring: number;
+  // Ignored because they weren't job announcements at all.
+  nonHiring: number;
+  // Ignored because the openings aren't in the US (or no US evidence at all).
+  nonUs: number;
   // Already-seen posts skipped before any model call.
   duplicates: number;
   extracted: number;
@@ -129,6 +135,8 @@ export async function pullLinkedinPosts(): Promise<PostPullResult> {
     fetched: 0,
     added: 0,
     hiring: 0,
+    nonHiring: 0,
+    nonUs: 0,
     duplicates: 0,
     extracted: 0,
     queries,
@@ -180,9 +188,26 @@ export async function pullLinkedinPosts(): Promise<PostPullResult> {
       const post = batch[j];
       const ex = extractions[j];
       if (ex) result.extracted++;
-      // Non-hiring posts are stored as `ignored`: hidden from the feed, but
-      // recorded so the next pull skips them before paying for extraction.
+      // Two reasons a post never reaches the feed, both stored as `ignored`:
+      // hidden, but recorded so the next pull skips them before paying for
+      // extraction again.
+      //
+      //   not_hiring — not a job announcement at all
+      //   not_us     — a real opening, just not one you can take
+      //
+      // Keyword search pulls "we're hiring" posts from everywhere, and the
+      // offshore staffing posts (fifteen roles across four departments, located
+      // "Remote") are the single largest source of noise in this feed. A US
+      // signal has to be affirmative: bare "Remote" is not a yes.
       const isHiring = ex ? ex.isHiring : true;
+      const verdict = usLocationVerdict(post.text, ex?.location ?? null);
+      // Unextracted posts (no model key, or a failed batch) keep the old
+      // behavior and land in the feed — better to hand-triage than to silently
+      // bin something that was never actually classified.
+      const inUs = ex ? isUsOpening(ex.inUs, verdict) : true;
+      const ignoredReason = !isHiring ? "not_hiring" : !inUs ? "not_us" : null;
+      if (isHiring && !inUs) result.nonUs++;
+      if (!isHiring) result.nonHiring++;
       docs.push(
         cleanDoc({
           externalId: post.externalId,
@@ -199,12 +224,14 @@ export async function pullLinkedinPosts(): Promise<PostPullResult> {
           location: ex?.location ?? null,
           jobUrl: ex?.jobUrl ?? null,
           extractedAt: ex ? now : null,
-          status: isHiring ? "new" : "ignored",
+          inUs: ex ? inUs : null,
+          ignoredReason,
+          status: ignoredReason ? "ignored" : "new",
           createdAt: now,
           updatedAt: now,
         }),
       );
-      if (isHiring) result.hiring++;
+      if (!ignoredReason) result.hiring++;
     }
   }
 

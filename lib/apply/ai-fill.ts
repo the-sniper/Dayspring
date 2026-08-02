@@ -7,7 +7,7 @@ import {
   tryComboSelect,
   type FormScope,
 } from "@/lib/apply/ats-forms";
-import { loadSavedAnswers, normalizeQuestion } from "@/lib/apply/answers";
+import { loadSavedAnswers, lookupAnswer } from "@/lib/apply/answers";
 import { getProfile } from "@/lib/jobs/score";
 
 // AI fallback fill: after the deterministic selector pass, serialize the
@@ -29,7 +29,7 @@ const Mapping = z.object({
   ),
 });
 
-type SerializedField = {
+export type SerializedField = {
   ref: string;
   tag: string;
   type: string;
@@ -38,7 +38,10 @@ type SerializedField = {
   value: string;
 };
 
-async function serializeEmptyFields(page: FormScope): Promise<SerializedField[]> {
+// Exported for the MCP apply loop (lib/apply/session.ts), which snapshots the
+// form, decides one field at a time, and re-snapshots to see what actually
+// stuck — the thing this module's single-shot mapping call cannot do.
+export async function serializeEmptyFields(page: FormScope): Promise<SerializedField[]> {
   const raw = await page.evaluate(() => {
     const out: {
       ref: string;
@@ -102,7 +105,7 @@ async function serializeEmptyFields(page: FormScope): Promise<SerializedField[]>
 }
 
 // One field write, honoring the widget type. Returns true when the value took.
-async function writeField(
+export async function writeField(
   scope: FormScope,
   field: SerializedField,
   value: string,
@@ -133,17 +136,24 @@ export async function aiFillRemaining(
   if (fields.length === 0) return { filled: [], fromMemory: [] };
 
   // Answer bank first: questions the user has answered on past applications
-  // get their remembered answer verbatim — no model call, no ambiguity.
+  // get their remembered answer verbatim — no model call, no ambiguity. Exact
+  // question text is tried first, then a meaning-class match so a reworded
+  // version of the same question still hits. Answers that are about a specific
+  // employer are excluded by loadSavedAnswers and never reach this loop.
   const saved = await loadSavedAnswers();
   const fromMemory: string[] = [];
-  if (saved.size > 0) {
+  if (saved.byKey.size > 0 || saved.byClass.size > 0) {
     for (const field of fields) {
       if (opts.isAborted?.()) break;
-      const remembered = saved.get(normalizeQuestion(field.label));
-      if (!remembered) continue;
-      if (await writeField(scope, field, remembered)) {
-        fromMemory.push(field.label.slice(0, 40));
-        field.value = remembered; // mark handled
+      const hit = lookupAnswer(saved, field.label);
+      if (!hit) continue;
+      if (await writeField(scope, field, hit.answer)) {
+        fromMemory.push(
+          hit.via === "class"
+            ? `${field.label.slice(0, 40)} (matched)`
+            : field.label.slice(0, 40),
+        );
+        field.value = hit.answer; // mark handled
       }
     }
     fields = fields.filter((f) => !f.value);

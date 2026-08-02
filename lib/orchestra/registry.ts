@@ -274,6 +274,41 @@ export function displayName(roleId: string): string {
   return byId.get(roleId)?.name ?? roleId;
 }
 
+// Stable role keys used in charters, task objectives, and model prompts.
+// Rewriting these → display names keeps the HP theme in one place (this file)
+// without renaming orchTasks.role / ledger keys.
+const CODENAMES = [
+  "atlas",
+  "radar",
+  "sentinel",
+  "compass",
+  "quill",
+  "herald",
+  "forge",
+  "mason",
+  "probe",
+  "vigil",
+  "pulse",
+  "ledger",
+  "archive",
+] as const;
+
+/** Rewrite role codenames (Atlas/Radar/…) to current display names. */
+export function themeCodenames(text: string): string {
+  let out = text;
+  for (const id of CODENAMES) {
+    const name = displayName(id);
+    const re = new RegExp(`\\b${id}\\b`, "gi");
+    out = out.replace(re, (match) => {
+      if (match === match.toUpperCase() && match.length > 1) {
+        return name.toUpperCase();
+      }
+      return name;
+    });
+  }
+  return out;
+}
+
 export function reportsToLabel(e: Employee): string {
   if (!e.managerId) return "You (CEO)";
   return byId.get(e.managerId)?.name ?? e.managerId;

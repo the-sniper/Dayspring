@@ -13,6 +13,7 @@ import type {
   ProjectRef,
 } from "@/lib/orchestra/memory";
 import { fmtDate } from "@/lib/orchestra/format";
+import { displayName } from "@/lib/orchestra/registry";
 import { cn } from "@/lib/utils";
 
 // Structured memory editor: chips, tag lists, and per-item rows instead of
@@ -281,171 +282,173 @@ export default function MemoryEditor({
   const ls = useSave("lessons");
 
   return (
-    <div className="flex flex-col gap-8">
-      <CardShell
-        title="Brand voice"
-        hint="Quill writes from this. The sample posts matter most — paste 3-5 fragments that sound like you."
-        dirty={vs.dirty}
-        saving={vs.saving}
-        onSave={() => vs.save(voice)}
-        result={vs.result}
-      >
-        <div>
-          <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
-            Tone Alignment
-          </p>
-          <div className="flex flex-wrap gap-2">
-            {toneOptions.map((t) => (
-              <Chip
-                key={t}
-                text={t}
-                active={voice.tones.includes(t)}
-                onClick={() =>
-                  editVoice({
-                    tones: voice.tones.includes(t)
-                      ? voice.tones.filter((x) => x !== t)
-                      : [...voice.tones, t],
-                  })
-                }
-              />
-            ))}
-          </div>
-          <div className="mt-3">
-            <AddInput
-              placeholder="Inject custom tone…"
-              onAdd={(v) => editVoice({ tones: [...voice.tones, v] })}
-            />
-          </div>
-        </div>
-
-        <div className="grid gap-8 lg:grid-cols-3">
+    <div className="grid grid-cols-1 gap-8 lg:grid-cols-2">
+      <div className="lg:col-span-2">
+        <CardShell
+          title="Brand voice"
+          hint="Quill writes from this. The sample posts matter most — paste 3-5 fragments that sound like you."
+          dirty={vs.dirty}
+          saving={vs.saving}
+          onSave={() => vs.save(voice)}
+          result={vs.result}
+        >
           <div>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
-              Reference Projects
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+              Tone Alignment
             </p>
-            <div className="flex flex-col gap-2">
-              {voice.projects.map((pr, i) => (
-                <div
-                  key={`${pr.name}-${i}`}
-                  className="group flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-secondary/10 px-3 py-2.5 transition-all hover:border-brand-500/20 hover:bg-secondary/20"
-                >
-                  <div className="flex min-w-0 flex-col gap-0.5">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[12px] font-bold tracking-tight text-foreground">
-                        {pr.name}
-                      </span>
-                      {pr.verifiedAt ? (
-                        <span className="rounded-full bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
-                          Verified
+            <div className="flex flex-wrap gap-2">
+              {toneOptions.map((t) => (
+                <Chip
+                  key={t}
+                  text={t}
+                  active={voice.tones.includes(t)}
+                  onClick={() =>
+                    editVoice({
+                      tones: voice.tones.includes(t)
+                        ? voice.tones.filter((x) => x !== t)
+                        : [...voice.tones, t],
+                    })
+                  }
+                />
+              ))}
+            </div>
+            <div className="mt-3">
+              <AddInput
+                placeholder="Inject custom tone…"
+                onAdd={(v) => editVoice({ tones: [...voice.tones, v] })}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-8 lg:grid-cols-3">
+            <div>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                Reference Projects
+              </p>
+              <div className="flex flex-col gap-2">
+                {voice.projects.map((pr, i) => (
+                  <div
+                    key={`${pr.name}-${i}`}
+                    className="group flex items-center justify-between gap-3 rounded-xl border border-border/40 bg-secondary/10 px-3 py-2.5 transition-all hover:border-brand-500/20 hover:bg-secondary/20"
+                  >
+                    <div className="flex min-w-0 flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[12px] font-bold tracking-tight text-foreground">
+                          {pr.name}
                         </span>
-                      ) : (
-                        <span className="rounded-full bg-amber-500/5 border border-amber-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                          {pr.url ? "Pending" : "Ghost"}
+                        {pr.verifiedAt ? (
+                          <span className="rounded-full bg-emerald-500/5 border border-emerald-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                            Verified
+                          </span>
+                        ) : (
+                          <span className="rounded-full bg-amber-500/5 border border-amber-500/10 px-1.5 py-0.5 text-[8px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                            {pr.url ? "Pending" : "Ghost"}
+                          </span>
+                        )}
+                      </div>
+                      {pr.url && (
+                        <span className="truncate text-[10px] font-medium text-muted-foreground/40">
+                          {pr.url.replace(/^https?:\/\//, "")}
                         </span>
                       )}
                     </div>
-                    {pr.url && (
-                      <span className="truncate text-[10px] font-medium text-muted-foreground/40">
-                        {pr.url.replace(/^https?:\/\//, "")}
-                      </span>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() =>
+                        editVoice({
+                          projects: voice.projects.filter((_, x) => x !== i),
+                        })
+                      }
+                      className="shrink-0 rounded-lg p-1 text-muted-foreground/20 transition-all opacity-0 group-hover:opacity-100 group-hover:bg-rose-500/10 group-hover:text-rose-500"
+                    >
+                      <X size={12} />
+                    </button>
                   </div>
+                ))}
+              </div>
+              <ProjectAdd
+                onAdd={(pr) => editVoice({ projects: [...voice.projects, pr] })}
+              />
+            </div>
+
+            <div>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                Directives (Do)
+              </p>
+              <ItemList
+                items={voice.dos}
+                onRemove={(i) => editVoice({ dos: voice.dos.filter((_, x) => x !== i) })}
+              />
+              <div className="mt-3">
+                <AddInput placeholder="New directive…" onAdd={(v) => editVoice({ dos: [...voice.dos, v] })} />
+              </div>
+            </div>
+
+            <div>
+              <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                Constraints (Don't)
+              </p>
+              <ItemList
+                items={voice.donts}
+                onRemove={(i) => editVoice({ donts: voice.donts.filter((_, x) => x !== i) })}
+              />
+              <div className="mt-3">
+                <AddInput
+                  placeholder="New constraint…"
+                  onAdd={(v) => editVoice({ donts: [...voice.donts, v] })}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+              Neural Echoes ({voice.samplePosts.length} fragments)
+            </p>
+            <div className="space-y-3">
+              {voice.samplePosts.map((sp, i) => (
+                <div key={i} className="group relative">
+                  <textarea
+                    value={sp}
+                    rows={4}
+                    onChange={(e) =>
+                      editVoice({
+                        samplePosts: voice.samplePosts.map((x, j) =>
+                          j === i ? e.target.value : x,
+                        ),
+                      })
+                    }
+                    className="min-w-0 w-full resize-none rounded-xl border border-border/60 bg-secondary/5 p-3 font-mono text-[11px] leading-relaxed text-foreground/80 focus:border-brand-500/40 focus:bg-background focus:outline-none transition-all"
+                  />
                   <button
                     type="button"
                     onClick={() =>
                       editVoice({
-                        projects: voice.projects.filter((_, x) => x !== i),
+                        samplePosts: voice.samplePosts.filter((_, j) => j !== i),
                       })
                     }
-                    className="shrink-0 rounded-lg p-1 text-muted-foreground/20 transition-all opacity-0 group-hover:opacity-100 group-hover:bg-rose-500/10 group-hover:text-rose-500"
+                    className="absolute right-2 top-2 rounded-lg p-1.5 bg-background shadow-sm border border-border text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all hover:text-rose-500 hover:border-rose-500/20"
                   >
-                    <X size={12} />
+                    <X size={14} />
                   </button>
                 </div>
               ))}
             </div>
-            <ProjectAdd
-              onAdd={(pr) => editVoice({ projects: [...voice.projects, pr] })}
-            />
+            <button
+              type="button"
+              onClick={() => editVoice({ samplePosts: [...voice.samplePosts, ""] })}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 bg-secondary/5 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-secondary/20 hover:text-foreground hover:border-brand-500/40 active:scale-[0.98]"
+            >
+              <Plus size={14} /> 
+              Sync new fragment
+            </button>
           </div>
-
-          <div>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
-              Directives (Do)
-            </p>
-            <ItemList
-              items={voice.dos}
-              onRemove={(i) => editVoice({ dos: voice.dos.filter((_, x) => x !== i) })}
-            />
-            <div className="mt-3">
-              <AddInput placeholder="New directive…" onAdd={(v) => editVoice({ dos: [...voice.dos, v] })} />
-            </div>
-          </div>
-
-          <div>
-            <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
-              Constraints (Don't)
-            </p>
-            <ItemList
-              items={voice.donts}
-              onRemove={(i) => editVoice({ donts: voice.donts.filter((_, x) => x !== i) })}
-            />
-            <div className="mt-3">
-              <AddInput
-                placeholder="New constraint…"
-                onAdd={(v) => editVoice({ donts: [...voice.donts, v] })}
-              />
-            </div>
-          </div>
-        </div>
-
-        <div>
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
-            Neural Echoes ({voice.samplePosts.length} fragments)
-          </p>
-          <div className="space-y-3">
-            {voice.samplePosts.map((sp, i) => (
-              <div key={i} className="group relative">
-                <textarea
-                  value={sp}
-                  rows={4}
-                  onChange={(e) =>
-                    editVoice({
-                      samplePosts: voice.samplePosts.map((x, j) =>
-                        j === i ? e.target.value : x,
-                      ),
-                    })
-                  }
-                  className="min-w-0 w-full resize-none rounded-xl border border-border/60 bg-secondary/5 p-3 font-mono text-[11px] leading-relaxed text-foreground/80 focus:border-brand-500/40 focus:bg-background focus:outline-none transition-all"
-                />
-                <button
-                  type="button"
-                  onClick={() =>
-                    editVoice({
-                      samplePosts: voice.samplePosts.filter((_, j) => j !== i),
-                    })
-                  }
-                  className="absolute right-2 top-2 rounded-lg p-1.5 bg-background shadow-sm border border-border text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all hover:text-rose-500 hover:border-rose-500/20"
-                >
-                  <X size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-          <button
-            type="button"
-            onClick={() => editVoice({ samplePosts: [...voice.samplePosts, ""] })}
-            className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 bg-secondary/5 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-secondary/20 hover:text-foreground hover:border-brand-500/40 active:scale-[0.98]"
-          >
-            <Plus size={14} /> 
-            Sync new fragment
-          </button>
-        </div>
-      </CardShell>
+        </CardShell>
+      </div>
 
       <CardShell
         title="Prohibited Topics"
-        hint="Sentinel blocks any output intersecting these themes."
+        hint={`${displayName("sentinel")} blocks any output intersecting these themes.`}
         dirty={bs.dirty}
         saving={bs.saving}
         onSave={() => bs.save(banned)}

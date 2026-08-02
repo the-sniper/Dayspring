@@ -1,0 +1,32 @@
+# fly launch --no-deploy  will rewrite app/primary_region; everything else here
+# is the part that matters.
+app = "dayspring-latex"
+primary_region = "iad"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[http_service]
+  internal_port = 8080
+  force_https = true
+  # Scale to zero: this compiles a handful of resumes a day, so paying for an
+  # always-on machine is waste. The cold start costs a few seconds on the first
+  # request — which is why the Dockerfile pre-warms tectonic's package cache,
+  # so a cold start is a container boot and not a TeX Live download.
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    interval = "30s"
+    timeout = "10s"
+    grace_period = "20s"
+    method = "GET"
+    path = "/health"
+
+[[vm]]
+  # tectonic is single-threaded per document and a resume is small; 512MB is
+  # comfortable and 256MB is not (font cache blows it on first compile).
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1

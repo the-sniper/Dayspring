@@ -9,11 +9,14 @@
 
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
+import { themeCodenames } from "@/lib/orchestra/registry";
 
 const DIR = join(process.cwd(), "lib/orchestra/charters");
 
 function load(name: string): string {
-  return readFileSync(join(DIR, name), "utf8").trim();
+  // Charters still author against stable role keys (Radar, Atlas…); rewrite to
+  // the current display theme so model output matches the Team page.
+  return themeCodenames(readFileSync(join(DIR, name), "utf8").trim());
 }
 
 export const COMPANY_PREAMBLE = load("company-preamble.txt");

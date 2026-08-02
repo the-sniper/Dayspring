@@ -458,6 +458,26 @@ async function trySelectByContext(
   return tryComboByLabel(page, keywords, optionLabels);
 }
 
+// Is this Workday tenant already signed in for the current browser profile?
+// A signed-out tenant shows a sign-in / create-account form; a signed-in one
+// drops you straight onto the application. A password field or a sign-in button
+// means signed out, and the window goes to the human. Anything else with a real
+// form takes the normal autofill path.
+export async function workdaySignedIn(page: Page): Promise<boolean> {
+  const scope = await formScope(page);
+  try {
+    if ((await scope.locator('input[type="password"]:visible').count()) > 0) return false;
+    const signIn = scope.getByRole("button", {
+      name: /sign in|create account|log in/i,
+    });
+    if ((await signIn.count()) > 0 && (await signIn.first().isVisible())) return false;
+  } catch {
+    // An unreadable page counts as signed out — manual is the safe default.
+    return false;
+  }
+  return (await visibleFieldCount(scope)) >= 3;
+}
+
 export function detectAts(url: string): "greenhouse" | "lever" | "ashby" | "workday" | "unknown" {
   const h = url.toLowerCase();
   if (h.includes("greenhouse.io") || h.includes("boards.greenhouse")) return "greenhouse";

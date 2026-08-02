@@ -17,6 +17,7 @@ import ApplicationForm from "@/components/application-form";
 import ApplyPanel from "@/components/apply-panel";
 import DeleteForm from "@/components/delete-form";
 import DraftOutreachButton from "@/components/draft-outreach-button";
+import LatexResumeSection from "@/components/latex-resume-section";
 import ResearchButton from "@/components/research-button";
 import ResumeStudio from "@/components/resume-studio";
 import RoleChip from "@/components/role-chip";
@@ -28,6 +29,7 @@ import CompanyLogo from "@/components/company-logo";
 import { hasApiKey } from "@/lib/claude/client";
 import { getProfile } from "@/lib/jobs/score";
 import { latestGeneratedForJob, mastersCount, resumePdfForJob } from "@/lib/resumes/core";
+import { getDefaultLengthMode, latexReadiness } from "@/lib/resumes/latex-core";
 import { latestJobBrief } from "@/lib/research/core";
 import { deleteJobAction, updateJobAction } from "@/lib/actions/jobs";
 import { api, convex } from "@/lib/convex/server";
@@ -80,13 +82,24 @@ export default async function JobDetailPage({
     a.name.localeCompare(b.name),
   );
 
-  const [briefRow, profile, resumePdf, generated, mastersN, anthropicKey] = await Promise.all([
+  const [
+    briefRow,
+    profile,
+    resumePdf,
+    generated,
+    mastersN,
+    anthropicKey,
+    latex,
+    lengthMode,
+  ] = await Promise.all([
     latestJobBrief(job.id),
     getProfile(),
     resumePdfForJob(job.id),
     latestGeneratedForJob(job.id),
     mastersCount(),
     hasApiKey(),
+    latexReadiness(),
+    getDefaultLengthMode(),
   ]);
   const jobBrief = briefRow
     ? { brief: briefRow.brief, sources: briefRow.sources ?? [] }
@@ -214,6 +227,15 @@ export default async function JobDetailPage({
             bullets={job.tailoredBullets}
             coverLetter={job.coverLetter}
             tailoredAt={job.tailoredAt}
+          />
+
+          <LatexResumeSection
+            jobId={job.id}
+            companyName={companyName}
+            jobTitle={job.title}
+            defaultLengthMode={lengthMode}
+            ready={latex.ready}
+            hasEngine={latex.engine !== null}
           />
 
           <ResumeStudio

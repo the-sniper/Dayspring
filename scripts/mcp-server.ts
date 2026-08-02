@@ -300,6 +300,116 @@ async function main() {
     },
   );
 
+  // ── Apply loop ─────────────────────────────────────────────────────────────
+  // The apply session lives inside the running Next process (a globalThis
+  // singleton owning a real browser), so these tools go over HTTP to it rather
+  // than doing anything themselves. They stop at the review gate on purpose:
+  // filling a form is delegable, deciding it is ready to send is not, so
+  // approve/submit has no tool here and stays a click in the UI.
+  const AGENT_URL =
+    process.env.DAYSPRING_APP_URL?.replace(/\/$/, "") ?? "http://localhost:3000";
+
+  async function agent(op: string, args: Record<string, unknown> = {}) {
+    const secret = process.env.DAYSPRING_AGENT_SECRET;
+    if (!secret) {
+      return {
+        error:
+          "DAYSPRING_AGENT_SECRET is not set — add it to .env.local (any random string) and restart the app to enable the apply loop.",
+      };
+    }
+    try {
+      const res = await fetch(`${AGENT_URL}/api/apply/agent`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          authorization: `Bearer ${secret}`,
+        },
+        body: JSON.stringify({ op, ...args }),
+        signal: AbortSignal.timeout(120_000),
+      });
+      return await res.json();
+    } catch (err) {
+      return {
+        error: `Couldn't reach Dayspring at ${AGENT_URL} — is \`npm run dev\` running? (${err instanceof Error ? err.message : err})`,
+      };
+    }
+  }
+
+  server.registerTool(
+    "apply_open",
+    {
+      description:
+        "Open an attended apply session for a job: launches the Dayspring browser profile, navigates to the application, and runs the normal autofill pass. Stops at the review gate — this can never submit. One session at a time.",
+      inputSchema: { jobId: z.string() },
+    },
+    async ({ jobId }) => text(await agent("open", { jobId })),
+  );
+
+  server.registerTool(
+    "apply_snapshot",
+    {
+      description:
+        "Look at the open application form: every still-empty visible field (with a ref for apply_fill_field) plus everything currently answered. Take a fresh snapshot after each fill — refs are only valid for the latest one, and re-snapshotting is how you see whether a value actually stuck.",
+    },
+    async () => text(await agent("snapshot")),
+  );
+
+  server.registerTool(
+    "apply_fill_field",
+    {
+      description:
+        "Write one value into one field from the latest snapshot. Returns wrote:false when the value didn't take (e.g. no matching dropdown option) — snapshot again and try different wording. Demographic/EEO questions are refused.",
+      inputSchema: { ref: z.string(), value: z.string() },
+    },
+    async ({ ref, value }) => text(await agent("fill", { ref, value })),
+  );
+
+  server.registerTool(
+    "apply_advance",
+    {
+      description:
+        "Click Next/Continue on a multi-page application and wait for the next page's form. Never matches Submit or Apply. Invalidates the previous snapshot.",
+    },
+    async () => text(await agent("advance")),
+  );
+
+  server.registerTool(
+    "apply_state",
+    {
+      description:
+        "Current apply session state: phase, what got filled, what was skipped, and the review summary of what would be submitted.",
+    },
+    async () => text(await agent("state")),
+  );
+
+  server.registerTool(
+    "apply_cancel",
+    {
+      description:
+        "Close the apply session and the browser. Nothing is submitted; the job's pipeline status is unchanged.",
+    },
+    async () => text(await agent("cancel")),
+  );
+
+  // ── Email-apply lane ───────────────────────────────────────────────────────
+  server.registerTool(
+    "draft_application_email",
+    {
+      description:
+        "For postings that say 'email us your resume': draft an application email (subject + body) and resolve which résumé PDF would be attached. Drafting only — this tool cannot send, and the draft is scaffolding you are expected to rewrite.",
+      inputSchema: { jobId: z.string(), to: z.string().optional() },
+    },
+    async ({ jobId, to }) => {
+      const { draftApplicationEmail } = await import("../lib/apply/email-apply");
+      const res = await draftApplicationEmail(jobId, { to });
+      if (!res.ok) return text(res);
+      return text({
+        ...res,
+        note: "Review and send from the app — sending enforces the human-edit floor.",
+      });
+    },
+  );
+
   const transport = new StdioServerTransport();
   await server.connect(transport);
   console.error("dayspring mcp server ready (stdio)");

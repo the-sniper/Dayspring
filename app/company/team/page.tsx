@@ -153,17 +153,19 @@ export default async function TeamPage({
                     Evaluate the current tier against the golden test suite.
                   </p>
                 </div>
-                <div className="rounded-2xl border border-border/80 bg-card p-6 shadow-sm">
-                  <div className="flex flex-wrap items-start gap-x-6 gap-y-4">
+                <div className="rounded-[2rem] border border-border/60 bg-card p-6 sm:p-8 shadow-sm">
+                  <div className="grid grid-cols-1 gap-8 md:grid-cols-2 lg:gap-12">
                     <OpsButton
                       action="freeze"
                       label={`Freeze today's case (${goldenCases}/20)`}
+                      className="w-full"
                       hint="Snapshots today's real pipeline data as a frozen test case. Free, instant, no model calls — do it once a day until 20."
                     />
                     <OpsButton
                       action="calibrate"
                       label="Run calibration"
                       primary
+                      className="w-full"
                       hint="Re-runs the researcher on every frozen case with the ACTIVE tier and scores each brief 0-10. Compares to the last run on this tier — a >10-pt drop means revert your last change. Costs ~$0.05 per case."
                     />
                   </div>

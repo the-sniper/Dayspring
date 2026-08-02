@@ -21,7 +21,7 @@ function PullSummary({ result }: { result: PostPullResult }) {
         <span>Search complete</span>
       </div>
       <p className="font-bold text-foreground">
-        {result.hiring} hiring {result.hiring === 1 ? "post" : "posts"}
+        {result.hiring} US hiring {result.hiring === 1 ? "post" : "posts"}
         <span className="font-medium text-muted-foreground">
           {" "}from {result.fetched} scanned
         </span>
@@ -34,9 +34,17 @@ function PullSummary({ result }: { result: PostPullResult }) {
           {result.duplicates} already seen, skipped before extraction
         </p>
       )}
-      {result.added > result.hiring && (
+      {/* Split, not one lumped "weren't job posts" line: the two reasons a post
+          gets filed away are different problems. A lot of non-US hits means the
+          search terms are pulling the wrong regions. */}
+      {result.nonHiring > 0 && (
         <p className="text-muted-foreground/70">
-          {result.added - result.hiring} weren&apos;t job posts
+          {result.nonHiring} weren&apos;t job posts
+        </p>
+      )}
+      {result.nonUs > 0 && (
+        <p className="text-muted-foreground/70">
+          {result.nonUs} weren&apos;t US roles
         </p>
       )}
       {result.limitReached && (

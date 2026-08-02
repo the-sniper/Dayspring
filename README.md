@@ -53,7 +53,11 @@ user) → **Desktop app** OAuth client → paste both values → `npm run
 gmail:auth` (one browser consent).
 
 Apply-assist prereq: `npx playwright install chromium`, and set your resume
-PDF path in Settings.
+PDF path in Settings. Apply-assist drives a **persistent Chrome profile**
+(`data/browser-profile`), so anything you sign into once stays signed in — that
+is what makes Workday autofillable. To drive the Chrome you already use
+instead, start it with `--remote-debugging-port=9222` and set
+`DAYSPRING_CDP_URL`.
 
 ## Scripts
 
@@ -82,7 +86,13 @@ PDF path in Settings.
   rules in every prompt.
 - `scripts/mcp-server.ts` + `.mcp.json` — drive Dayspring by chatting with
   Claude (Claude Code auto-discovers it in this repo). Tools can pull, score,
-  query, and draft — deliberately **cannot** send outreach or spend credits.
+  query, draft, and **fill an open application form** — deliberately **cannot**
+  send outreach, spend credits, or submit an application.
+- `lib/apply/browser.ts` — where the apply browser comes from: a persistent
+  Dayspring Chrome profile by default, or your own Chrome over CDP.
+- `lib/apply/answer-class.ts` — meaning tags for screening questions, plus the
+  rule for which answers are safe to replay at a different company.
+- `lib/apply/email-apply.ts` — the email-apply lane (see below).
 
 ## The feed's two sources
 
@@ -140,14 +150,56 @@ demographic questions, runs one job at a time, and requires a one-time
 can violate site terms; this is a deliberate, human-gated opt-in — not
 unattended spray.
 
+- **Persistent profile**: the browser is a Chrome profile Dayspring owns
+  (`data/browser-profile`), not a fresh one per run. Sign into a Workday tenant
+  once, by hand, and every later application to it takes the normal autofill
+  path instead of going manual. `DAYSPRING_CDP_URL` attaches to your own Chrome
+  instead, if you'd rather reuse the session you already have.
 - **Credential vault** (`DAYSPRING_VAULT_KEY`): one master password, AES-256-GCM
   at rest, reused for job-site accounts. Settings → set master + view accounts.
+  Now a first-signup helper rather than the main Workday path.
 - **Gmail OTP**: verification codes surface on the dashboard; apply-assist
   auto-reads Workday signup codes from Gmail.
 - **Workday** needs three values, not a slug — from a careers URL like
   `https://nvidia.wd5.myworkdayjobs.com/NVIDIAExternalCareerSite`: tenant
   `nvidia`, datacenter `wd5`, site `NVIDIAExternalCareerSite` (Company form →
   Workday details).
+
+### The answer bank
+
+Whatever is on the form when you approve is, by definition, your answer, so it
+gets banked and reused. Matching happens twice: exact question text first, then
+a **meaning class** (`lib/apply/answer-class.ts`), so "Will you require
+sponsorship?" and "Do you now or in the future require visa sponsorship?" share
+one answer instead of costing two model calls.
+
+Answers *about a specific employer* are banked for reference but never
+auto-filled anywhere else. Replaying "why I want to work here" at the next
+company is not a missed field, it is a confidently wrong one in a submitted
+application.
+
+### The MCP apply loop
+
+`apply_open` → `apply_snapshot` → `apply_fill_field` → snapshot again. The
+re-snapshot is the point: a single-shot fill pass can't tell that a combobox
+silently rejected its value, and a loop can. `apply_advance` walks multi-page
+forms and never matches Submit or Apply.
+
+Enable it with `DAYSPRING_AGENT_SECRET` in `.env.local`; unset, the route 404s
+and the tools stay dark. There is deliberately no approve-or-submit tool:
+filling a form is delegable, deciding it is ready to send is not.
+
+## Email-apply (the lane that can finish)
+
+No ATS exposes a candidate-side submit API — Greenhouse, SmartRecruiters and
+Ashby all gate their submit endpoints behind the *employer's* key — so form
+applications will always need a browser with a human on the trigger. Postings
+that say "email us your résumé" are different, and that lane goes end to end:
+`draft_application_email` composes it, and sending attaches your tailored
+résumé PDF and marks the job applied.
+
+Same discipline as outreach: the draft is scaffolding, and the send is refused
+until enough of the body is yours (`HUMAN_EDIT_FLOOR_PCT`).
 
 ## Cost controls
 
@@ -163,6 +215,13 @@ never sends outreach, never enriches, never applies.
 Full original blueprint (tracker · feed + imports · scoring · Apollo · outreach
 + Gmail · follow-ups + digest · daily run · MCP) **plus pass-3**: Happenstance
 warm-network, LinkedIn import, research briefs, Gmail OTP, credential vault, and
-attended apply-assist (Greenhouse/Lever/Ashby + Workday sourcing & signup). 14
-MCP tools. Next candidates: Supabase port for off-laptop cron, Batches API for
-overnight scoring.
+attended apply-assist (Greenhouse/Lever/Ashby + Workday sourcing & signup).
+
+**Pass-4**: persistent browser profile (Workday now autofills once signed in),
+meaning-classed answer bank that stops replaying employer-specific essays, the
+MCP apply loop (`apply_open`/`snapshot`/`fill_field`/`advance`), and the
+email-apply lane with résumé attachments. 21 MCP tools.
+
+Next candidates: Streamable HTTP transport for the MCP server so it works
+outside this repo (phone, Cowork), Supabase port for off-laptop cron, Batches
+API for overnight scoring.

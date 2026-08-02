@@ -28,6 +28,7 @@ import type * as outreach from "../outreach.js";
 import type * as profiles from "../profiles.js";
 import type * as pull from "../pull.js";
 import type * as research from "../research.js";
+import type * as resumeAssets from "../resumeAssets.js";
 import type * as resumes from "../resumes.js";
 import type * as retention from "../retention.js";
 import type * as settings from "../settings.js";
@@ -63,6 +64,7 @@ declare const fullApi: ApiFromModules<{
   profiles: typeof profiles;
   pull: typeof pull;
   research: typeof research;
+  resumeAssets: typeof resumeAssets;
   resumes: typeof resumes;
   retention: typeof retention;
   settings: typeof settings;

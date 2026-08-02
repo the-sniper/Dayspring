@@ -8,13 +8,15 @@
 // The registry lives on globalThis so dev HMR doesn't orphan a live session.
 // This is a one-machine, one-human-at-a-time design — the browser opens on
 // the machine running Dayspring.
-import type { Browser, CDPSession, Page } from "playwright";
+import type { BrowserContext, CDPSession, Page } from "playwright";
 import {
   appendApplyLog,
   loadApplyContext,
   setApplyStatus,
   type ApplyContext,
 } from "@/lib/apply/core";
+import { closeApplyBrowser, openApplyBrowser } from "@/lib/apply/browser";
+import type { SerializedField } from "@/lib/apply/ai-fill";
 import { detectAts } from "@/lib/apply/ats-forms";
 import { isHosted } from "@/lib/hosted";
 import { setJobStatusCore } from "@/lib/jobs/transition";
@@ -54,7 +56,12 @@ export type ApplySessionState = {
 
 type ActiveSession = {
   state: ApplySessionState;
-  browser: Browser | null;
+  // A persistent-profile context (or the user's own Chrome, when attached over
+  // CDP). Persistent contexts have no parent Browser, so liveness is tracked
+  // with an explicit flag instead of browser.isConnected().
+  context: BrowserContext | null;
+  attached: boolean;
+  contextClosed: boolean;
   page: Page | null;
   cdp: CDPSession | null;
   // Latest screencast frame (embedded mode) — served by /api/apply/frame.
@@ -62,6 +69,10 @@ type ActiveSession = {
   // Set by skipFill(): the fill pass stops at the next field and the session
   // jumps to review — a stuck field must never wedge the run.
   fillAbort?: boolean;
+  // Last snapshot taken by the MCP apply loop. Field refs are DOM attributes
+  // written during serialization, so a fill can only address fields from the
+  // most recent snapshot — hence keeping it here rather than re-deriving.
+  lastSnapshot: SerializedField[] | null;
   ctx: ApplyContext;
 };
 
@@ -75,16 +86,13 @@ function active(): ActiveSession | null {
 }
 
 function browserAlive(s: ActiveSession): boolean {
-  return !!s.browser?.isConnected() && !!s.page && !s.page.isClosed();
+  return !!s.context && !s.contextClosed && !!s.page && !s.page.isClosed();
 }
 
 async function closeBrowser(s: ActiveSession): Promise<void> {
-  try {
-    await s.browser?.close();
-  } catch {
-    // already gone — the human may have closed the window
-  }
-  s.browser = null;
+  await closeApplyBrowser({ context: s.context, page: s.page, attached: s.attached });
+  s.context = null;
+  s.contextClosed = true;
   s.page = null;
   s.cdp = null;
   s.lastFrame = null;
@@ -156,10 +164,13 @@ export async function startSession(
   const ats = detectAts(ctx.job.url!);
   const session: ActiveSession = {
     ctx,
-    browser: null,
+    context: null,
+    attached: false,
+    contextClosed: false,
     page: null,
     cdp: null,
     lastFrame: null,
+    lastSnapshot: null,
     state: {
       jobId,
       jobTitle: ctx.job.title,
@@ -196,44 +207,51 @@ export async function startSession(
 }
 
 async function runToReview(s: ActiveSession): Promise<void> {
-  const { chromium } = await import("playwright");
   const embedded = s.state.mode === "embedded";
-  // Anti-detection basics (per research: real Chrome binary kills the
-  // headless-shell tells; the flags kill navigator.webdriver; matching
-  // locale/timezone feeds reCAPTCHA's consistency checks). Heavy stealth
-  // forks are overkill for low-volume attended use on a residential IP.
-  const launchOpts = {
-    headless: embedded,
-    args: ["--disable-blink-features=AutomationControlled"],
-    ignoreDefaultArgs: ["--enable-automation"],
-  };
-  try {
-    s.browser = await chromium.launch({ ...launchOpts, channel: "chrome" });
-  } catch {
-    s.browser = await chromium.launch(launchOpts); // no real Chrome installed
-  }
-  s.page = await s.browser.newPage({
-    locale: "en-US",
-    timezoneId: Intl.DateTimeFormat().resolvedOptions().timeZone || "America/New_York",
-    ...(embedded ? { viewport: { width: 1280, height: 1400 } } : {}),
+  // The browser now arrives with a profile: a persistent Dayspring profile by
+  // default, or the user's own Chrome when DAYSPRING_CDP_URL is set. Either way
+  // it is already signed into whatever it has been signed into before, which is
+  // what makes Workday autofillable at all.
+  const opened = await openApplyBrowser({ embedded });
+  s.context = opened.context;
+  s.page = opened.page;
+  s.attached = opened.attached;
+  s.contextClosed = false;
+  opened.context.on("close", () => {
+    s.contextClosed = true;
   });
+  await appendApplyLog(s.state.jobId, `browser: ${opened.describe}`);
   if (embedded) await startScreencast(s);
   await s.page.goto(s.ctx.job.url!, { waitUntil: "domcontentloaded", timeout: 60_000 });
 
+  // Workday is account-based, so historically it was always manual. With a
+  // persistent profile we may already be signed into this tenant — in which
+  // case the application form is right there and takes the normal fill path.
+  let workdayManual = false;
   if (s.state.ats === "workday") {
-    // Workday forms are per-tenant and account-based — the human drives them;
-    // we surface the vaulted credential + OTP helpers in the panel instead.
-    const { credentialForHost, hasMasterPassword } = await import("@/lib/vault/core");
-    const { hasVaultKey } = await import("@/lib/vault/crypto");
-    const cred = hasVaultKey() ? await credentialForHost(s.state.host) : null;
-    s.state.workday = {
-      existingUsername: cred?.username ?? null,
-      hasMaster: hasVaultKey() && await hasMasterPassword(),
-    };
-    s.state.message =
-      "Workday is account-based — sign in or register in the browser window (credential helpers below), complete the form, then approve here.";
-    await appendApplyLog(s.state.jobId, "workday session — manual fill with helpers");
-  } else {
+    const { workdaySignedIn } = await import("@/lib/apply/ats-forms");
+    workdayManual = !(await workdaySignedIn(s.page));
+    if (workdayManual) {
+      // Not signed in — surface the vaulted credential + OTP helpers and let
+      // the human drive. Signing in once here makes every future application
+      // to this tenant take the autofill path above.
+      const { credentialForHost, hasMasterPassword } = await import("@/lib/vault/core");
+      const { hasVaultKey } = await import("@/lib/vault/crypto");
+      const cred = hasVaultKey() ? await credentialForHost(s.state.host) : null;
+      s.state.workday = {
+        existingUsername: cred?.username ?? null,
+        hasMaster: hasVaultKey() && await hasMasterPassword(),
+      };
+      s.state.message =
+        "Workday is account-based and this profile isn't signed into this tenant yet — sign in or register in the browser window (credential helpers below), complete the form, then approve here. Once you've signed in, future applications to this tenant autofill.";
+      await appendApplyLog(s.state.jobId, "workday session — signed out, manual fill with helpers");
+    } else {
+      await appendApplyLog(s.state.jobId, "workday session — profile already signed in, autofilling");
+    }
+  }
+
+  // Signed-out Workday was fully handled above; everything else autofills.
+  if (!workdayManual) {
     s.state.phase = "filling";
     s.state.message = "Waiting for the application form to load…";
     const { waitForFormReady } = await import("@/lib/apply/ats-forms");
@@ -549,6 +567,119 @@ export async function skipFill(): Promise<DecisionResult> {
   s.fillAbort = true;
   s.state.message = "Skipping ahead — finish the form yourself, then approve.";
   return { ok: true, state: s.state };
+}
+
+// ── The MCP apply loop ───────────────────────────────────────────────────────
+// aiFillRemaining is one structured call: serialize the empty fields, get one
+// mapping back, write each. When a write fails — no matching combobox option,
+// a select value that isn't verbatim in the option list — nothing retries and
+// nothing reports it, so the field is silently still empty at the review gate.
+//
+// These three functions turn that into a loop an MCP client can drive: look at
+// the form, fill ONE field, look again to see whether it took, try something
+// else if it didn't, and walk multi-page wizards. Deliberately stops short of
+// submitting — approveAndSubmit stays a UI action, so the click that sends an
+// application is always a human's.
+
+export type SnapshotResult =
+  | {
+      ok: true;
+      phase: ApplyPhase;
+      url: string;
+      // Visible fields that are still empty, with a ref usable by fillField.
+      empty: SerializedField[];
+      // Everything currently answered — what would be submitted right now.
+      answered: { label: string; value: string }[];
+    }
+  | { ok: false; error: string };
+
+function liveSession(): ActiveSession | { error: string } {
+  const s = active();
+  if (!s || s.state.phase === "done") return { error: "No apply session is running." };
+  if (!browserAlive(s)) return { error: "The browser window was closed." };
+  return s;
+}
+
+export async function snapshotSession(): Promise<SnapshotResult> {
+  const s = liveSession();
+  if ("error" in s) return { ok: false, error: s.error };
+  const { serializeEmptyFields } = await import("@/lib/apply/ai-fill");
+  const { captureFormAnswers, formScope } = await import("@/lib/apply/ats-forms");
+  const scope = await formScope(s.page!);
+  const empty = await serializeEmptyFields(scope);
+  s.lastSnapshot = empty;
+  return {
+    ok: true,
+    phase: s.state.phase,
+    url: s.page!.url(),
+    empty,
+    answered: await captureFormAnswers(s.page!),
+  };
+}
+
+export type FillFieldResult =
+  | { ok: true; wrote: boolean; label: string }
+  | { ok: false; error: string };
+
+export async function fillSessionField(
+  ref: string,
+  value: string,
+): Promise<FillFieldResult> {
+  const s = liveSession();
+  if ("error" in s) return { ok: false, error: s.error };
+  const field = s.lastSnapshot?.find((f) => f.ref === ref);
+  if (!field) {
+    return {
+      ok: false,
+      error: "Unknown field ref — take a snapshot first; refs are only valid for the latest one.",
+    };
+  }
+  // EEO stays a human decision on every path into this module, including this
+  // one. serializeEmptyFields already filters it, so this is belt-and-braces
+  // against a stale snapshot or a hand-written ref.
+  if (/gender|race|ethnic|veteran|disab|sexual orientation|pronoun|self[- ]?identif|demographic/i.test(field.label)) {
+    return { ok: false, error: "Demographic and EEO questions are never auto-answered." };
+  }
+  const { writeField } = await import("@/lib/apply/ai-fill");
+  const { formScope } = await import("@/lib/apply/ats-forms");
+  const scope = await formScope(s.page!);
+  const wrote = await writeField(scope, field, value);
+  if (wrote) {
+    field.value = value;
+    s.state.filled.push(`${field.label.slice(0, 40)} (agent)`);
+    await appendApplyLog(s.state.jobId, `agent filled: ${field.label.slice(0, 60)}`);
+  }
+  return { ok: true, wrote, label: field.label };
+}
+
+const ADVANCE_RX = /^(next|continue|save and continue|save & continue|proceed)$/i;
+
+export type AdvanceResult =
+  | { ok: true; advanced: boolean; url: string; how: string }
+  | { ok: false; error: string };
+
+// Move to the next page of a multi-page application. Deliberately does NOT
+// match "submit"/"apply" — advancing must never be able to send.
+export async function advanceSession(): Promise<AdvanceResult> {
+  const s = liveSession();
+  if ("error" in s) return { ok: false, error: s.error };
+  const { formScope, waitForFormReady } = await import("@/lib/apply/ats-forms");
+  const scope = await formScope(s.page!);
+  const before = s.page!.url();
+  try {
+    const btn = scope.getByRole("button", { name: ADVANCE_RX }).first();
+    if ((await btn.count()) === 0 || !(await btn.isVisible())) {
+      return { ok: true, advanced: false, url: before, how: "no next/continue button found" };
+    }
+    await btn.click({ timeout: 5000 });
+  } catch (err) {
+    return { ok: false, error: err instanceof Error ? err.message : "advance failed" };
+  }
+  await waitForFormReady(s.page!);
+  s.lastSnapshot = null; // refs from the previous page are meaningless now
+  const after = s.page!.url();
+  await appendApplyLog(s.state.jobId, `agent advanced to next page (${after})`);
+  return { ok: true, advanced: true, url: after, how: "clicked next/continue" };
 }
 
 export async function cancelSession(): Promise<DecisionResult> {

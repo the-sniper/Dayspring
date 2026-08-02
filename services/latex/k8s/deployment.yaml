@@ -1,0 +1,118 @@
+# Kubernetes deployment for the LaTeX compile sidecar.
+#
+# Fly.io remains the documented default (services/latex/README.md) because it
+# gives scale-to-zero for free. This exists as a second, equally supported
+# target — and because on k8s you have to build scale-to-zero yourself, which
+# is the part worth understanding.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: dayspring
+---
+# The bearer token every RPC checks. Create it out-of-band rather than
+# committing it:
+#   kubectl -n dayspring create secret generic latex-service \
+#     --from-literal=secret="$(openssl rand -hex 32)"
+apiVersion: v1
+kind: Secret
+metadata:
+  name: latex-service
+  namespace: dayspring
+type: Opaque
+stringData:
+  secret: CHANGE_ME
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: latex
+  namespace: dayspring
+  labels: { app: latex }
+spec:
+  replicas: 1
+  selector:
+    matchLabels: { app: latex }
+  template:
+    metadata:
+      labels: { app: latex }
+    spec:
+      containers:
+        - name: latex
+          image: dayspring-latex:local
+          imagePullPolicy: IfNotPresent
+          ports:
+            - { name: http, containerPort: 8080 }
+            - { name: grpc, containerPort: 8081 }
+          env:
+            - name: LATEX_SERVICE_SECRET
+              valueFrom:
+                secretKeyRef: { name: latex-service, key: secret }
+          # Liveness on the unauthenticated GET /health: a kubelet probe can't
+          # present a bearer token or speak Connect, which is exactly why that
+          # endpoint exists separately from the Health RPC.
+          livenessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet: { path: /health, port: http }
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            # tectonic is single-threaded per document and a resume is small.
+            # 256Mi is not enough on the first compile (the font cache blows
+            # it), so the limit is 512Mi even though the request is lower.
+            limits: { cpu: "1", memory: 512Mi }
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            # tectonic writes its package cache and scratch files; the root
+            # filesystem is read-only so those need explicit homes.
+            - { name: tmp, mountPath: /tmp }
+            - { name: cache, mountPath: /home/node/.cache }
+      volumes:
+        - name: tmp
+          emptyDir: { sizeLimit: 512Mi }
+        - name: cache
+          emptyDir: { sizeLimit: 1Gi }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: latex
+  namespace: dayspring
+spec:
+  selector: { app: latex }
+  ports:
+    - { name: http, port: 80, targetPort: http }
+    - { name: grpc, port: 8081, targetPort: grpc }
+---
+# CPU-based autoscaling. Note this scales 1..3, NOT 0..3 — a plain HPA cannot
+# scale to zero. See keda.yaml for that, and see the README for why it matters
+# for a service that is idle 99.9% of the day.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: latex
+  namespace: dayspring
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: latex
+  minReplicas: 1
+  maxReplicas: 3
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target: { type: Utilization, averageUtilization: 70 }
+  behavior:
+    scaleDown:
+      # A compile takes seconds and arrives in bursts; scaling down eagerly
+      # means the next resume in a batch pays a cold start.
+      stabilizationWindowSeconds: 300

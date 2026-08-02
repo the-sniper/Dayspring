@@ -100,17 +100,75 @@ function buildMime(args: {
   ].join("\r\n");
 }
 
+export type Attachment = {
+  filename: string;
+  contentType: string; // e.g. "application/pdf"
+  content: Buffer;
+};
+
+// multipart/mixed for the email-apply lane: a plain-text body plus the résumé
+// PDF. Kept separate from buildMime so the outreach send path is untouched —
+// one-part and multi-part messages have different failure modes, and outreach
+// is the path that already works.
+function buildMimeWithAttachments(args: {
+  from: string;
+  to: string;
+  subject: string;
+  body: string;
+  attachments: Attachment[];
+}): string {
+  // The boundary only has to not appear in the body or the base64 payload.
+  // Base64 has no underscores, so this shape can't collide with a payload.
+  const boundary = `dayspring_${Buffer.from(args.subject).toString("hex").slice(0, 16)}_bnd`;
+  const lines = [
+    `From: ${args.from}`,
+    `To: ${args.to}`,
+    `Subject: ${encodeHeader(args.subject)}`,
+    "MIME-Version: 1.0",
+    `Content-Type: multipart/mixed; boundary="${boundary}"`,
+    "",
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    "Content-Transfer-Encoding: 8bit",
+    "",
+    args.body,
+  ];
+  for (const a of args.attachments) {
+    // RFC 2045 caps encoded lines at 76 chars. Gmail is lenient; some
+    // downstream MTAs are not.
+    const encoded = a.content.toString("base64").replace(/(.{76})/g, "$1\r\n");
+    lines.push(
+      `--${boundary}`,
+      `Content-Type: ${a.contentType}; name="${a.filename}"`,
+      `Content-Disposition: attachment; filename="${a.filename}"`,
+      "Content-Transfer-Encoding: base64",
+      "",
+      encoded,
+    );
+  }
+  lines.push(`--${boundary}--`, "");
+  return lines.join("\r\n");
+}
+
 export async function sendEmail(args: {
   to: string;
   subject: string;
   body: string;
   threadId?: string | null;
+  attachments?: Attachment[];
 }): Promise<{ id: string; threadId: string }> {
   const config = await getGmailConfig();
   const from = config?.email ?? "me";
-  const raw = toBase64Url(
-    buildMime({ from, to: args.to, subject: args.subject, body: args.body }),
-  );
+  const mime = args.attachments?.length
+    ? buildMimeWithAttachments({
+        from,
+        to: args.to,
+        subject: args.subject,
+        body: args.body,
+        attachments: args.attachments,
+      })
+    : buildMime({ from, to: args.to, subject: args.subject, body: args.body });
+  const raw = toBase64Url(mime);
   return gmailFetch<{ id: string; threadId: string }>("/messages/send", {
     method: "POST",
     body: JSON.stringify(

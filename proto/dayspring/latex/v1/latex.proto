@@ -1,0 +1,30 @@
+syntax = "proto3";
+
+package dayspring.latex.v1;
+
+// The one service boundary in Dayspring: the app hands over a .tex, the sidecar
+// hands back a rendered PDF and the page count that closes the length loop.
+service LatexService {
+  rpc Compile(CompileRequest) returns (CompileResponse);
+  rpc Health(HealthRequest) returns (HealthResponse);
+}
+
+message CompileRequest {
+  string latex = 1;
+}
+
+message CompileResponse {
+  // Raw PDF bytes. Over JSON these are base64; over gRPC/protobuf they are not,
+  // which is the one concrete win protobuf buys this service.
+  bytes pdf = 1;
+  // Real page count from the compiler, not an estimate.
+  uint32 pages = 2;
+  string engine = 3;
+}
+
+message HealthRequest {}
+
+message HealthResponse {
+  string engine = 1;
+  string version = 2;
+}

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Bot, AlertTriangle, FileText, ClipboardList, Users2 } from "lucide-react";
 import PageHeader from "@/components/page-header";
 import OrchestraRunButton from "@/components/orchestra-run-button";
@@ -7,10 +8,11 @@ import EngRequestForm from "@/components/eng-request-form";
 import RetroPanel, { type RetroProposal } from "@/components/retro-panel";
 import Markdown from "@/components/markdown";
 import OpsButton from "@/components/ops-button";
+import SpendResetHint from "@/components/spend-reset-hint";
 import { api, convex } from "@/lib/convex/server";
 import { dailyCapUsd } from "@/lib/orchestra/ledger";
 import { fmtDate, fmtTime } from "@/lib/orchestra/format";
-import { displayName } from "@/lib/orchestra/registry";
+import { displayName, themeCodenames } from "@/lib/orchestra/registry";
 import { todayDate } from "@/lib/orchestra/types";
 import { isHosted } from "@/lib/hosted";
 import { cn } from "@/lib/utils";
@@ -65,7 +67,7 @@ function StatTile({
 }: {
   label: string;
   value: string;
-  sub?: string;
+  sub?: ReactNode;
   alert?: boolean;
 }) {
   return (
@@ -82,9 +84,9 @@ function StatTile({
         {value}
       </p>
       {sub && (
-        <p className="mt-0.5 text-[11px] font-medium text-muted-foreground">
+        <div className="mt-0.5 text-[11px] font-medium text-muted-foreground">
           {sub}
-        </p>
+        </div>
       )}
     </div>
   );
@@ -162,7 +164,8 @@ export default async function CompanyPage() {
         title="Company"
         description={
           <>
-            Atlas plans · Radar researches · Sentinel verifies. Nothing external
+            {displayName("atlas")} plans · {displayName("radar")} researches ·{" "}
+            {displayName("sentinel")} verifies. Nothing external
             ships without you.{" "}
             {report
               ? `Last report: ${fmtDate(report.runDate)}.`
@@ -186,7 +189,14 @@ export default async function CompanyPage() {
         <StatTile
           label="Spend today"
           value={`$${spend.costUsd.toFixed(2)}`}
-          sub={`of $${cap.toFixed(2)} cap · ${spend.calls} calls`}
+          sub={
+            <>
+              <p>
+                of ${cap.toFixed(2)} cap · {spend.calls} calls
+              </p>
+              <SpendResetHint />
+            </>
+          }
           alert={spend.costUsd >= cap}
         />
         <StatTile
@@ -265,7 +275,7 @@ export default async function CompanyPage() {
             report · {fmtDate(report.runDate)} · {fmtTime(report.createdAt)}
           </h2>
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <Markdown text={report.body} />
+            <Markdown text={themeCodenames(report.body)} />
           </div>
         </section>
       )}
@@ -284,10 +294,11 @@ export default async function CompanyPage() {
         <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           Operations
         </h2>
-        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+        <div className="grid grid-cols-1 gap-6 rounded-[2rem] border border-border/60 bg-card p-6 shadow-sm sm:p-8 md:grid-cols-3 lg:gap-10">
           <OpsButton
             action="retro"
             label="Run weekly retro"
+            className="w-full"
             hint="Dumbledore reviews the week — scorecards, incidents, your rejections — and proposes charter changes with evidence. Runs itself on Sundays; idempotent per week."
           />
           {/* Repo-bound tools (filesystem + git + tsc) exist only where the
@@ -297,11 +308,13 @@ export default async function CompanyPage() {
               <OpsButton
                 action="forge"
                 label="Run Forge (spec queued requests)"
+                className="w-full"
                 hint="Fred & George pick up the oldest eng request below, read the actual codebase, and put a spec with acceptance criteria on the board."
               />
               <OpsButton
                 action="probe"
                 label="Run Probe (review working tree)"
+                className="w-full"
                 hint="After you (or a Claude Code session) implement a spec: Snape runs typecheck, then adversarially reviews your uncommitted changes against the spec. Verdict decides if it's mergeable."
               />
             </>
@@ -330,7 +343,7 @@ export default async function CompanyPage() {
                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2.5 px-4 py-3">
                   <Chip text={displayName(t.role)} style={ROLE_STYLE[t.role]} />
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
-                    {t.objective}
+                    {themeCodenames(t.objective)}
                   </span>
                   {t.verdict && (
                     <Chip
@@ -371,10 +384,10 @@ export default async function CompanyPage() {
                       {t.verificationNotes && (
                         <>
                           <p className="mt-3 text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                            Sentinel's notes
+                            {displayName("sentinel")}'s notes
                           </p>
                           <p className="mt-1.5 text-[13px] text-foreground">
-                            {t.verificationNotes}
+                            {themeCodenames(t.verificationNotes)}
                           </p>
                         </>
                       )}
@@ -394,7 +407,7 @@ export default async function CompanyPage() {
                         {artifact.summary}
                       </p>
                       <div className="mt-2 max-h-80 overflow-y-auto">
-                        <Markdown text={artifact.body} />
+                        <Markdown text={themeCodenames(artifact.body)} />
                       </div>
                       {artifact.citations.length > 0 && (
                         <div className="mt-3 border-t border-border/60 pt-2">
@@ -425,8 +438,8 @@ export default async function CompanyPage() {
           })}
           {shown.length === 0 && (
             <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
-              No tasks yet. Hit “Run today” — Atlas will file the first
-              contracts.
+              No tasks yet. Hit “Run today” — {displayName("atlas")} will file
+              the first contracts.
             </div>
           )}
         </div>

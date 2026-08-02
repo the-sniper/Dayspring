@@ -271,9 +271,9 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
   const atlasTaskId: string = await convex().mutation(api.orchestra.createTask, {
     runDate,
     role: "atlas",
-    objective: "Plan today's research contract for Radar and account for the day.",
+    objective: `Plan today's research contract for ${displayName("radar")} and account for the day.`,
     definitionOfDone: [
-      "Radar contract has a specific objective and 2-4 checkable DoD items",
+      `${displayName("radar")} contract has a specific objective and 2-4 checkable DoD items`,
       "Plan reflects yesterday's report (no repeated work)",
     ],
     boundaries: ["No object-level research", "No external actions"],
@@ -296,10 +296,10 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
       model: MODEL_LEAD,
       system: buildSystem(ATLAS_CHARTER),
       user:
-        `${snapshot}\n\n### Platform changes since last run (Vigil)\n${vigilBlock}\n\n` +
+        `${snapshot}\n\n### Platform changes since last run (${displayName("vigil")})\n${vigilBlock}\n\n` +
         `### Yesterday's company report\n` +
         (yesterdayReport ? yesterdayReport.body.slice(0, 4000) : "(first run — no prior report)") +
-        `\n\nPlan today's Radar contract. If Vigil reports a change (new resume, ` +
+        `\n\nPlan today's ${displayName("radar")} contract. If ${displayName("vigil")} reports a change (new resume, ` +
         `new headline, edited voice, new targets), reflect it in the contract instead of repeating yesterday's framing.`,
       maxTokens: 2500,
     },
@@ -313,7 +313,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
     honestStatus: atlas.data.status,
     summary: atlas.data.summary,
     body:
-      `Objective for Radar: ${atlas.data.radarObjective}\n\n` +
+      `Objective for ${displayName("radar")}: ${atlas.data.radarObjective}\n\n` +
       `DoD:\n${atlas.data.definitionOfDone.map((d) => `- ${d}`).join("\n")}\n\n` +
       `Focus: ${atlas.data.focusAreas.join("; ")}`,
     citations: [],
@@ -393,7 +393,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
       {
         runDate,
         role: "sentinel",
-        objective: `Adversarially verify Radar's brief (attempt ${attempt}) against its contract.`,
+        objective: `Adversarially verify ${displayName("radar")}'s brief (attempt ${attempt}) against its contract.`,
         definitionOfDone: [
           "Every load-bearing claim checked against a cited source",
           "Every DoD item explicitly assessed",
@@ -415,10 +415,10 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
         model: MODEL_LEAD,
         system: buildSystem(SENTINEL_CHARTER),
         user:
-          `### The contract Radar worked under\nObjective: ${atlas.data.radarObjective}\n` +
+          `### The contract ${displayName("radar")} worked under\nObjective: ${atlas.data.radarObjective}\n` +
           `Definition of done:\n${atlas.data.definitionOfDone.map((d) => `- ${d}`).join("\n")}\n\n` +
-          `### Radar's deliverable (attempt ${attempt} of ${MAX_RADAR_ATTEMPTS})\n${radarBody}\n\n` +
-          `### Sources Radar actually saw this run\n` +
+          `### ${displayName("radar")}'s deliverable (attempt ${attempt} of ${MAX_RADAR_ATTEMPTS})\n${radarBody}\n\n` +
+          `### Sources ${displayName("radar")} actually saw this run\n` +
           (radarCitations.length
             ? radarCitations.map((c) => `- ${c.title}: ${c.url}`).join("\n")
             : "(none)"),
@@ -481,9 +481,9 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
       {
         runDate,
         role: "compass",
-        objective: "Decide today's post angles (0-2) from Radar's verified brief.",
+        objective: `Decide today's post angles (0-2) from ${displayName("radar")}'s verified brief.`,
         definitionOfDone: [
-          "Every angle cites source URLs from Radar's brief",
+          `Every angle cites source URLs from ${displayName("radar")}'s brief`,
           "Zero angles is explicit, not implicit",
           "Banned-topics and lessons files respected",
         ],
@@ -505,7 +505,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
         model: MODEL_LEAD,
         system: buildSystem(COMPASS_CHARTER),
         user:
-          `${memory}\n\n### Radar's verified brief\n${radarBody}\n\n### Radar's sources\n` +
+          `${memory}\n\n### ${displayName("radar")}'s verified brief\n${radarBody}\n\n### ${displayName("radar")}'s sources\n` +
           radarCitations.map((c) => `- ${c.title}: ${c.url}`).join("\n") +
           `\n\nDecide today's angles.`,
         maxTokens: 2000,
@@ -585,7 +585,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
             user:
               `${memory}\n\n### Angle memo (${angle.platform})\n${angle.angle}\nWhy now: ${angle.why}\nSources you may cite:\n` +
               angle.sourceUrls.map((u) => `- ${u}`).join("\n") +
-              `\n\n### Radar context (excerpt)\n${radarBody.slice(0, 3000)}\n\nWrite the post.`,
+              `\n\n### ${displayName("radar")} context (excerpt)\n${radarBody.slice(0, 3000)}\n\nWrite the post.`,
             maxTokens: 1500,
           },
           QuillDraft,
@@ -616,7 +616,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
         {
           runDate,
           role: "sentinel",
-          objective: `Audit Compass's memo + ${drafts.length} draft(s) before the approval queue.`,
+          objective: `Audit ${displayName("compass")}'s memo + ${drafts.length} draft(s) before the approval queue.`,
           definitionOfDone: [
             "Every draft checked: claims vs sources, banned topics, voice, platform fit",
           ],
@@ -639,7 +639,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
             SENTINEL_CHARTER + "\n\n" + SENTINEL_CONTENT_ADDENDUM,
           ),
           user:
-            `${memory}\n\n### Compass's memo\n` +
+            `${memory}\n\n### ${displayName("compass")}'s memo\n` +
             compass.data.angles
               .map((a, i) => `Angle ${i} (${a.platform}): ${a.angle} — why: ${a.why} — sources: ${a.sourceUrls.join(", ")}`)
               .join("\n") +
@@ -647,7 +647,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
             drafts
               .map((d, i) => `[${i}] (${d.draft.platform})\n${d.draft.text}`)
               .join("\n\n") +
-            `\n\n### Sources Radar verified this run\n` +
+            `\n\n### Sources ${displayName("radar")} verified this run\n` +
             radarCitations.map((c) => `- ${c.title}: ${c.url}`).join("\n"),
           maxTokens: 2500,
         },

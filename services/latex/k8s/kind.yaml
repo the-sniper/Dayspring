@@ -1,0 +1,34 @@
+# Local kind cluster for the LaTeX sidecar. Costs nothing and needs no cloud
+# account, which makes it the honest place to actually learn this rather than
+# paying a managed control plane to sit idle.
+#
+#   kind create cluster --config services/latex/k8s/kind.yaml
+#   docker build -f services/latex/Dockerfile -t dayspring-latex:local .
+#   kind load docker-image dayspring-latex:local --name dayspring
+#   kubectl apply -f services/latex/k8s/deployment.yaml
+#   kubectl -n dayspring create secret generic latex-service \
+#     --from-literal=secret="$(openssl rand -hex 32)" --dry-run=client -o yaml \
+#     | kubectl apply -f -
+#   kubectl -n dayspring rollout status deploy/latex
+#
+# Then point Dayspring at it:
+#   kubectl -n dayspring port-forward svc/latex 8080:80 8081:8081
+#   DAYSPRING_LATEX_SERVICE_URL=http://localhost:8080
+#   DAYSPRING_LATEX_GRPC_URL=http://localhost:8081     # only for protocol=grpc
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: dayspring
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # Straight through to the host so you can skip port-forward if you'd
+      # rather. HTTP/1.1 (connect, grpc-web, json) and h2c (grpc) are separate
+      # ports because a Node plaintext http2 server can't serve both.
+      - { containerPort: 30080, hostPort: 8080, protocol: TCP }
+      - { containerPort: 30081, hostPort: 8081, protocol: TCP }

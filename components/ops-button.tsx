@@ -26,11 +26,13 @@ export default function OpsButton({
   label,
   hint,
   primary = false,
+  className,
 }: {
   action: keyof typeof ACTIONS;
   label: string;
   hint?: string;
   primary?: boolean;
+  className?: string;
 }) {
   const [pending, startTransition] = useTransition();
   const [result, setResult] = useState<OrchestraActionResult | null>(null);
@@ -46,16 +48,16 @@ export default function OpsButton({
   }
 
   return (
-    <div className="flex min-w-0 flex-col gap-1">
+    <div className={cn("flex min-w-0 flex-col gap-1.5", className)}>
       <button
         type="button"
         onClick={run}
         disabled={pending}
         className={cn(
-          "flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition-all active:scale-[0.98]",
+          "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all active:scale-[0.98]",
           primary
-            ? "bg-[var(--accent)] text-[var(--accent-foreground)] hover:brightness-105"
-            : "border border-border text-muted-foreground hover:bg-muted",
+            ? "bg-brand-500 text-white shadow-sm shadow-brand-500/20 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
+            : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
           pending && "cursor-wait opacity-70",
         )}
       >
@@ -63,15 +65,15 @@ export default function OpsButton({
         {pending ? ACTIONS[action].pending : label}
       </button>
       {hint && (
-        <p className="max-w-[240px] text-[10px] font-medium leading-snug text-muted-foreground/80">
+        <p className="text-[10px] font-medium leading-relaxed text-muted-foreground/70">
           {hint}
         </p>
       )}
       {result && (
         <p
           className={cn(
-            "max-w-[260px] text-[10px] font-semibold leading-snug",
-            result.ok ? "text-muted-foreground" : "text-rose-500",
+            "text-[10px] font-semibold leading-snug",
+            result.ok ? "text-brand-600 dark:text-brand-400" : "text-rose-500",
           )}
         >
           {result.message}

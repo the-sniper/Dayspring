@@ -87,7 +87,10 @@ export default function SimpleMarkdown({
 
         // Lead meta lines (ORCHESTRA date, VERIFIED, Spend) — slightly quieter
         const isMeta =
-          /^(ORCHESTRA|Radar's brief|Compass:|Herald:|Spend:|Sentinel)/i.test(
+          /^(ORCHESTRA\b|Spend:)/i.test(line) ||
+          /^.+?'s brief:/i.test(line) ||
+          /^.+?'s objection:/i.test(line) ||
+          /^(Dumbledore|Hermione|Ginny|Ron|Luna|Hedwig|Percy|Snape|Dobby|Neville|Gringotts|Hagrid|Fred|Atlas|Radar|Sentinel|Compass|Quill|Herald|Forge|Probe|Vigil|Pulse|Mason|Ledger|Archive)\b/i.test(
             line,
           );
 

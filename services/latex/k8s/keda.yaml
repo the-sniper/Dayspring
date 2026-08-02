@@ -1,0 +1,58 @@
+# Scale-to-zero, the thing a plain HPA cannot do.
+#
+# This service compiles a handful of resumes a day and is idle the rest of the
+# time, so running a pod around the clock is the whole cost of the deployment
+# for none of the value. Fly gives this for free; on Kubernetes you add KEDA.
+#
+# Install once:
+#   helm repo add kedacore https://kedacore.github.io/charts
+#   helm install keda kedacore/keda --namespace keda --create-namespace
+#
+# Requires the HPA in deployment.yaml to be removed first — KEDA creates and
+# owns its own HPA, and two controllers fighting over one Deployment's replica
+# count is a genuinely confusing outage to debug.
+apiVersion: keda.sh/v1alpha1
+kind: ScaledObject
+metadata:
+  name: latex
+  namespace: dayspring
+spec:
+  scaleTargetRef:
+    name: latex
+  minReplicaCount: 0
+  maxReplicaCount: 3
+  # Long: a compile burst arrives when you tailor several jobs in a sitting,
+  # and scaling to zero between them would make each one pay a cold start.
+  cooldownPeriod: 600
+  pollingInterval: 15
+  triggers:
+    # Activates the deployment on inbound HTTP. Needs the KEDA HTTP add-on:
+    #   helm install http-add-on kedacore/keda-add-ons-http -n keda
+    # Traffic must then route through the add-on's interceptor rather than
+    # straight at the Service, which is the tradeoff: scale-to-zero costs you
+    # an extra hop on every request.
+    - type: external-push
+      metadata:
+        scalerAddress: keda-add-ons-http-external-scaler.keda:9090
+---
+# The add-on's routing object: it holds requests while a scaled-to-zero
+# deployment starts, instead of returning a connection error.
+apiVersion: http.keda.sh/v1alpha1
+kind: HTTPScaledObject
+metadata:
+  name: latex
+  namespace: dayspring
+spec:
+  hosts:
+    - latex.dayspring.local
+  scaleTargetRef:
+    name: latex
+    service: latex
+    port: 80
+  replicas:
+    min: 0
+    max: 3
+  # Generous, because a cold start here is a container boot plus tectonic
+  # warming up. The Dockerfile pre-bakes the package cache to keep this from
+  # also being a TeX Live download.
+  scaledownPeriod: 600

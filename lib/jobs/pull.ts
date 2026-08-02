@@ -14,6 +14,11 @@ import { findOrCreateCompany } from "@/lib/jobs/create";
 import { heuristicRoleType } from "@/lib/jobs/role-type";
 import { mapPool } from "@/lib/util/pool";
 import { getTargetMaxHeadcount } from "@/lib/jobs/targeting";
+import {
+  adzunaQueriesForRoles,
+  isTitleRelevantToRoles,
+  roleMatchesPreferred,
+} from "@/shared/job-relevance";
 import { isPastRetention } from "@/shared/job-retention";
 import { levelOrDefault } from "@/shared/seniority";
 
@@ -106,13 +111,16 @@ export type PullResult = {
 export async function pullAllJobs(): Promise<PullResult> {
   const onboarding = await convex().query(api.onboarding.status, {});
   const preferredRoles = new Set(onboarding?.prefs?.roleTypes ?? []);
-  const isRelevant = (title: string) => {
-    if (preferredRoles.size === 0) return true;
-    const role = heuristicRoleType(title);
-    // Keep ambiguous titles for the classifier; reject only confirmed
-    // mismatches so a generic "Software Engineer" is not lost.
-    return role === null || preferredRoles.has(role);
-  };
+  const isRelevant = (title: string) =>
+    isTitleRelevantToRoles(title, preferredRoles);
+
+  // Sweep aggregator noise already sitting in "new" before we spend the
+  // per-pull budget on more of the same.
+  try {
+    await convex().mutation(api.jobs.ignoreOffDomainNew, { limit: 1000 });
+  } catch {
+    // non-fatal
+  }
 
   // Watched = a bare-slug ATS with a slug, OR Workday with all three fields.
   const allCompanies = await convex().query(api.companies.listAll, {});
@@ -236,7 +244,9 @@ export async function pullAllJobs(): Promise<PullResult> {
   // dedupe insert as ATS jobs. Reported as one summary row.
   if (hasAdzunaKeys() && result.newJobIds.length < MAX_NEW_JOBS_PER_PULL) {
     try {
-      const aggregated = await fetchAdzuna();
+      const aggregated = await fetchAdzuna(
+        adzunaQueriesForRoles([...preferredRoles]),
+      );
       let skipped = 0;
       const docs = [];
       for (const aj of aggregated) {
@@ -305,7 +315,9 @@ export async function pullAllJobs(): Promise<PullResult> {
 
   // Cheap batched classify for this run's titles the regexes missed.
   // Non-fatal: no key or a failed call just leaves roleType null (settable
-  // manually on the job detail page).
+  // manually on the job detail page). Titles the classifier marks OTHER — or
+  // that miss the user's preferred roles — are ignored so they don't sit in
+  // the feed as noise.
   if (await hasApiKey() && result.newJobIds.length > 0) {
     try {
       const untagged = await convex().query(api.jobs.untaggedAmong, {
@@ -315,17 +327,38 @@ export async function pullAllJobs(): Promise<PullResult> {
       if (untagged.length > 0) {
         const roles = await classifyRoles(untagged.map((j) => j.title));
         for (let i = 0; i < untagged.length; i++) {
-          if (roles[i]) {
+          const role = roles[i];
+          const id = untagged[i].id as never;
+          if (role && roleMatchesPreferred(role, preferredRoles)) {
             await convex().mutation(api.jobs.patch, {
-              id: untagged[i].id as never,
-              patch: { roleType: roles[i] },
+              id,
+              patch: { roleType: role },
             });
             result.classified++;
+          } else if (preferredRoles.size > 0 || !role) {
+            await convex().mutation(api.jobs.setStatus, {
+              id,
+              to: "ignored",
+            });
           }
         }
       }
     } catch {
       // leave nulls
+    }
+  }
+
+  // Heuristic-tagged inserts that still miss preferred roles (e.g. DATA when
+  // the user only wants FDE) get ignored after insert — the prefilter already
+  // catches most of these, this is a safety net for racey prefs.
+  if (preferredRoles.size > 0 && result.newJobIds.length > 0) {
+    try {
+      await convex().mutation(api.jobs.ignoreOffDomainAmong, {
+        ids: result.newJobIds as never,
+        preferredRoles: [...preferredRoles],
+      });
+    } catch {
+      // non-fatal
     }
   }
 

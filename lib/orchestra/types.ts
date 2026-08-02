@@ -122,6 +122,92 @@ export function extractEnvelope<T>(
   return { ok: false, error: lastError };
 }
 
+export const CompassPlan = Envelope.extend({
+  // 0-2 angles; zero = "nothing worth posting today" (a valid decision).
+  angles: z
+    .array(
+      z.object({
+        platform: z.enum(["x", "linkedin"]),
+        angle: z.string().min(1),
+        why: z.string().min(1),
+        sourceUrls: z.array(z.string()),
+      }),
+    )
+    .max(2),
+});
+export type CompassPlan = z.infer<typeof CompassPlan>;
+
+export const QuillDraft = Envelope.extend({
+  platform: z.enum(["x", "linkedin"]),
+  text: z.string().min(1),
+});
+export type QuillDraft = z.infer<typeof QuillDraft>;
+
+export const SentinelContentAudit = Envelope.extend({
+  memoVerdict: z.enum(["confirmed", "needs_work", "refuted"]),
+  drafts: z.array(
+    z.object({
+      index: z.number(),
+      verdict: z.enum(["confirmed", "needs_work", "refuted"]),
+      issues: z.array(z.string()),
+    }),
+  ),
+  incidents: z.array(
+    z.object({
+      kind: z.enum(["unsourced_claim", "hallucination", "dod_unmet", "other"]),
+      severity: z.enum(["low", "medium", "high"]),
+      detail: z.string(),
+    }),
+  ),
+});
+export type SentinelContentAudit = z.infer<typeof SentinelContentAudit>;
+
+export const HeraldDraft = Envelope.extend({
+  subject: z.string().min(1).max(80),
+  body: z.string().min(1),
+  // Every personalization claim, mapped to the source that proves it —
+  // Sentinel audits this table, not the prose.
+  claims: z.array(z.object({ claim: z.string(), sourceUrl: z.string() })),
+});
+export type HeraldDraft = z.infer<typeof HeraldDraft>;
+
+export const ForgeSpec = Envelope.extend({
+  title: z.string().min(1),
+  approach: z.string().min(1),
+  acceptanceCriteria: z.array(z.string()).min(2).max(8),
+  filesLikelyTouched: z.array(z.string()),
+  risks: z.array(z.string()),
+});
+export type ForgeSpec = z.infer<typeof ForgeSpec>;
+
+export const ProbeReview = Envelope.extend({
+  verdict: z.enum(["confirmed", "needs_work", "refuted"]),
+  criteria: z.array(
+    z.object({ criterion: z.string(), met: z.boolean(), note: z.string() }),
+  ),
+  issues: z.array(z.string()),
+});
+export type ProbeReview = z.infer<typeof ProbeReview>;
+
+export const RetroReport = Envelope.extend({
+  healthSummary: z.string().min(1),
+  wins: z.array(z.string()),
+  concerns: z.array(z.string()),
+  // Charter/process change proposals — ONLY the CEO merges these (final plan
+  // locked decision #9). Every proposal must cite its evidence.
+  proposals: z
+    .array(
+      z.object({
+        target: z.string(), // e.g. "charter:radar" | "process" | "tier"
+        change: z.string(),
+        evidence: z.string(), // incident/lesson/scorecard citation
+        expectedEffect: z.string(),
+      }),
+    )
+    .max(5),
+});
+export type RetroReport = z.infer<typeof RetroReport>;
+
 export function todayDate(): string {
   return new Date().toISOString().slice(0, 10);
 }

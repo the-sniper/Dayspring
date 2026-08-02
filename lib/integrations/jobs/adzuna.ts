@@ -32,34 +32,22 @@ type AdzunaResult = {
   category?: { label?: string } | null;
 };
 
-// Broad default query set spanning industries/functions. Override with the
-// ADZUNA_QUERIES env var (comma-separated) to narrow or widen coverage.
-const DEFAULT_QUERIES = [
-  "software engineer",
-  "data",
-  "product manager",
-  "designer",
-  "marketing",
-  "sales",
-  "operations",
-  "finance",
-  "customer success",
-  "analyst",
-];
-
 export function hasAdzunaKeys(): boolean {
   return Boolean(process.env.ADZUNA_APP_ID && process.env.ADZUNA_APP_KEY);
 }
 
-function config() {
-  const queries = (process.env.ADZUNA_QUERIES ?? "")
+function envQueries(): string[] {
+  return (process.env.ADZUNA_QUERIES ?? "")
     .split(",")
     .map((q) => q.trim())
     .filter(Boolean);
+}
+
+function config(queries: string[]) {
   return {
     appId: process.env.ADZUNA_APP_ID!,
     appKey: process.env.ADZUNA_APP_KEY!,
-    queries: queries.length > 0 ? queries : DEFAULT_QUERIES,
+    queries,
     maxDays: Number(process.env.ADZUNA_MAX_DAYS ?? 15) || 15,
     pages: Math.max(1, Number(process.env.ADZUNA_PAGES ?? 2) || 2),
   };
@@ -89,9 +77,20 @@ async function fetchPage(
 
 // Fetch across every configured query + page, normalize, and dedupe by Adzuna
 // id (the same posting often surfaces under multiple query terms).
-export async function fetchAdzuna(): Promise<AggregatorJob[]> {
+// Prefer caller-supplied queries (from onboarding role types). Env override
+// still wins when set; empty caller list falls back to a tech-only default.
+export async function fetchAdzuna(
+  preferredQueries: string[] = [],
+): Promise<AggregatorJob[]> {
   if (!hasAdzunaKeys()) return [];
-  const cfg = config();
+  const fromEnv = envQueries();
+  const queries =
+    fromEnv.length > 0
+      ? fromEnv
+      : preferredQueries.length > 0
+        ? preferredQueries
+        : ["software engineer"];
+  const cfg = config(queries);
   const byId = new Map<string, AggregatorJob>();
 
   for (const query of cfg.queries) {

@@ -333,3 +333,224 @@ export const recentIncidents = query({
       .take(20);
   },
 });
+
+// ---- Phase 2: content approval queue ---------------------------------------
+
+export const insertPost = mutation({
+  args: {
+    runDate: v.string(),
+    platform: v.string(),
+    angle: v.string(),
+    text: v.string(),
+    citations: v.array(v.object({ title: v.string(), url: v.string() })),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    return await ctx.db.insert("orchPosts", {
+      ...args,
+      aiText: args.text,
+      userId,
+      status: "queued_for_review",
+      createdAt: new Date().toISOString(),
+    });
+  },
+});
+
+export const postsByStatus = query({
+  args: { status: v.string() },
+  handler: async (ctx, { status }) => {
+    const userId = await requireUser(ctx);
+    return await ctx.db
+      .query("orchPosts")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", userId).eq("status", status),
+      )
+      .order("desc")
+      .take(30);
+  },
+});
+
+// The only mutation that moves a post through the human gate. Legal moves:
+// queued_for_review → approved (with optional edit) | rejected (reason
+// required); approved → posted. Returns platform+angle so the caller can file
+// the rejection into the lessons memory.
+export const decidePost = mutation({
+  args: {
+    postId: v.id("orchPosts"),
+    decision: v.union(
+      v.literal("approved"),
+      v.literal("rejected"),
+      v.literal("posted"),
+    ),
+    text: v.optional(v.string()),
+    rejectReason: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = await requireUser(ctx);
+    const post = owned(await ctx.db.get(args.postId), userId);
+    if (!post) throw new Error("Post not found.");
+    const legal =
+      (args.decision === "approved" && post.status === "queued_for_review") ||
+      (args.decision === "rejected" && post.status === "queued_for_review") ||
+      (args.decision === "posted" && post.status === "approved");
+    if (!legal) {
+      throw new Error(`Illegal move: ${post.status} → ${args.decision}.`);
+    }
+    if (args.decision === "rejected" && !args.rejectReason?.trim()) {
+      throw new Error("A rejection needs a reason — it feeds the lessons file.");
+    }
+    await ctx.db.patch(args.postId, {
+      status: args.decision,
+      ...(args.text ? { text: args.text } : {}),
+      ...(args.rejectReason ? { rejectReason: args.rejectReason } : {}),
+      decidedAt: new Date().toISOString(),
+    });
+    return { platform: post.platform, angle: post.angle };
+  },
+});
+
+// ---- Phase 3: Herald's candidate pool ---------------------------------------
+// Contacts that are actually reachable TODAY without spending a credit:
+// email on file, never contacted, ranked by affiliation strength (the reply
+// trigger) and whether their company has a live high-fit job. Herald researches
+// these; it can never search Apollo/Happenstance itself (credits stay
+// click-gated in the existing UI).
+export const heraldCandidates = query({
+  args: { limit: v.number() },
+  handler: async (ctx, { limit }) => {
+    const userId = await requireUser(ctx);
+    const contacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(500);
+    const outreachRows = await ctx.db
+      .query("outreach")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(1000);
+    const contacted = new Set(outreachRows.map((o) => String(o.contactId)));
+
+    const eligible = contacts.filter(
+      (c) => c.email && !contacted.has(String(c._id)),
+    );
+    const out = [];
+    for (const c of eligible.slice(0, 60)) {
+      const affiliations = await ctx.db
+        .query("affiliations")
+        .withIndex("by_contact", (q) => q.eq("contactId", c._id))
+        .take(10);
+      const company = c.companyId ? await ctx.db.get(c.companyId) : null;
+      let topJob: { id: string; title: string; matchScore: number } | null =
+        null;
+      if (c.companyId) {
+        const jobs = await ctx.db
+          .query("jobs")
+          .withIndex("by_company", (q) => q.eq("companyId", c.companyId!))
+          .take(50);
+        const best = jobs
+          .filter((j) => (j.matchScore ?? 0) >= 60 && j.status !== "rejected")
+          .sort((a, b) => (b.matchScore ?? 0) - (a.matchScore ?? 0))[0];
+        if (best) {
+          topJob = {
+            id: String(best._id),
+            title: best.title,
+            matchScore: best.matchScore ?? 0,
+          };
+        }
+      }
+      const maxAffinity = Math.max(0, ...affiliations.map((a) => a.strength));
+      out.push({
+        id: String(c._id),
+        name: c.name,
+        title: c.title ?? null,
+        companyName: company?.name ?? null,
+        linkedin: c.linkedin ?? null,
+        summary: c.summary ?? null,
+        notes: c.notes ?? null,
+        affiliations: affiliations.map((a) => ({
+          kind: a.kind,
+          detail: a.detail,
+          strength: a.strength,
+        })),
+        maxAffinity,
+        topJob,
+      });
+    }
+    // Reply-trigger ranking: affiliation strength first, then live-job fit.
+    out.sort(
+      (a, b) =>
+        b.maxAffinity - a.maxAffinity ||
+        (b.topJob?.matchScore ?? 0) - (a.topJob?.matchScore ?? 0),
+    );
+    return out.slice(0, Math.min(limit, 10));
+  },
+});
+
+// Latest artifact of a given kind (e.g. the newest weekly retro).
+export const latestArtifactOfKind = query({
+  args: { kind: v.string() },
+  handler: async (ctx, { kind }) => {
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query("orchArtifacts")
+      .withIndex("by_user_runDate", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(200);
+    return rows.find((a) => a.kind === kind) ?? null;
+  },
+});
+
+// ---- Vigil's raw material: a cheap, bounded snapshot of platform state -----
+// The watcher (lib/orchestra/watch.ts) fingerprints this + the memory files +
+// the tier every run and tells Atlas what changed since yesterday.
+export const platformState = query({
+  args: {},
+  handler: async (ctx) => {
+    const userId = await requireUser(ctx);
+    const profiles = await ctx.db
+      .query("profiles")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(10);
+    const newestProfile = [...profiles].sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt),
+    )[0];
+    const resumes = await ctx.db
+      .query("masterResumes")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(50);
+    const newestResume = [...resumes].sort((a, b) =>
+      b.updatedAt.localeCompare(a.updatedAt),
+    )[0];
+    const companies = await ctx.db
+      .query("companies")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(1000);
+    const contacts = await ctx.db
+      .query("contacts")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .take(1000);
+    return {
+      profileUpdatedAt: newestProfile?.updatedAt ?? null,
+      profileHeadline: newestProfile?.headline ?? null,
+      profileName: newestProfile?.fullName ?? null,
+      resumeCount: resumes.length,
+      resumeUpdatedAt: newestResume?.updatedAt ?? null,
+      primaryResumeLabel: resumes.find((r) => r.isPrimary)?.label ?? null,
+      companiesCount: companies.length,
+      contactsCount: contacts.length,
+    };
+  },
+});
+
+// One employee's work history — the /company/team/[id] view.
+export const tasksByRole = query({
+  args: { role: v.string(), limit: v.optional(v.number()) },
+  handler: async (ctx, { role, limit }) => {
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query("orchTasks")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(300);
+    return rows.filter((t) => t.role === role).slice(0, Math.min(limit ?? 40, 100));
+  },
+});

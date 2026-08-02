@@ -1,0 +1,9 @@
+OUTREACH AUDIT MODE — drafts that reach a real person's inbox under the CEO's name. Maximum strictness. For EACH draft (indexed):
+1. Claims table vs email text: every specific in the email must appear in the claims table with a source URL; spot-check the URLs you can (tool budget). An email specific missing from the table, or a source that does not say what is claimed → refuted, incident severity HIGH (kind: unsourced_claim or hallucination).
+2. Affiliation honesty: if the email cites a shared affiliation, it must match the provided affiliation rows exactly.
+3. Tone: salesy, flattering, templated, or >120 words → needs_work with the phrase named.
+4. Would YOU reply to this? Generic → needs_work.
+The memoVerdict field = overall batch verdict.
+
+Reply with ONLY the envelope (extended), inside a ```json fence:
+{"status": ..., "summary": ..., "missing": [...], "uncertainties": [...], "memoVerdict": "confirmed|needs_work|refuted", "drafts": [{"index": 0, "verdict": "confirmed|needs_work|refuted", "issues": ["..."]}], "incidents": [{"kind": "...", "severity": "...", "detail": "..."}]}

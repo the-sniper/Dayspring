@@ -111,6 +111,18 @@ async function main() {
     }
   }
 
+  // 3.6 Weekly retro — Sundays. Atlas reviews the week and files charter
+  // proposals (you merge or ignore them on /company). Idempotent per week.
+  if (new Date().getDay() === 0 && (await hasApiKey())) {
+    try {
+      const { runRetro } = await import("../lib/orchestra/retro");
+      const retro = await runRetro();
+      console.log(`retro: ${retro.message.split("\n")[0]}`);
+    } catch (err) {
+      errors.push(`retro: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
   // 4. Digest
   const digest = await assembleDigest({ added, scored, repliesFound, errors });
   await setSetting("lastDailyRun", new Date().toISOString());

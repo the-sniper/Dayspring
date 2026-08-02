@@ -7,6 +7,7 @@ import {
 } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { heuristicRoleType } from "../shared/role-types";
+import { isTitleRelevantToRoles } from "../shared/job-relevance";
 import { levelOrDefault } from "../shared/seniority";
 import { companyByNameForUser, getOnboardingPrefs } from "./onboarding";
 import { DEFAULT_MAX_HEADCOUNT } from "../shared/company-size";
@@ -406,16 +407,10 @@ export const pullForUser = internalAction({
       const { company, fetched } = s.value;
       const docs = [];
       for (const nj of fetched) {
+        // Drop off-domain titles (truck drivers, nurses, clerks…) and roles
+        // outside the user's onboarding picks before they spend the budget.
+        if (!isTitleRelevantToRoles(nj.title, preferredRoles)) continue;
         const roleType = heuristicRoleType(nj.title);
-        // Unknown titles remain eligible for later classification; only titles
-        // that definitely target another role family are discarded.
-        if (
-          preferredRoles.size > 0 &&
-          roleType !== null &&
-          !preferredRoles.has(roleType)
-        ) {
-          continue;
-        }
         const isUs = isUsLocation(nj.location);
         if (isUs === false) continue;
         // Schema fields are v.optional(...) — omit unknowns entirely, since

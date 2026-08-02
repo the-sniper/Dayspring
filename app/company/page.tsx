@@ -2,12 +2,22 @@ import Link from "next/link";
 import { Bot, AlertTriangle, FileText, ClipboardList, Users2 } from "lucide-react";
 import PageHeader from "@/components/page-header";
 import OrchestraRunButton from "@/components/orchestra-run-button";
+import PostApprovalCard from "@/components/post-approval-card";
+import EngRequestForm from "@/components/eng-request-form";
+import RetroPanel, { type RetroProposal } from "@/components/retro-panel";
+import Markdown from "@/components/markdown";
+import OpsButton from "@/components/ops-button";
 import { api, convex } from "@/lib/convex/server";
 import { dailyCapUsd } from "@/lib/orchestra/ledger";
+import { fmtDate, fmtTime } from "@/lib/orchestra/format";
+import { displayName } from "@/lib/orchestra/registry";
 import { todayDate } from "@/lib/orchestra/types";
+import { isHosted } from "@/lib/hosted";
 import { cn } from "@/lib/utils";
 
 export const dynamic = "force-dynamic";
+// The Run-today server action can take minutes (hosted platforms honor this).
+export const maxDuration = 300;
 
 // /company — the orchestra's dashboard (final plan §2 default #6).
 // Server component like the rest of the app: state renders from Convex, the
@@ -17,6 +27,11 @@ const ROLE_STYLE: Record<string, string> = {
   atlas: "bg-brand-500/10 text-brand-600 dark:text-brand-400",
   radar: "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   sentinel: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
+  compass: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
+  quill: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  herald: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
+  forge: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
+  probe: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
 };
 
 const STATUS_STYLE: Record<string, string> = {
@@ -81,7 +96,7 @@ export default async function CompanyPage() {
     .toISOString()
     .slice(0, 10);
 
-  const [todayReport, lastReport, tasks, scorecard, incidents, spend] =
+  const [todayReport, lastReport, tasks, scorecard, incidents, spend, forReview, approved] =
     await Promise.all([
       convex().query(api.orchestra.latestReport, { runDate: today }),
       convex().query(api.orchestra.latestReport, {}),
@@ -89,7 +104,27 @@ export default async function CompanyPage() {
       convex().query(api.orchestra.scorecard, { sinceDate: since }),
       convex().query(api.orchestra.recentIncidents, {}),
       convex().query(api.orchestra.spendForDate, { runDate: today }),
+      convex().query(api.orchestra.postsByStatus, { status: "queued_for_review" }),
+      convex().query(api.orchestra.postsByStatus, { status: "approved" }),
     ]);
+  const retro = await convex().query(api.orchestra.latestArtifactOfKind, {
+    kind: "retro",
+  });
+  // The retro body ends with a machine-readable proposals block.
+  let retroProposals: RetroProposal[] = [];
+  let retroMemo = "";
+  if (retro) {
+    const m = retro.body.match(/```json\s*([\s\S]*?)```/);
+    retroMemo = m ? retro.body.slice(0, m.index).trim() : retro.body;
+    if (m) {
+      try {
+        retroProposals =
+          (JSON.parse(m[1]) as { proposals?: RetroProposal[] }).proposals ?? [];
+      } catch {
+        // memo still renders; proposals just lose their buttons
+      }
+    }
+  }
 
   // Artifact bodies for the expandable board rows (bounded to what's shown).
   const shown = tasks.slice(0, 12);
@@ -130,7 +165,7 @@ export default async function CompanyPage() {
             Atlas plans · Radar researches · Sentinel verifies. Nothing external
             ships without you.{" "}
             {report
-              ? `Last report: ${report.runDate}.`
+              ? `Last report: ${fmtDate(report.runDate)}.`
               : "No runs yet — start the first one."}
           </>
         }
@@ -177,17 +212,106 @@ export default async function CompanyPage() {
         />
       </div>
 
+      {forReview.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-brand-600 dark:text-brand-400">
+            Awaiting your approval ({forReview.length})
+          </h2>
+          <div className="flex flex-col gap-3">
+            {forReview.map((post) => (
+              <PostApprovalCard
+                key={String(post._id)}
+                post={{
+                  id: String(post._id),
+                  platform: post.platform,
+                  angle: post.angle,
+                  text: post.text,
+                  status: post.status,
+                  citations: post.citations,
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {approved.length > 0 && (
+        <section className="mt-8">
+          <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+            Approved — copy &amp; post, then mark posted ({approved.length})
+          </h2>
+          <div className="flex flex-col gap-3">
+            {approved.map((post) => (
+              <PostApprovalCard
+                key={String(post._id)}
+                post={{
+                  id: String(post._id),
+                  platform: post.platform,
+                  angle: post.angle,
+                  text: post.text,
+                  status: post.status,
+                  citations: post.citations,
+                }}
+              />
+            ))}
+          </div>
+        </section>
+      )}
+
       {report && (
         <section className="mt-8">
           <h2 className="mb-3 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
             <FileText size={13} /> {report.runDate === today ? "Today's" : "Latest"}{" "}
-            report
+            report · {fmtDate(report.runDate)} · {fmtTime(report.createdAt)}
           </h2>
           <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
-            <pre className="whitespace-pre-wrap font-mono text-[13px] leading-relaxed text-foreground">
-              {report.body}
-            </pre>
+            <Markdown text={report.body} />
           </div>
+        </section>
+      )}
+
+      {retro && (
+        <section className="mt-8">
+          <RetroPanel
+            runDate={retro.runDate}
+            memo={retroMemo}
+            proposals={retroProposals}
+          />
+        </section>
+      )}
+
+      <section className="mt-8">
+        <h2 className="mb-3 text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
+          Operations
+        </h2>
+        <div className="flex flex-wrap items-start gap-x-6 gap-y-3 rounded-2xl border border-border bg-card p-4 shadow-sm">
+          <OpsButton
+            action="retro"
+            label="Run weekly retro"
+            hint="Dumbledore reviews the week — scorecards, incidents, your rejections — and proposes charter changes with evidence. Runs itself on Sundays; idempotent per week."
+          />
+          {/* Repo-bound tools (filesystem + git + tsc) exist only where the
+              server runs beside the repo — hidden on hosted deployments. */}
+          {!isHosted() && (
+            <>
+              <OpsButton
+                action="forge"
+                label="Run Forge (spec queued requests)"
+                hint="Fred & George pick up the oldest eng request below, read the actual codebase, and put a spec with acceptance criteria on the board."
+              />
+              <OpsButton
+                action="probe"
+                label="Run Probe (review working tree)"
+                hint="After you (or a Claude Code session) implement a spec: Snape runs typecheck, then adversarially reviews your uncommitted changes against the spec. Verdict decides if it's mergeable."
+              />
+            </>
+          )}
+        </div>
+      </section>
+
+      {!isHosted() && (
+        <section className="mt-8">
+          <EngRequestForm />
         </section>
       )}
 
@@ -204,7 +328,7 @@ export default async function CompanyPage() {
                 className="group rounded-2xl border border-border bg-card shadow-sm transition-all open:shadow-md"
               >
                 <summary className="flex cursor-pointer list-none flex-wrap items-center gap-2.5 px-4 py-3">
-                  <Chip text={t.role} style={ROLE_STYLE[t.role]} />
+                  <Chip text={displayName(t.role)} style={ROLE_STYLE[t.role]} />
                   <span className="min-w-0 flex-1 truncate text-sm font-semibold text-foreground">
                     {t.objective}
                   </span>
@@ -220,7 +344,7 @@ export default async function CompanyPage() {
                   )}
                   <Chip text={t.status} style={STATUS_STYLE[t.status]} />
                   <span className="text-[10px] font-bold text-muted-foreground/60">
-                    {t.runDate}
+                    {fmtDate(t.runDate)} · {fmtTime(t.updatedAt)}
                   </span>
                 </summary>
                 <div className="border-t border-border/60 px-4 py-4 text-sm">
@@ -269,9 +393,9 @@ export default async function CompanyPage() {
                       <p className="mt-2 text-[13px] font-semibold text-foreground">
                         {artifact.summary}
                       </p>
-                      <pre className="mt-2 max-h-80 overflow-y-auto whitespace-pre-wrap font-mono text-xs leading-relaxed text-muted-foreground">
-                        {artifact.body}
-                      </pre>
+                      <div className="mt-2 max-h-80 overflow-y-auto">
+                        <Markdown text={artifact.body} />
+                      </div>
                       {artifact.citations.length > 0 && (
                         <div className="mt-3 border-t border-border/60 pt-2">
                           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
@@ -328,7 +452,7 @@ export default async function CompanyPage() {
                 {roles.map(([role, r]) => (
                   <tr key={role} className="border-t border-border/60">
                     <td className="py-1.5">
-                      <Chip text={role} style={ROLE_STYLE[role]} />
+                      <Chip text={displayName(role)} style={ROLE_STYLE[role]} />
                     </td>
                     <td className="py-1.5 text-right">{r.total}</td>
                     <td className="py-1.5 text-right font-semibold text-emerald-600 dark:text-emerald-400">
@@ -379,7 +503,8 @@ export default async function CompanyPage() {
                     />
                     <div className="min-w-0">
                       <p className="text-[13px] font-semibold text-foreground">
-                        [{i.role}] {i.kind.replace("_", " ")} · {i.runDate}
+                        [{displayName(i.role)}] {i.kind.replace("_", " ")} ·{" "}
+                        {fmtDate(i.runDate)} · {fmtTime(i.createdAt)}
                       </p>
                       <p className="text-xs text-muted-foreground">
                         {i.detail}

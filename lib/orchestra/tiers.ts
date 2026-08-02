@@ -39,9 +39,9 @@ export const TIERS: Record<TierId, Tier> = {
       worker: "claude-sonnet-5",
       grunt: "claude-haiku-4-5",
     },
-    estDaily: "≈ $1.10–1.30/day (~$35/mo at Phase-1 scale)",
+    estDaily: "≈ $2.00–2.50/day full org (~$63–75/mo)",
     tradeoff:
-      "The research default: model choice beats token budget exactly at the orchestrator and verifier, where a bad plan or a rubber-stamp poisons everything downstream.",
+      "The research default: model choice beats token budget exactly where errors compound — plans, verification, strategy, specs. A bad plan or a rubber-stamp poisons everything downstream.",
   },
   balanced: {
     id: "balanced",
@@ -52,9 +52,9 @@ export const TIERS: Record<TierId, Tier> = {
       worker: "claude-sonnet-5",
       grunt: "claude-haiku-4-5",
     },
-    estDaily: "≈ $0.55–0.70/day (~$18/mo)",
+    estDaily: "≈ $1.00–1.30/day full org (~$32–40/mo)",
     tradeoff:
-      "Demotes Atlas + Sentinel to Sonnet. Fine when briefs are routine; watch first-pass yield and verifier strictness — run the golden suite before trusting a week of this.",
+      "Demotes every lead (orchestration, verification, strategy, specs, review) to Sonnet. Fine when work is routine; watch first-pass yield and verifier strictness — calibrate before trusting a week of this.",
   },
   budget: {
     id: "budget",
@@ -65,9 +65,9 @@ export const TIERS: Record<TierId, Tier> = {
       worker: "claude-haiku-4-5",
       grunt: "claude-haiku-4-5",
     },
-    estDaily: "≈ $0.25–0.35/day (~$9/mo)",
+    estDaily: "≈ $0.45–0.65/day full org (~$14–20/mo)",
     tradeoff:
-      "Cheapest sane config. Expect more needs_work retries (retries cost tokens too — below a point this tier is false economy). Golden-suite pass required before leaving it on.",
+      "Cheapest sane config. Expect more needs_work retries (retries cost tokens too — below a point this tier is false economy). Calibration pass required before leaving it on.",
   },
 };
 

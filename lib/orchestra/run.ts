@@ -8,8 +8,13 @@ import { api, convex } from "@/lib/convex/server";
 import {
   ATLAS_CHARTER,
   buildSystem,
+  COMPASS_CHARTER,
+  HERALD_CHARTER,
+  QUILL_CHARTER,
   RADAR_CHARTER,
   SENTINEL_CHARTER,
+  SENTINEL_CONTENT_ADDENDUM,
+  SENTINEL_OUTREACH_ADDENDUM,
 } from "@/lib/orchestra/charters";
 import { resolveTier } from "@/lib/orchestra/tiers";
 import {
@@ -19,11 +24,19 @@ import {
   recordSpend,
   type Usage,
 } from "@/lib/orchestra/ledger";
+import { memoryBlock } from "@/lib/orchestra/memory";
+import { fmtDate, fmtTime } from "@/lib/orchestra/format";
+import { displayName } from "@/lib/orchestra/registry";
+import { vigilScan } from "@/lib/orchestra/watch";
 import {
   AtlasPlan,
   type Citation,
+  CompassPlan,
   Envelope,
   extractEnvelope,
+  HeraldDraft,
+  QuillDraft,
+  SentinelContentAudit,
   SentinelVerdict,
   todayDate,
 } from "@/lib/orchestra/types";
@@ -147,9 +160,14 @@ async function callWithEnvelope<T>(
 // Small, cheap data snapshot from the existing pipeline — Radar's exogenous
 // Dayspring-side input. Uses only queries the digest already relies on.
 async function dataSnapshot(): Promise<string> {
-  const [highFit, counts] = await Promise.all([
+  // Incident-driven shape (2026-08-01: Radar correctly blocked because the
+  // snapshot exposed pipeline COUNTS but no company names — un-researchable).
+  // Now includes the named pipeline rows alongside the counts.
+  const { KANBAN_STATUSES } = await import("@/lib/types");
+  const [highFit, counts, active] = await Promise.all([
     convex().query(api.jobs.topNewByScore, { limit: 8, minScore: 60 }),
     convex().query(api.jobs.statusCounts, {}),
+    convex().query(api.jobs.byStatuses, { statuses: [...KANBAN_STATUSES] }),
   ]);
   const lines: string[] = ["### Dayspring data snapshot"];
   lines.push(
@@ -157,6 +175,15 @@ async function dataSnapshot(): Promise<string> {
       .map(([k, n]) => `${k}=${n}`)
       .join(" ")}`,
   );
+  const named = active
+    .filter((j) => j.status !== "rejected")
+    .slice(0, 15);
+  if (named.length) {
+    lines.push("Pipeline (named):");
+    for (const j of named) {
+      lines.push(`- [${j.status}] ${j.title} — ${j.companyName}`);
+    }
+  }
   if (highFit.length) {
     lines.push("New high-fit roles in the feed:");
     for (const j of highFit) {
@@ -213,6 +240,15 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
   const MODEL_LEAD = tier.models.lead;
   const MODEL_WORKER = tier.models.worker;
 
+  // Vigil: what changed on the platform since the last run? Atlas plans
+  // around this; the report surfaces it to the CEO.
+  const vigil = await vigilScan();
+  const vigilBlock = vigil.firstRun
+    ? "(first run — baseline recorded)"
+    : vigil.changes.length
+      ? vigil.changes.map((c) => `- ${c}`).join("\n")
+      : "(no changes since last run)";
+
   // Whichever task is in flight when the run throws gets closed out honestly
   // instead of sitting "in_progress" forever.
   let inFlightTaskId: string | null = null;
@@ -260,9 +296,11 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
       model: MODEL_LEAD,
       system: buildSystem(ATLAS_CHARTER),
       user:
-        `${snapshot}\n\n### Yesterday's company report\n` +
+        `${snapshot}\n\n### Platform changes since last run (Vigil)\n${vigilBlock}\n\n` +
+        `### Yesterday's company report\n` +
         (yesterdayReport ? yesterdayReport.body.slice(0, 4000) : "(first run — no prior report)") +
-        `\n\nPlan today's Radar contract.`,
+        `\n\nPlan today's Radar contract. If Vigil reports a change (new resume, ` +
+        `new headline, edited voice, new targets), reflect it in the contract instead of repeating yesterday's framing.`,
       maxTokens: 2500,
     },
     AtlasPlan,
@@ -432,29 +470,508 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
     if (lastAttempt) escalated = true;
   }
 
+  // ---- 3.5 Content pipeline (Phase 2): Compass → Quill → Sentinel audit --
+  const confirmed = verdict?.verdict === "confirmed";
+  let draftsQueued = 0;
+  let compassNote = "";
+  if (confirmed) {
+    const memory = await memoryBlock();
+    const compassTaskId: string = await convex().mutation(
+      api.orchestra.createTask,
+      {
+        runDate,
+        role: "compass",
+        objective: "Decide today's post angles (0-2) from Radar's verified brief.",
+        definitionOfDone: [
+          "Every angle cites source URLs from Radar's brief",
+          "Zero angles is explicit, not implicit",
+          "Banned-topics and lessons files respected",
+        ],
+        boundaries: ["No drafting", "No posting", "No outreach decisions"],
+        budgets: { maxOutputTokens: 2000, maxToolCalls: 0, maxUsd: 1 },
+      },
+    );
+    inFlightTaskId = compassTaskId;
+    await convex().mutation(api.orchestra.setTaskStatus, {
+      taskId: compassTaskId as never,
+      status: "in_progress",
+      bumpAttempts: true,
+    });
+    const compass = await callWithEnvelope<CompassPlan>(
+      {
+        runDate,
+        role: "compass",
+        taskId: compassTaskId,
+        model: MODEL_LEAD,
+        system: buildSystem(COMPASS_CHARTER),
+        user:
+          `${memory}\n\n### Radar's verified brief\n${radarBody}\n\n### Radar's sources\n` +
+          radarCitations.map((c) => `- ${c.title}: ${c.url}`).join("\n") +
+          `\n\nDecide today's angles.`,
+        maxTokens: 2000,
+      },
+      CompassPlan,
+    );
+    await convex().mutation(api.orchestra.attachArtifact, {
+      taskId: compassTaskId as never,
+      runDate,
+      role: "compass",
+      kind: "memo",
+      honestStatus: compass.data.status,
+      summary: compass.data.summary,
+      body: compass.data.angles.length
+        ? compass.data.angles
+            .map(
+              (a, i) =>
+                `### Angle ${i} (${a.platform})\n${a.angle}\nWhy now: ${a.why}\nSources: ${a.sourceUrls.join(", ")}`,
+            )
+            .join("\n\n")
+        : "Decision: nothing worth posting today (silence chosen).",
+      citations: [],
+      missing: compass.data.missing,
+      uncertainties: compass.data.uncertainties,
+      model: MODEL_LEAD,
+      tokensIn: compass.usage.input_tokens ?? 0,
+      tokensOut: compass.usage.output_tokens ?? 0,
+      costUsd: 0,
+    });
+    compassNote = compass.data.summary;
+
+    if (compass.data.angles.length === 0) {
+      // Silence is low-risk (nothing external can result), so no audit call.
+      await convex().mutation(api.orchestra.recordVerdict, {
+        taskId: compassTaskId as never,
+        verdict: "confirmed",
+        verificationNotes: "Chose silence — no drafts to audit.",
+      });
+    } else {
+      // Quill: one draft per angle, one call each (small context per call).
+      const drafts: {
+        taskId: string;
+        angle: (typeof compass.data.angles)[number];
+        draft: QuillDraft;
+      }[] = [];
+      for (const [i, angle] of compass.data.angles.entries()) {
+        const quillTaskId: string = await convex().mutation(
+          api.orchestra.createTask,
+          {
+            runDate,
+            role: "quill",
+            objective: `Draft one ${angle.platform} post: ${angle.angle.slice(0, 120)}`,
+            definitionOfDone: [
+              "Voice matches the brand-voice file",
+              "Every specific traces to the angle's sources",
+              angle.platform === "x"
+                ? "≤280 characters, one idea"
+                : "100-200 words, scannable",
+            ],
+            boundaries: ["Draft only — posting is the CEO's"],
+            budgets: { maxOutputTokens: 1500, maxToolCalls: 0, maxUsd: 0.5 },
+          },
+        );
+        inFlightTaskId = quillTaskId;
+        await convex().mutation(api.orchestra.setTaskStatus, {
+          taskId: quillTaskId as never,
+          status: "in_progress",
+          bumpAttempts: true,
+        });
+        const quill = await callWithEnvelope<QuillDraft>(
+          {
+            runDate,
+            role: "quill",
+            taskId: quillTaskId,
+            model: MODEL_WORKER,
+            system: buildSystem(QUILL_CHARTER),
+            user:
+              `${memory}\n\n### Angle memo (${angle.platform})\n${angle.angle}\nWhy now: ${angle.why}\nSources you may cite:\n` +
+              angle.sourceUrls.map((u) => `- ${u}`).join("\n") +
+              `\n\n### Radar context (excerpt)\n${radarBody.slice(0, 3000)}\n\nWrite the post.`,
+            maxTokens: 1500,
+          },
+          QuillDraft,
+        );
+        await convex().mutation(api.orchestra.attachArtifact, {
+          taskId: quillTaskId as never,
+          runDate,
+          role: "quill",
+          kind: "draft",
+          honestStatus: quill.data.status,
+          summary: quill.data.summary,
+          body: quill.data.text,
+          citations: angle.sourceUrls.map((u) => ({ title: u, url: u })),
+          missing: quill.data.missing,
+          uncertainties: quill.data.uncertainties,
+          model: MODEL_WORKER,
+          tokensIn: quill.usage.input_tokens ?? 0,
+          tokensOut: quill.usage.output_tokens ?? 0,
+          costUsd: 0,
+        });
+        drafts.push({ taskId: quillTaskId, angle, draft: quill.data });
+        void i;
+      }
+
+      // One Sentinel audit over the memo + ALL drafts (batch: one lead call).
+      const auditTaskId: string = await convex().mutation(
+        api.orchestra.createTask,
+        {
+          runDate,
+          role: "sentinel",
+          objective: `Audit Compass's memo + ${drafts.length} draft(s) before the approval queue.`,
+          definitionOfDone: [
+            "Every draft checked: claims vs sources, banned topics, voice, platform fit",
+          ],
+          boundaries: ["Audit against the memory files, not personal taste"],
+          budgets: { maxOutputTokens: 2500, maxToolCalls: 0, maxUsd: 1.5 },
+        },
+      );
+      inFlightTaskId = auditTaskId;
+      await convex().mutation(api.orchestra.setTaskStatus, {
+        taskId: auditTaskId as never,
+        status: "in_progress",
+      });
+      const audit = await callWithEnvelope<SentinelContentAudit>(
+        {
+          runDate,
+          role: "sentinel",
+          taskId: auditTaskId,
+          model: MODEL_LEAD,
+          system: buildSystem(
+            SENTINEL_CHARTER + "\n\n" + SENTINEL_CONTENT_ADDENDUM,
+          ),
+          user:
+            `${memory}\n\n### Compass's memo\n` +
+            compass.data.angles
+              .map((a, i) => `Angle ${i} (${a.platform}): ${a.angle} — why: ${a.why} — sources: ${a.sourceUrls.join(", ")}`)
+              .join("\n") +
+            `\n\n### Drafts\n` +
+            drafts
+              .map((d, i) => `[${i}] (${d.draft.platform})\n${d.draft.text}`)
+              .join("\n\n") +
+            `\n\n### Sources Radar verified this run\n` +
+            radarCitations.map((c) => `- ${c.title}: ${c.url}`).join("\n"),
+          maxTokens: 2500,
+        },
+        SentinelContentAudit,
+      );
+      await convex().mutation(api.orchestra.attachArtifact, {
+        taskId: auditTaskId as never,
+        runDate,
+        role: "sentinel",
+        kind: "verdict",
+        honestStatus: audit.data.status,
+        summary: audit.data.summary,
+        body: audit.data.drafts
+          .map((d) => `[${d.index}] ${d.verdict}${d.issues.length ? ` — ${d.issues.join("; ")}` : ""}`)
+          .join("\n"),
+        citations: [],
+        missing: audit.data.missing,
+        uncertainties: audit.data.uncertainties,
+        model: MODEL_LEAD,
+        tokensIn: audit.usage.input_tokens ?? 0,
+        tokensOut: audit.usage.output_tokens ?? 0,
+        costUsd: 0,
+      });
+      for (const inc of audit.data.incidents) {
+        await convex().mutation(api.orchestra.insertIncident, {
+          runDate,
+          role: "quill",
+          kind: inc.kind,
+          severity: inc.severity,
+          detail: inc.detail,
+        });
+      }
+      await convex().mutation(api.orchestra.recordVerdict, {
+        taskId: compassTaskId as never,
+        verdict: audit.data.memoVerdict,
+        verificationNotes: audit.data.summary,
+        onFail: "escalated",
+      });
+      for (const [i, d] of drafts.entries()) {
+        const dv = audit.data.drafts.find((x) => x.index === i);
+        const verdictForDraft = dv?.verdict ?? "needs_work";
+        await convex().mutation(api.orchestra.recordVerdict, {
+          taskId: d.taskId as never,
+          verdict: verdictForDraft,
+          verificationNotes: dv?.issues.join("; ") || "confirmed",
+          onFail: "escalated",
+        });
+        if (verdictForDraft === "confirmed") {
+          await convex().mutation(api.orchestra.insertPost, {
+            runDate,
+            platform: d.draft.platform,
+            angle: `${d.angle.angle} — ${d.angle.why}`,
+            text: d.draft.text,
+            citations: d.angle.sourceUrls.map((u) => ({ title: u, url: u })),
+          });
+          draftsQueued += 1;
+        }
+      }
+    }
+  }
+  // ---- 3.7 Outreach lane (Phase 3): Herald researches, Sentinel audits ---
+  // Kill rule: any HIGH-severity herald incident in the last 7 days pauses
+  // the lane automatically until the week rolls over (post-mortem window).
+  let heraldQueued = 0;
+  let heraldNote = "";
+  const heraldMax = Math.min(
+    Number(process.env.ORCHESTRA_HERALD_MAX ?? "3") || 3,
+    10,
+  );
+  const recentIncidents = await convex().query(
+    api.orchestra.recentIncidents,
+    {},
+  );
+  const weekAgo = new Date(Date.now() - 7 * 86_400_000)
+    .toISOString()
+    .slice(0, 10);
+  const heraldKilled = recentIncidents.some(
+    (i) => i.role === "herald" && i.severity === "high" && i.runDate >= weekAgo,
+  );
+  if (heraldKilled) {
+    heraldNote = `${displayName("herald")} PAUSED — high-severity incident on file this week (kill rule). Fix the charter, then it auto-resumes.`;
+  } else {
+    const candidates = await convex().query(api.orchestra.heraldCandidates, {
+      limit: heraldMax,
+    });
+    if (candidates.length === 0) {
+      heraldNote = `${displayName("herald")} idle — no eligible contacts (need: email on file, never contacted). Import connections or reveal emails in Reach.`;
+    } else {
+      const memory = await memoryBlock();
+      const heraldDrafts: {
+        taskId: string;
+        candidate: (typeof candidates)[number];
+        draft: HeraldDraft;
+      }[] = [];
+      for (const cand of candidates) {
+        const heraldTaskId: string = await convex().mutation(
+          api.orchestra.createTask,
+          {
+            runDate,
+            role: "herald",
+            objective: `Research ${cand.name}${cand.companyName ? ` (${cand.companyName})` : ""} and draft one reply-worthy email.`,
+            definitionOfDone: [
+              "Every personalization claim in the claims table with a URL seen this run",
+              "≤120 words, one specific reason, one low-pressure ask",
+              "Blocked is the right answer if nothing credible was found",
+            ],
+            boundaries: [
+              "No sending, no credits, no contacting anyone",
+              "Email lands in the queue for the CEO's review only",
+            ],
+            budgets: { maxOutputTokens: 2500, maxToolCalls: 3, maxUsd: 0.6 },
+          },
+        );
+        inFlightTaskId = heraldTaskId;
+        await convex().mutation(api.orchestra.setTaskStatus, {
+          taskId: heraldTaskId as never,
+          status: "in_progress",
+          bumpAttempts: true,
+        });
+        const herald = await callWithEnvelope<HeraldDraft>(
+          {
+            runDate,
+            role: "herald",
+            taskId: heraldTaskId,
+            model: MODEL_WORKER,
+            system: buildSystem(HERALD_CHARTER),
+            user:
+              `${memory}\n\n### The person\n` +
+              `Name: ${cand.name}\nTitle: ${cand.title ?? "unknown"}\nCompany: ${cand.companyName ?? "unknown"}\n` +
+              (cand.linkedin ? `LinkedIn: ${cand.linkedin}\n` : "") +
+              (cand.summary ? `Known context: ${cand.summary}\n` : "") +
+              (cand.notes ? `Your notes: ${cand.notes}\n` : "") +
+              `\n### Shared affiliations (the reply trigger — cite these!)\n` +
+              (cand.affiliations.length
+                ? cand.affiliations
+                    .map((a) => `- [strength ${a.strength}] ${a.kind}: ${a.detail}`)
+                    .join("\n")
+                : "(none on file — you need a sourced overlap instead)") +
+              (cand.topJob
+                ? `\n\n### Live opening at their company\n${cand.topJob.title} (match ${cand.topJob.matchScore})`
+                : "") +
+              `\n\nResearch (web search, ≤3 uses) and draft the email.`,
+            maxTokens: 2500,
+            webSearchUses: 3,
+          },
+          HeraldDraft,
+        );
+        if (herald.data.status === "blocked") {
+          await convex().mutation(api.orchestra.setTaskStatus, {
+            taskId: heraldTaskId as never,
+            status: "blocked",
+            statusReason: herald.data.summary,
+          });
+          continue;
+        }
+        await convex().mutation(api.orchestra.attachArtifact, {
+          taskId: heraldTaskId as never,
+          runDate,
+          role: "herald",
+          kind: "draft",
+          honestStatus: herald.data.status,
+          summary: herald.data.summary,
+          body: `Subject: ${herald.data.subject}\n\n${herald.data.body}\n\nClaims:\n${herald.data.claims.map((c) => `- ${c.claim} → ${c.sourceUrl}`).join("\n")}`,
+          citations: herald.data.claims.map((c) => ({
+            title: c.claim.slice(0, 80),
+            url: c.sourceUrl,
+          })),
+          missing: herald.data.missing,
+          uncertainties: herald.data.uncertainties,
+          model: MODEL_WORKER,
+          tokensIn: herald.usage.input_tokens ?? 0,
+          tokensOut: herald.usage.output_tokens ?? 0,
+          costUsd: 0,
+        });
+        heraldDrafts.push({ taskId: heraldTaskId, candidate: cand, draft: herald.data });
+      }
+
+      if (heraldDrafts.length > 0) {
+        const auditTaskId: string = await convex().mutation(
+          api.orchestra.createTask,
+          {
+            runDate,
+            role: "sentinel",
+            objective: `Audit ${heraldDrafts.length} outreach draft(s) — maximum strictness, real inboxes.`,
+            definitionOfDone: [
+              "Every email specific traced to the claims table and spot-checked",
+            ],
+            boundaries: ["Audit against sources and affiliation rows only"],
+            budgets: { maxOutputTokens: 2500, maxToolCalls: 2, maxUsd: 1.5 },
+          },
+        );
+        inFlightTaskId = auditTaskId;
+        await convex().mutation(api.orchestra.setTaskStatus, {
+          taskId: auditTaskId as never,
+          status: "in_progress",
+        });
+        const audit = await callWithEnvelope<SentinelContentAudit>(
+          {
+            runDate,
+            role: "sentinel",
+            taskId: auditTaskId,
+            model: MODEL_LEAD,
+            system: buildSystem(
+              SENTINEL_CHARTER + "\n\n" + SENTINEL_OUTREACH_ADDENDUM,
+            ),
+            user: heraldDrafts
+              .map(
+                (d, i) =>
+                  `[${i}] To: ${d.candidate.name} (${d.candidate.companyName ?? "?"})\n` +
+                  `Affiliation rows on file:\n` +
+                  (d.candidate.affiliations.length
+                    ? d.candidate.affiliations
+                        .map((a) => `- ${a.kind}: ${a.detail}`)
+                        .join("\n")
+                    : "(none)") +
+                  `\nSubject: ${d.draft.subject}\nEmail:\n${d.draft.body}\nClaims table:\n` +
+                  d.draft.claims
+                    .map((c) => `- ${c.claim} → ${c.sourceUrl}`)
+                    .join("\n"),
+              )
+              .join("\n\n---\n\n"),
+            maxTokens: 2500,
+            webSearchUses: 2,
+          },
+          SentinelContentAudit,
+        );
+        await convex().mutation(api.orchestra.attachArtifact, {
+          taskId: auditTaskId as never,
+          runDate,
+          role: "sentinel",
+          kind: "verdict",
+          honestStatus: audit.data.status,
+          summary: audit.data.summary,
+          body: audit.data.drafts
+            .map((d) => `[${d.index}] ${d.verdict}${d.issues.length ? ` — ${d.issues.join("; ")}` : ""}`)
+            .join("\n"),
+          citations: [],
+          missing: audit.data.missing,
+          uncertainties: audit.data.uncertainties,
+          model: MODEL_LEAD,
+          tokensIn: audit.usage.input_tokens ?? 0,
+          tokensOut: audit.usage.output_tokens ?? 0,
+          costUsd: 0,
+        });
+        for (const inc of audit.data.incidents) {
+          await convex().mutation(api.orchestra.insertIncident, {
+            runDate,
+            role: "herald",
+            kind: inc.kind,
+            severity: inc.severity,
+            detail: inc.detail,
+          });
+        }
+        for (const [i, d] of heraldDrafts.entries()) {
+          const dv = audit.data.drafts.find((x) => x.index === i);
+          const verdictForDraft = dv?.verdict ?? "needs_work";
+          await convex().mutation(api.orchestra.recordVerdict, {
+            taskId: d.taskId as never,
+            verdict: verdictForDraft,
+            verificationNotes: dv?.issues.join("; ") || "confirmed",
+            onFail: "escalated",
+          });
+          if (verdictForDraft === "confirmed") {
+            await convex().mutation(api.outreach.insert, {
+              doc: {
+                contactId: d.candidate.id,
+                ...(d.candidate.topJob ? { jobId: d.candidate.topJob.id } : {}),
+                channel: "email",
+                subject: d.draft.subject,
+                draft: d.draft.body,
+                aiDraft: d.draft.body,
+                touchNumber: 1,
+                createdAt: new Date().toISOString(),
+              },
+            });
+            heraldQueued += 1;
+          }
+        }
+      }
+      heraldNote = `${displayName("herald")}: ${heraldQueued} audited draft(s) → /outreach queue (${candidates.length} candidates considered).`;
+    }
+  }
+  inFlightTaskId = null;
+
   // ---- 4. Report (assembled by code — no LLM cost) -----------------------
   const spend = await convex().query(api.orchestra.spendForDate, { runDate });
-  const confirmed = verdict?.verdict === "confirmed";
+  const boardToday = await convex().query(api.orchestra.tasksForRun, { runDate });
   const stats = {
-    tasksTotal: 2 + (verdict ? 1 : 0),
-    verified: confirmed ? 1 : 0,
-    rejected: verdict?.verdict === "refuted" ? 1 : 0,
-    blocked: 0,
-    escalated: escalated ? 1 : 0,
+    tasksTotal: boardToday.length,
+    verified: boardToday.filter((t) => t.status === "verified").length,
+    rejected: boardToday.filter((t) => t.verdict === "refuted").length,
+    blocked: boardToday.filter((t) => t.status === "blocked").length,
+    escalated: boardToday.filter((t) => t.status === "escalated").length,
     costUsd: Math.round(spend.costUsd * 100) / 100,
   };
   const lines: string[] = [];
-  lines.push(`ORCHESTRA — ${runDate}`);
+  lines.push(
+    `ORCHESTRA — ${fmtDate(runDate)} · generated ${fmtTime(new Date().toISOString())}`,
+  );
   lines.push(
     confirmed
-      ? `Radar's brief: VERIFIED by Sentinel.`
-      : `Radar's brief: ${verdict?.verdict ?? "no verdict"} — ESCALATED to you (see notes).`,
+      ? `${displayName("radar")}'s brief: VERIFIED by ${displayName("sentinel")}.`
+      : `${displayName("radar")}'s brief: ${verdict?.verdict ?? "no verdict"} — ESCALATED to you (see notes).`,
   );
+  if (compassNote) lines.push(`${displayName("compass")}: ${compassNote}`);
+  if (draftsQueued > 0) {
+    lines.push(
+      `>>> ${draftsQueued} draft(s) awaiting YOUR approval on /company <<<`,
+    );
+  }
+  if (heraldNote) lines.push(heraldNote);
+  if (!vigil.firstRun && vigil.changes.length) {
+    lines.push(
+      `${displayName("vigil")}: ${vigil.changes.length} platform change(s) noticed — ${vigil.changes.join("; ")}`,
+    );
+  }
+  if (heraldQueued > 0) {
+    lines.push(`>>> ${heraldQueued} outreach email(s) awaiting YOUR review on /outreach <<<`);
+  }
   lines.push("");
   lines.push(radarBody || "(no brief produced)");
   if (verdict && !confirmed) {
     lines.push("");
-    lines.push(`Sentinel's objection: ${verdict.summary}`);
+    lines.push(`${displayName("sentinel")}'s objection: ${verdict.summary}`);
   }
   lines.push("");
   lines.push(

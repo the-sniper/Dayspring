@@ -1,28 +1,38 @@
 // The employee registry — the org chart as data (final plan §3). The /company/
-// team page renders this; the run engine hires from it as phases unlock.
-// `modelRole` maps each employee to a tier slot (lib/orchestra/tiers.ts), so
-// one tier switch re-models the whole company consistently.
+// team pages render this; the run engine hires from it as phases unlock.
+//
+// `id` is the STABLE role key (matches orchTasks.role, charters, ledger rows) —
+// never rename it. `name`/`avatar` are pure display and theme-able in this one
+// file. The portraits are Harry Potter character promotional images, sourced
+// from the Harry Potter Wiki / HP API. Replace them with licensed local assets
+// before distributing the product commercially.
 import type { ModelRole } from "@/lib/orchestra/tiers";
 
 export type Employee = {
-  id: string; // matches orchTasks.role for active employees
-  name: string;
+  id: string; // stable role key — matches orchTasks.role
+  name: string; // display name (theme-able)
+  avatar?: string; // display avatar URL (theme-able)
+  avatarFocus?: string; // object-position for mixed portrait source crops
+  avatarZoom?: number; // scale for mixed portrait source crops
   title: string;
   team: "Executive" | "GTM & Socials" | "Ops & Quality" | "Product & Eng";
-  reportsTo: string; // display name ("You (CEO)" at the top)
+  managerId: string | null; // null = reports to the CEO (you)
   modelRole: ModelRole | "code"; // "code" = no model at all (pure functions)
   status: "active" | "planned";
-  phase: 1 | 2 | 3 | 4;
+  phase: 1 | 2 | 3 | 4 | 5;
   responsibilities: string[];
 };
 
 export const EMPLOYEES: Employee[] = [
   {
     id: "atlas",
-    name: "Atlas",
+    name: "Dumbledore",
+    avatar: "/avatars/atlas.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Chief of Staff (orchestrator)",
     team: "Executive",
-    reportsTo: "You (CEO)",
+    managerId: null,
     modelRole: "lead",
     status: "active",
     phase: 1,
@@ -35,10 +45,13 @@ export const EMPLOYEES: Employee[] = [
   },
   {
     id: "radar",
-    name: "Radar",
+    name: "Hermione",
+    avatar: "/avatars/radar.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Market & Opportunity Researcher",
     team: "GTM & Socials",
-    reportsTo: "Atlas",
+    managerId: "atlas",
     modelRole: "worker",
     status: "active",
     phase: 1,
@@ -50,10 +63,13 @@ export const EMPLOYEES: Employee[] = [
   },
   {
     id: "sentinel",
-    name: "Sentinel",
+    name: "Ginny",
+    avatar: "/avatars/sentinel.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Independent Verifier",
     team: "Ops & Quality",
-    reportsTo: "Atlas + you (findings)",
+    managerId: "atlas",
     modelRole: "lead",
     status: "active",
     phase: 1,
@@ -66,10 +82,13 @@ export const EMPLOYEES: Employee[] = [
   },
   {
     id: "ledger",
-    name: "Ledger",
+    name: "Gringotts",
+    avatar: "/avatars/ledger.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Cost & Budget Enforcement",
     team: "Ops & Quality",
-    reportsTo: "Atlas",
+    managerId: "atlas",
     modelRole: "code",
     status: "active",
     phase: 1,
@@ -80,98 +99,119 @@ export const EMPLOYEES: Employee[] = [
   },
   {
     id: "compass",
-    name: "Compass",
+    name: "Ron",
+    avatar: "/avatars/compass.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "GTM Lead (strategy)",
     team: "GTM & Socials",
-    reportsTo: "Atlas",
+    managerId: "atlas",
     modelRole: "lead",
-    status: "planned",
+    status: "active",
     phase: 2,
     responsibilities: [
-      "Owns positioning + the weekly GTM plan from Radar/Pulse inputs",
-      "Decides what to post and who to reach out to — as auditable memos",
+      "Owns positioning: decides today's post angles from the research brief",
+      "Every decision is an auditable memo; choosing silence is a decision",
     ],
   },
   {
     id: "quill",
-    name: "Quill",
+    name: "Luna",
+    avatar: "/avatars/quill.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Content Writer (LinkedIn/X)",
     team: "GTM & Socials",
-    reportsTo: "Compass",
+    managerId: "compass",
     modelRole: "worker",
-    status: "planned",
+    status: "active",
     phase: 2,
     responsibilities: [
-      "Drafts posts in your voice from Compass's angle memos",
-      "One writer per deliverable; every claim traces to a Radar citation",
+      "Drafts posts in your voice from the strategy memos",
+      "One writer per deliverable; every claim traces to a research citation",
       "Nothing posts without your tap",
     ],
   },
   {
     id: "pulse",
-    name: "Pulse",
+    name: "Percy",
+    avatar: "/avatars/pulse.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Analytics",
     team: "GTM & Socials",
-    reportsTo: "Compass",
+    managerId: "compass",
     modelRole: "grunt",
     status: "planned",
     phase: 2,
     responsibilities: [
-      "Weekly what-worked memo from engagement + reply data",
+      "Weekly what-worked memo — activates once posting metrics exist",
       "Closes the loop: metrics feed the next strategy memo",
     ],
   },
   {
     id: "herald",
-    name: "Herald",
+    name: "Hedwig",
+    avatar: "/avatars/herald.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Outreach Researcher",
     team: "GTM & Socials",
-    reportsTo: "Compass",
+    managerId: "compass",
     modelRole: "worker",
-    status: "planned",
+    status: "active",
     phase: 3,
     responsibilities: [
-      "Builds target lists via Apollo/Happenstance; researches each person",
-      "Drafts into the outreach queue — zero send capability by design",
+      "Researches reachable contacts; drafts into the outreach queue",
+      "Zero send capability and zero credit spend by design",
       "Citation-gated personalization: no source, no claim",
     ],
   },
   {
     id: "forge",
-    name: "Forge",
+    name: "Fred & George",
+    avatar: "/avatars/forge.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Tech Lead",
     team: "Product & Eng",
-    reportsTo: "Atlas",
-    modelRole: "worker",
-    status: "planned",
+    managerId: "atlas",
+    modelRole: "lead",
+    status: "active",
     phase: 4,
     responsibilities: [
-      "Turns feature goals into specs with acceptance criteria",
-      "Reviews Mason's diffs against spec",
+      "Turns feature goals into repo-grounded specs with acceptance criteria",
+      "Reads the actual codebase before speccing",
     ],
   },
   {
     id: "mason",
-    name: "Mason",
-    title: "Builder",
+    name: "Hagrid",
+    avatar: "/avatars/mason.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
+    title: "Builder (a Claude Code session)",
     team: "Product & Eng",
-    reportsTo: "Forge",
-    modelRole: "worker",
-    status: "planned",
+    managerId: "forge",
+    modelRole: "code",
+    status: "active",
     phase: 4,
     responsibilities: [
-      "Implements against spec in a branch; tests before claiming done",
-      "Output is a diff + test results, never 'I did it'",
+      "Your Claude Code session, working from the spec — flat-rate, not metered",
+      "Implements in the working tree; review gates before any commit",
     ],
   },
   {
     id: "probe",
-    name: "Probe",
+    name: "Snape",
+    avatar: "/avatars/probe.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Test & Review",
     team: "Product & Eng",
-    reportsTo: "Forge",
-    modelRole: "worker",
-    status: "planned",
+    managerId: "forge",
+    modelRole: "lead",
+    status: "active",
     phase: 4,
     responsibilities: [
       "Adversarial code review — tries to refute 'done'",
@@ -179,17 +219,39 @@ export const EMPLOYEES: Employee[] = [
     ],
   },
   {
+    id: "vigil",
+    name: "Dobby",
+    avatar: "/avatars/vigil.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
+    title: "Platform Watcher",
+    team: "Ops & Quality",
+    managerId: "atlas",
+    modelRole: "code",
+    status: "active",
+    phase: 5,
+    responsibilities: [
+      "Pure code: fingerprints profile, resumes, watchlist, memory, and tier every run",
+      "Diffs against the last run — changes go into the day's plan and your report",
+      "Change your context anywhere and the whole loop adapts next run",
+    ],
+  },
+  {
     id: "archive",
-    name: "Archive",
+    name: "Neville",
+    avatar: "/avatars/archive.png",
+    avatarFocus: "50% 50%",
+    avatarZoom: 1.0,
     title: "Librarian / Memory",
     team: "Ops & Quality",
-    reportsTo: "Atlas",
-    modelRole: "grunt",
-    status: "planned",
+    managerId: "atlas",
+    modelRole: "code",
+    status: "active",
     phase: 2,
     responsibilities: [
-      "Maintains brand-voice, ICP, banned-topics, and lessons files",
-      "Every lessons entry traces to a real incident",
+      "Pure code: rejection reasons auto-file into the lessons memory",
+      "Lessons capped at ~40 lines so memory stays read, not archived",
+      "You edit brand-voice / banned-topics on the Team page",
     ],
   },
 ];
@@ -200,3 +262,23 @@ export const TEAMS = [
   "Ops & Quality",
   "Product & Eng",
 ] as const;
+
+const byId = new Map(EMPLOYEES.map((e) => [e.id, e]));
+
+export function employee(id: string): Employee | undefined {
+  return byId.get(id);
+}
+
+// Display name for a role key ("radar" → "Hermione"); falls back to the key.
+export function displayName(roleId: string): string {
+  return byId.get(roleId)?.name ?? roleId;
+}
+
+export function reportsToLabel(e: Employee): string {
+  if (!e.managerId) return "You (CEO)";
+  return byId.get(e.managerId)?.name ?? e.managerId;
+}
+
+export function directReports(id: string | null): Employee[] {
+  return EMPLOYEES.filter((e) => e.managerId === id);
+}

@@ -72,10 +72,20 @@ export default async function FeedPage({
   const parseCsv = (v?: string) =>
     (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
 
-  const roleSel = parseCsv(sp.role);
-  const roleTypes = roleSel.filter((r): r is RoleType =>
-    (ROLE_TYPES as readonly string[]).includes(r),
+  // Default the Role filter to onboarding prefs so the feed never opens on
+  // cross-domain aggregator noise (nursing, trucking, clerks…) when the user
+  // already told us which role families they want.
+  const onboarding = await convex().query(api.onboarding.status, {});
+  const preferredRoles = (onboarding?.prefs?.roleTypes ?? []).filter(
+    (r): r is RoleType => (ROLE_TYPES as readonly string[]).includes(r),
   );
+  const roleSel = parseCsv(sp.role);
+  const roleTypes =
+    roleSel.length > 0
+      ? roleSel.filter((r): r is RoleType =>
+          (ROLE_TYPES as readonly string[]).includes(r),
+        )
+      : preferredRoles;
   const roleUntyped = roleSel.includes("untyped");
   const workplaceSel = parseCsv(sp.workplace).filter((w): w is WorkplaceType =>
     (WORKPLACE_TYPES as readonly string[]).includes(w),
@@ -111,6 +121,17 @@ export default async function FeedPage({
 
   const profile = await convex().query(api.profiles.getDefault, {});
   const profileUpdatedAt = profile?.updatedAt ?? null;
+
+  // Drop off-domain / wrong-role noise already in the feed (nurses, CDL,
+  // clerks…) before rendering — pull also runs this, but users shouldn't
+  // need a fresh pull to see a clean Discovery list.
+  if (!showIgnored && page === 1) {
+    try {
+      await convex().mutation(api.jobs.ignoreOffDomainNew, { limit: 1000 });
+    } catch {
+      // not signed in / push lag — feed still renders
+    }
+  }
 
   const [feedResult, scorable, staleScores, locationValues, coverage, postCounts] = await Promise.all([
     convex().query(api.jobs.feed, {

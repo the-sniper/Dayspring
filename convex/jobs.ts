@@ -1,9 +1,21 @@
 import { v } from "convex/values";
-import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import {
+  internalMutation,
+  mutation,
+  query,
+  type MutationCtx,
+  type QueryCtx,
+} from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { owned, requireUser } from "./lib";
 import { getOnboardingPrefs } from "./onboarding";
 import { sizeBand as bandOf } from "../shared/company-size";
+import { heuristicRoleType } from "../shared/role-types";
+import {
+  isObviouslyOffDomain,
+  looksLikeTechTitle,
+  roleMatchesPreferred,
+} from "../shared/job-relevance";
 import { isPastRetention, isWithinRetention } from "../shared/job-retention";
 
 // The JD text lives in the `jobDescriptions` side table (see schema). These
@@ -378,9 +390,16 @@ export const feed = query({
     for (const job of base) {
       if (!(job.isUs === undefined || job.isUs === null || job.isUs === true)) continue;
       if (a.roleTypes.length > 0 || a.roleUntyped) {
+        // Prefer stored roleType; fall back to title heuristic so unclassified
+        // software roles still pass a preferred-role filter.
+        const effectiveRole =
+          job.roleType ?? heuristicRoleType(job.title ?? "");
         const roleOk =
-          (a.roleTypes.length > 0 && job.roleType && a.roleTypes.includes(job.roleType)) ||
-          (a.roleUntyped && (job.roleType === undefined || job.roleType === null));
+          (a.roleTypes.length > 0 &&
+            effectiveRole &&
+            a.roleTypes.includes(effectiveRole)) ||
+          (a.roleUntyped &&
+            (job.roleType === undefined || job.roleType === null));
         if (!roleOk) continue;
       }
       if (a.workplace.length > 0 && !(job.workplaceType && a.workplace.includes(job.workplaceType))) continue;
@@ -686,6 +705,108 @@ export const setStatus = mutation({
     }
     return { ok: true as const };
   },
+});
+
+async function ignoreJob(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  job: { _id: Id<"jobs">; status: string },
+  now: string,
+) {
+  if (job.status === "ignored") return false;
+  await ctx.db.patch(job._id, { status: "ignored", updatedAt: now });
+  await ctx.db.insert("stageEvents", {
+    userId,
+    jobId: job._id,
+    fromStatus: job.status,
+    toStatus: "ignored",
+    at: now,
+  });
+  return true;
+}
+
+// Safety net after a pull: ignore freshly inserted jobs whose roleType is set
+// and outside the user's preferred roles (or whose title is obviously off-domain).
+export const ignoreOffDomainAmong = mutation({
+  args: {
+    ids: v.array(v.id("jobs")),
+    preferredRoles: v.array(v.string()),
+  },
+  handler: async (ctx, { ids, preferredRoles }) => {
+    const userId = await requireUser(ctx);
+    const preferred = new Set(preferredRoles);
+    const now = new Date().toISOString();
+    let ignored = 0;
+    for (const id of ids) {
+      const job = owned(await ctx.db.get(id), userId);
+      if (!job || job.status !== "new") continue;
+      const offTitle = isObviouslyOffDomain(job.title);
+      const offRole =
+        preferred.size > 0 &&
+        job.roleType != null &&
+        !roleMatchesPreferred(job.roleType, preferred);
+      if (!offTitle && !offRole) continue;
+      if (await ignoreJob(ctx, userId, job, now)) ignored++;
+    }
+    return { ignored };
+  },
+});
+
+async function ignoreOffDomainForUser(
+  ctx: MutationCtx,
+  userId: Id<"users">,
+  limit?: number,
+) {
+  const prefs = await getOnboardingPrefs(ctx, userId);
+  const preferred = new Set(prefs?.roleTypes ?? []);
+  const cap = Math.min(Math.max(limit ?? 500, 1), 2000);
+  const jobs = await ctx.db
+    .query("jobs")
+    .withIndex("by_user_status", (q) =>
+      q.eq("userId", userId).eq("status", "new"),
+    )
+    .take(cap);
+  const now = new Date().toISOString();
+  let ignored = 0;
+  for (const job of jobs) {
+    const offTitle = isObviouslyOffDomain(job.title);
+    const offRole =
+      preferred.size > 0 &&
+      job.roleType != null &&
+      !roleMatchesPreferred(job.roleType, preferred);
+    // Untyped + tech-looking titles stay (classifier may still catch them on
+    // the next pull). Untyped + off-domain titles go. Typed mismatches go.
+    if (offTitle || offRole) {
+      if (await ignoreJob(ctx, userId, job, now)) ignored++;
+    } else if (
+      preferred.size > 0 &&
+      job.roleType == null &&
+      !looksLikeTechTitle(job.title)
+    ) {
+      if (await ignoreJob(ctx, userId, job, now)) ignored++;
+    }
+  }
+  return { scanned: jobs.length, ignored };
+}
+
+// One-shot cleanup for noise already in the feed: ignore "new" jobs that are
+// obviously off-domain or tagged with a role outside onboarding prefs.
+export const ignoreOffDomainNew = mutation({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const userId = await requireUser(ctx);
+    return ignoreOffDomainForUser(ctx, userId, limit);
+  },
+});
+
+// CLI / ops variant — no auth session required.
+export const ignoreOffDomainNewForUser = internalMutation({
+  args: {
+    userId: v.id("users"),
+    limit: v.optional(v.number()),
+  },
+  handler: async (ctx, { userId, limit }) =>
+    ignoreOffDomainForUser(ctx, userId, limit),
 });
 
 async function deleteOwnedJobCascade(

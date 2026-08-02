@@ -1,0 +1,225 @@
+// The company's editable memory (final plan Phase 2), stored as STRUCTURED
+// JSON in the settings table and rendered to prompt text at read time — the
+// /company/team editor works with fields and chips, agents keep getting the
+// same markdown block. Legacy free-text values migrate transparently.
+//
+// Rendered text is appended to USER messages, never the system prefix — so
+// editing memory never busts the charter cache.
+import { getSetting, setSetting } from "@/lib/settings/store";
+
+export const MEMORY_KEYS = {
+  brandVoice: "orchBrandVoice",
+  bannedTopics: "orchBannedTopics",
+  lessons: "orchLessons",
+} as const;
+
+export type MemoryKey = keyof typeof MEMORY_KEYS;
+
+// A project must EARN citability: it needs a URL, and the server verifies the
+// URL resolves at save time (verifyProjects). Unverified projects render to
+// agents as name-only with an explicit no-claims instruction — a typed-in fake
+// can never become a confident post.
+export type ProjectRef = { name: string; url: string; verifiedAt?: string };
+
+export type BrandVoiceData = {
+  tones: string[]; // e.g. "Direct", "Technical", "First-person"
+  projects: ProjectRef[]; // Quill may cite VERIFIED ones (with their URL)
+  dos: string[];
+  donts: string[];
+  samplePosts: string[]; // fragments that sound like the CEO — Quill's fuel
+  freeform: string; // anything that doesn't fit the fields
+};
+
+export type BannedTopicsData = { topics: string[] };
+
+export type Lesson = { date: string; text: string };
+export type LessonsData = { lessons: Lesson[] };
+
+export const VOICE_DEFAULT: BrandVoiceData = {
+  tones: ["Direct", "Technical", "First-person", "Build-in-public"],
+  // Names seeded from what the CEO stated; they stay unverified (name-only for
+  // agents) until a URL is added and checked.
+  projects: [
+    { name: "Klyro", url: "" },
+    { name: "AirLog", url: "https://airlog.live" },
+    { name: "Hound", url: "" },
+    { name: "Dayspring", url: "" },
+  ],
+  dos: [
+    "Short sentences; specific numbers over adjectives",
+    "Show the work: what was built, what broke, what was learned",
+    "Takes must come from something actually built or measured",
+  ],
+  donts: [
+    'Hype words ("game-changer", "revolutionary", 🚀-speak)',
+    'Announce-speak ("thrilled to announce")',
+    'Engagement bait ("Agree?" endings)',
+  ],
+  samplePosts: [],
+  freeform: "",
+};
+
+export const BANNED_DEFAULT: BannedTopicsData = {
+  topics: [
+    "Politics, religion, culture-war anything",
+    "Current/past employers in a negative light; anything under NDA",
+    "Salary numbers or interview processes of specific named companies",
+    "Claims about people that aren't from a cited public source",
+    "Advice in regulated domains (legal, medical, financial)",
+  ],
+};
+
+const MAX_LESSONS = 40;
+
+function parseOr<T>(raw: string | null, fallback: T, legacy: (text: string) => T): T {
+  if (!raw) return fallback;
+  try {
+    const p = JSON.parse(raw) as T;
+    if (p && typeof p === "object") return p;
+    return fallback;
+  } catch {
+    // Legacy plain-text value from the textarea era — migrate.
+    return legacy(raw);
+  }
+}
+
+export async function getVoiceData(): Promise<BrandVoiceData> {
+  const raw = await getSetting(MEMORY_KEYS.brandVoice);
+  const data = parseOr<BrandVoiceData>(raw, VOICE_DEFAULT, (text) => ({
+    ...VOICE_DEFAULT,
+    freeform: text,
+  }));
+  // Migrate the earlier structured format where projects were plain strings.
+  data.projects = (data.projects ?? []).map((pr) =>
+    typeof pr === "string" ? { name: pr, url: "" } : pr,
+  );
+  return data;
+}
+
+// Server-side evidence check, run at save time: a project with a URL that
+// responds becomes verified (dated); anything else stays name-only. Network
+// hiccups just leave it unverified — never an error.
+export async function verifyProjects(
+  projects: ProjectRef[],
+): Promise<ProjectRef[]> {
+  return await Promise.all(
+    projects.map(async (pr) => {
+      const url = pr.url.trim();
+      if (!url) return { name: pr.name, url: "" };
+      if (!/^https?:\/\//.test(url)) return { name: pr.name, url };
+      try {
+        const res = await fetch(url, {
+          method: "GET",
+          redirect: "follow",
+          signal: AbortSignal.timeout(6000),
+        });
+        return res.ok || res.status === 403 // bot-blocked sites still exist
+          ? { name: pr.name, url, verifiedAt: new Date().toISOString().slice(0, 10) }
+          : { name: pr.name, url };
+      } catch {
+        return { name: pr.name, url };
+      }
+    }),
+  );
+}
+
+export async function getBannedData(): Promise<BannedTopicsData> {
+  const raw = await getSetting(MEMORY_KEYS.bannedTopics);
+  return parseOr<BannedTopicsData>(raw, BANNED_DEFAULT, (text) => ({
+    topics: text
+      .split("\n")
+      .map((l) => l.replace(/^[-*]\s*/, "").trim())
+      .filter(Boolean),
+  }));
+}
+
+export async function getLessonsData(): Promise<LessonsData> {
+  const raw = await getSetting(MEMORY_KEYS.lessons);
+  return parseOr<LessonsData>(raw, { lessons: [] }, (text) => ({
+    lessons: text
+      .split("\n")
+      .map((l) => l.trim())
+      .filter((l) => l.startsWith("- "))
+      .map((l) => {
+        const m = l.match(/^- \[(\d{4}-\d{2}-\d{2})\]\s*(.*)$/);
+        return m ? { date: m[1], text: m[2] } : { date: "", text: l.slice(2) };
+      }),
+  }));
+}
+
+export async function saveMemoryData(
+  key: MemoryKey,
+  value: BrandVoiceData | BannedTopicsData | LessonsData,
+): Promise<void> {
+  await setSetting(MEMORY_KEYS[key], JSON.stringify(value));
+}
+
+export async function appendLesson(lesson: string): Promise<void> {
+  const data = await getLessonsData();
+  data.lessons.push({
+    date: new Date().toISOString().slice(0, 10),
+    text: lesson,
+  });
+  data.lessons = data.lessons.slice(-MAX_LESSONS);
+  await saveMemoryData("lessons", data);
+}
+
+// ---- Prompt rendering (what agents actually read) ---------------------------
+
+function bullets(items: string[]): string {
+  return items.length ? items.map((i) => `- ${i}`).join("\n") : "- (none)";
+}
+
+export function renderVoice(v: BrandVoiceData): string {
+  const verified = v.projects.filter((p) => p.verifiedAt && p.url);
+  const unverified = v.projects.filter((p) => !p.verifiedAt || !p.url);
+  const projectLine =
+    (verified.length
+      ? `Projects that may be cited (with their URL as the source): ${verified
+          .map((p) => `${p.name} (${p.url})`)
+          .join(", ")}. `
+      : "No verified projects — cite no project specifics. ") +
+    (unverified.length
+      ? `Known but UNVERIFIED (name-drop only, zero claims about them): ${unverified
+          .map((p) => p.name)
+          .join(", ")}.`
+      : "");
+  return (
+    `Tone: ${v.tones.join(", ") || "unspecified"}. ${projectLine}\n` +
+    `Do:\n${bullets(v.dos)}\nDon't:\n${bullets(v.donts)}` +
+    (v.samplePosts.length
+      ? `\nPosts that sound like the CEO (match this voice):\n${v.samplePosts
+          .map((p, i) => `--- sample ${i + 1} ---\n${p}`)
+          .join("\n")}`
+      : "") +
+    (v.freeform ? `\nNotes:\n${v.freeform}` : "")
+  );
+}
+
+export function renderBanned(b: BannedTopicsData): string {
+  return bullets(b.topics);
+}
+
+export function renderLessons(l: LessonsData): string {
+  return l.lessons.length
+    ? l.lessons.map((x) => `- ${x.date ? `[${x.date}] ` : ""}${x.text}`).join("\n")
+    : "(no lessons yet)";
+}
+
+// Back-compat text getter (retro reads lessons as text).
+export async function getMemory(
+  key: MemoryKey,
+): Promise<string> {
+  if (key === "brandVoice") return renderVoice(await getVoiceData());
+  if (key === "bannedTopics") return renderBanned(await getBannedData());
+  return renderLessons(await getLessonsData());
+}
+
+export async function memoryBlock(): Promise<string> {
+  const [voice, banned, lessons] = await Promise.all([
+    getVoiceData(),
+    getBannedData(),
+    getLessonsData(),
+  ]);
+  return `### Brand voice\n${renderVoice(voice)}\n\n### Banned topics (hard rule)\n${renderBanned(banned)}\n\n### Lessons from past rejections\n${renderLessons(lessons)}`;
+}

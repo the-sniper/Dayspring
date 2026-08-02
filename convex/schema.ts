@@ -447,6 +447,26 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_user_runDate", ["userId", "runDate"]),
 
+  // Content approval queue (Phase 2): Quill's Sentinel-audited drafts wait
+  // here for the human tap. status: queued_for_review | approved | posted |
+  // rejected. Nothing in this table can send itself anywhere — approval
+  // surfaces a copy button (and later, X API posting).
+  orchPosts: defineTable({
+    userId: v.optional(v.id("users")),
+    runDate: v.string(),
+    platform: v.string(), // x | linkedin
+    angle: v.string(), // Compass's reasoning memo for this post
+    text: v.string(), // the draft (edited in place on approve-with-edits)
+    aiText: v.string(), // Quill's untouched original, frozen at draft time
+    citations: v.array(v.object({ title: v.string(), url: v.string() })),
+    status: v.string(),
+    rejectReason: v.optional(v.string()),
+    decidedAt: v.optional(v.string()),
+    createdAt: v.string(),
+  })
+    .index("by_user_status", ["userId", "status"])
+    .index("by_user_runDate", ["userId", "runDate"]),
+
   // Spend ledger — one row per model call. Hard daily caps are enforced in
   // lib/orchestra/ledger.ts by summing today's rows BEFORE each call.
   orchLedger: defineTable({

@@ -17,6 +17,7 @@ import {
   roleMatchesPreferred,
 } from "../shared/job-relevance";
 import { isPastRetention, isWithinRetention } from "../shared/job-retention";
+import { loadMastersForUser, resolveResumeRef } from "./resumes";
 
 // The JD text lives in the `jobDescriptions` side table (see schema). These
 // helpers read/write it by jobId so the rest of the app can keep treating
@@ -139,11 +140,37 @@ export const byStatuses = query({
     const groups = await Promise.all(
       statuses.map((status) => userJobsByStatus(ctx, userId, status)),
     );
-    return groups.flat().map((j) => ({
-      ...j,
-      id: j._id,
-      companyName: nameById.get(String(j.companyId)) ?? "",
-    }));
+    const jobs = groups.flat();
+    const masters = await loadMastersForUser(ctx, userId);
+    const out = [];
+    for (const j of jobs) {
+      // Pinned master from an active/finished apply-queue entry wins when
+      // present; otherwise tailored → primary master (same as apply-assist).
+      const queueRows = await ctx.db
+        .query("applyQueue")
+        .withIndex("by_user_job", (q) =>
+          q.eq("userId", userId).eq("jobId", j._id),
+        )
+        .collect();
+      const pinned =
+        queueRows.find((r) => r.masterResumeId)?.masterResumeId ?? null;
+      const resume = await resolveResumeRef(
+        ctx,
+        userId,
+        j._id,
+        pinned,
+        masters,
+      );
+      out.push({
+        ...j,
+        id: j._id,
+        companyName: nameById.get(String(j.companyId)) ?? "",
+        resumeLabel: resume?.label ?? null,
+        resumeViewHref: resume?.viewHref ?? null,
+        resumeKind: resume?.kind ?? null,
+      });
+    }
+    return out;
   },
 });
 

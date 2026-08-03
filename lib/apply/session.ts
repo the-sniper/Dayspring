@@ -125,10 +125,14 @@ export async function startSession(
   opts: { masterResumeId?: string | null; embedded?: boolean } = {},
 ): Promise<StartResult> {
   if (isHosted()) {
+    // Name the flag: a local server started from a shell that happens to export
+    // one of these trips the gate, and the generic message reads like a bug in
+    // the apply flow rather than an environment problem.
+    const flag = process.env.VERCEL ? "VERCEL" : "DAYSPRING_HOSTED";
     return {
       ok: false,
       error:
-        "Apply-assist opens a browser window on the machine running Dayspring, so it's only available when you run the app locally — open the job's application link and apply in your own browser instead.",
+        `Apply-assist opens a browser window on the machine running Dayspring, so it's only available when you run the app locally — open the job's application link and apply in your own browser instead. (This server has ${flag} set in its environment; unset it and restart if you are running locally.)`,
     };
   }
   const existing = active();

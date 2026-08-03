@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { isWithinRetention } from "../shared/job-retention";
 import { owned, requireUser } from "./lib";
+import { loadMastersForUser, resolveResumeRef } from "./resumes";
 
 // The auto-apply bucket. Users queue jobs (from the dashboard's top matches,
 // the feed, or a job page), pick a resume per entry, then run the queue —
@@ -20,11 +21,19 @@ export const list = query({
       .withIndex("by_user", (q) => q.eq("userId", userId))
       .collect();
 
+    const masters = await loadMastersForUser(ctx, userId);
     const out = [];
     for (const row of rows) {
       const job = await ctx.db.get(row.jobId);
       if (!job || !isWithinRetention(job)) continue;
       const company = await ctx.db.get(job.companyId);
+      const resume = await resolveResumeRef(
+        ctx,
+        userId,
+        row.jobId,
+        row.masterResumeId ?? null,
+        masters,
+      );
       out.push({
         id: row._id,
         jobId: row.jobId,
@@ -39,6 +48,11 @@ export const list = query({
         roleType: job.roleType ?? null,
         jobStatus: job.status,
         hasTailored: !!job.tailoredAt,
+        // Concrete PDF that Auto / the pinned master resolves to — for the
+        // label under the picker and the View link.
+        resumeLabel: resume?.label ?? null,
+        resumeViewHref: resume?.viewHref ?? null,
+        resumeKind: resume?.kind ?? null,
       });
     }
     // Queued first (oldest first so the runner order is predictable), then

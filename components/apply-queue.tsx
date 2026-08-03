@@ -6,10 +6,12 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import {
   Check,
   CircleAlert,
+  Eye,
   Loader2,
   MonitorCheck,
   Play,
   Rocket,
+  RotateCcw,
   ShieldAlert,
   Square,
   Trash2,
@@ -402,37 +404,58 @@ export default function ApplyQueue() {
                   <ScoreBadge score={r.matchScore} />
                 </td>
                 <td className="px-4 py-4">
-                  {r.status === "queued" ? (
-                    <select
-                      value={r.masterResumeId ? String(r.masterResumeId) : "auto"}
-                      onChange={(e) =>
-                        void setResume({
-                          id: r.id,
-                          masterResumeId:
-                            e.target.value === "auto"
-                              ? null
-                              : (e.target.value as Id<"masterResumes">),
-                        })
-                      }
-                      className="w-full max-w-[220px] rounded-lg border border-border bg-card px-2 py-1.5 text-xs font-semibold text-foreground outline-none focus:border-brand-500/50"
-                    >
-                      <option value="auto">
-                        Auto{r.hasTailored ? " (tailored for this job)" : " (primary master)"}
-                      </option>
-                      {mastersWithPdf.map((m) => (
-                        <option key={m.id} value={m.id}>
-                          {m.label}
-                          {m.isPrimary ? " ⭐" : ""}
+                  <div className="flex max-w-[260px] flex-col gap-1.5">
+                    {r.status === "queued" ? (
+                      <select
+                        value={r.masterResumeId ? String(r.masterResumeId) : "auto"}
+                        onChange={(e) =>
+                          void setResume({
+                            id: r.id,
+                            masterResumeId:
+                              e.target.value === "auto"
+                                ? null
+                                : (e.target.value as Id<"masterResumes">),
+                          })
+                        }
+                        className="w-full rounded-lg border border-border bg-card px-2 py-1.5 text-xs font-semibold text-foreground outline-none focus:border-brand-500/50"
+                      >
+                        <option value="auto">
+                          Auto{r.hasTailored ? " (tailored for this job)" : " (primary master)"}
                         </option>
-                      ))}
-                    </select>
-                  ) : (
-                    <span className="text-xs font-medium text-muted-foreground">
-                      {r.masterResumeId
-                        ? (masters ?? []).find((m) => m.id === String(r.masterResumeId))?.label ?? "master"
-                        : "auto"}
-                    </span>
-                  )}
+                        {mastersWithPdf.map((m) => (
+                          <option key={m.id} value={m.id}>
+                            {m.label}
+                            {m.isPrimary ? " ⭐" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    ) : null}
+                    {r.resumeLabel ? (
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className="min-w-0 truncate text-xs font-medium text-foreground"
+                          title={r.resumeLabel}
+                        >
+                          {r.resumeLabel}
+                        </span>
+                        {r.resumeViewHref ? (
+                          <a
+                            href={r.resumeViewHref}
+                            target="_blank"
+                            rel="noreferrer"
+                            title="View resume PDF"
+                            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-brand-500 hover:text-brand-600 active:scale-95"
+                          >
+                            <Eye size={14} />
+                          </a>
+                        ) : null}
+                      </div>
+                    ) : (
+                      <span className="text-xs font-medium text-muted-foreground">
+                        No PDF resume
+                      </span>
+                    )}
+                  </div>
                 </td>
                 <td className="px-4 py-4">
                   <span className={cn("inline-flex rounded-md px-2 py-0.5 text-[10px] font-black uppercase tracking-wider", STATUS_STYLE[r.status] ?? STATUS_STYLE.queued)}>
@@ -446,14 +469,29 @@ export default function ApplyQueue() {
                 </td>
                 <td className="px-6 py-4 text-right">
                   {r.id !== currentId && (
-                    <button
-                      type="button"
-                      title={r.status === "queued" ? "Remove from queue" : "Clear entry"}
-                      onClick={() => void removeEntry({ id: r.id })}
-                      className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    <div className="flex items-center justify-end gap-2">
+                      {/* A failed/skipped entry is a dead end otherwise: the run
+                          loop only picks up "queued", so retrying used to mean
+                          deleting the row and re-queueing from the job page. */}
+                      {["failed", "skipped"].includes(r.status) && (
+                        <button
+                          type="button"
+                          title="Put this job back in the queue"
+                          onClick={() => void setStatus({ id: r.id, status: "queued" })}
+                          className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-brand-500 hover:text-brand-600 active:scale-95"
+                        >
+                          <RotateCcw size={14} />
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        title={r.status === "queued" ? "Remove from queue" : "Clear entry"}
+                        onClick={() => void removeEntry({ id: r.id })}
+                        className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-border bg-card text-muted-foreground transition-all hover:border-destructive hover:text-destructive active:scale-95"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
                   )}
                 </td>
               </tr>

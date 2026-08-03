@@ -1,9 +1,11 @@
 import Link from "next/link";
-import { 
-  KanbanSquare, 
-  Plus, 
+import {
+  KanbanSquare,
+  Plus,
   ArrowUpRight,
-  Layout
+  Eye,
+  FileText,
+  Layout,
 } from "lucide-react";
 import ErrorBanner from "@/components/error-banner";
 import JobForm from "@/components/job-form";
@@ -45,6 +47,8 @@ export default async function BoardPage({
       status: j.status as JobStatus,
       matchScore: j.matchScore ?? null,
       companyName: j.companyName,
+      resumeLabel: j.resumeLabel ?? null,
+      resumeViewHref: j.resumeViewHref ?? null,
     }));
 
   const byStatus = new Map<JobStatus, typeof rows>(
@@ -135,10 +139,36 @@ export default async function BoardPage({
                       <p className="mt-1 text-xs font-medium text-muted-foreground">
                         {job.companyName}
                       </p>
-                      
+
+                      {job.resumeLabel ? (
+                        <div className="mt-3 flex items-center gap-1.5 min-w-0">
+                          <FileText
+                            size={12}
+                            className="shrink-0 text-muted-foreground"
+                          />
+                          <span
+                            className="min-w-0 truncate text-[11px] font-medium text-foreground"
+                            title={job.resumeLabel}
+                          >
+                            {job.resumeLabel}
+                          </span>
+                          {job.resumeViewHref ? (
+                            <a
+                              href={job.resumeViewHref}
+                              target="_blank"
+                              rel="noreferrer"
+                              title="View resume PDF"
+                              className="ml-auto inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary hover:text-brand-600"
+                            >
+                              <Eye size={12} />
+                            </a>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                       <div className="mt-4 flex items-center justify-between gap-2 pt-3 border-t border-border/50">
                         <StatusSelect jobId={job.id} status={job.status} />
-                        <Link 
+                        <Link
                           href={`/jobs/${job.id}`}
                           className="p-1.5 rounded-lg text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors cursor-pointer"
                         >

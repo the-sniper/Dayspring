@@ -1,6 +1,13 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Bot, AlertTriangle, FileText, ClipboardList, Users2 } from "lucide-react";
+import {
+  Bot,
+  AlertTriangle,
+  FileText,
+  ClipboardList,
+  PenSquare,
+  Users2,
+} from "lucide-react";
 import PageHeader from "@/components/page-header";
 import OrchestraRunButton from "@/components/orchestra-run-button";
 import PostApprovalCard from "@/components/post-approval-card";
@@ -31,6 +38,10 @@ const ROLE_STYLE: Record<string, string> = {
   sentinel: "bg-purple-500/10 text-purple-600 dark:text-purple-400",
   compass: "bg-amber-500/10 text-amber-600 dark:text-amber-400",
   quill: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
+  delve: "bg-teal-500/10 text-teal-600 dark:text-teal-400",
+  spark: "bg-orange-500/10 text-orange-600 dark:text-orange-400",
+  hone: "bg-violet-500/10 text-violet-600 dark:text-violet-400",
+  pulse: "bg-sky-500/10 text-sky-600 dark:text-sky-400",
   herald: "bg-rose-500/10 text-rose-600 dark:text-rose-400",
   forge: "bg-cyan-500/10 text-cyan-600 dark:text-cyan-400",
   probe: "bg-indigo-500/10 text-indigo-600 dark:text-indigo-400",
@@ -174,6 +185,12 @@ export default async function CompanyPage() {
         }
         actions={
           <>
+            <Link
+              href="/company/studio"
+              className="inline-flex h-10 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"
+            >
+              <PenSquare size={14} /> Content Studio
+            </Link>
             <Link
               href="/company/team"
               className="inline-flex h-10 items-center gap-1.5 rounded-[var(--radius)] border border-border px-3 text-xs font-semibold text-muted-foreground transition-colors hover:bg-muted"

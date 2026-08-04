@@ -21,12 +21,27 @@ export type MemoryKey = keyof typeof MEMORY_KEYS;
 // can never become a confident post.
 export type ProjectRef = { name: string; url: string; verifiedAt?: string };
 
+// A post worth learning from. `performance` is what it actually did; `why` is
+// the CEO's own read on why it worked. Both optional — a sample with neither
+// is still voice fuel.
+export type WritingSample = {
+  text: string;
+  performance?: string;
+  why?: string;
+  addedAt?: string;
+};
+
 export type BrandVoiceData = {
   tones: string[]; // e.g. "Direct", "Technical", "First-person"
+  audience: string; // who the posts are for
+  goal: string; // the honest reason for posting at all
+  pillars: string[]; // content pillars — the campaign's topic universe
+  stories: string[]; // story bank, verbatim: the real moments posts anchor to
   projects: ProjectRef[]; // Quill may cite VERIFIED ones (with their URL)
   dos: string[];
   donts: string[];
-  samplePosts: string[]; // fragments that sound like the CEO — Quill's fuel
+  samplePosts: string[]; // legacy field — migrated into `samples` on read
+  samples: WritingSample[]; // posts that sound like the CEO — Quill's fuel
   freeform: string; // anything that doesn't fit the fields
 };
 
@@ -37,6 +52,12 @@ export type LessonsData = { lessons: Lesson[] };
 
 export const VOICE_DEFAULT: BrandVoiceData = {
   tones: ["Direct", "Technical", "First-person", "Build-in-public"],
+  audience: "",
+  goal: "",
+  // The campaign's topic universe. Radar may not invent a pillar, so an empty
+  // list means the scout falls back to the free-text focus instead.
+  pillars: ["AI & Automation", "Building & Shipping", "Career & Job Search"],
+  stories: [],
   // Names seeded from what the CEO stated; they stay unverified (name-only for
   // agents) until a URL is added and checked.
   projects: [
@@ -56,6 +77,7 @@ export const VOICE_DEFAULT: BrandVoiceData = {
     'Engagement bait ("Agree?" endings)',
   ],
   samplePosts: [],
+  samples: [],
   freeform: "",
 };
 
@@ -93,6 +115,25 @@ export async function getVoiceData(): Promise<BrandVoiceData> {
   data.projects = (data.projects ?? []).map((pr) =>
     typeof pr === "string" ? { name: pr, url: "" } : pr,
   );
+  // Fields added after the first shipped version — a stored value from before
+  // them is still valid, it just doesn't have them yet.
+  data.tones ??= [];
+  data.audience ??= "";
+  data.goal ??= "";
+  data.pillars ??= VOICE_DEFAULT.pillars;
+  data.stories ??= [];
+  data.dos ??= [];
+  data.donts ??= [];
+  data.samples ??= [];
+  // samplePosts was a flat string list; fold it into the richer shape once so
+  // there is exactly one place samples live from here on.
+  if (data.samplePosts?.length) {
+    data.samples = [
+      ...data.samples,
+      ...data.samplePosts.map((text) => ({ text })),
+    ];
+    data.samplePosts = [];
+  }
   return data;
 }
 
@@ -186,14 +227,43 @@ export function renderVoice(v: BrandVoiceData): string {
       : "");
   return (
     `Tone: ${v.tones.join(", ") || "unspecified"}. ${projectLine}\n` +
+    (v.audience ? `Audience: ${v.audience}\n` : "") +
+    (v.goal ? `Why he posts: ${v.goal}\n` : "") +
     `Do:\n${bullets(v.dos)}\nDon't:\n${bullets(v.donts)}` +
-    (v.samplePosts.length
-      ? `\nPosts that sound like the CEO (match this voice):\n${v.samplePosts
-          .map((p, i) => `--- sample ${i + 1} ---\n${p}`)
+    (v.samples.length
+      ? `\nPosts that sound like the CEO (match this voice — study the rhythm, never copy the content):\n${v.samples
+          .map(
+            (s, i) =>
+              `--- sample ${i + 1}${s.performance ? ` (${s.performance})` : ""}${
+                s.why ? ` — why it worked: ${s.why}` : ""
+              } ---\n${s.text}`,
+          )
           .join("\n")}`
       : "") +
     (v.freeform ? `\nNotes:\n${v.freeform}` : "")
   );
+}
+
+// The story bank is what keeps posts in Mode A (a real moment) instead of
+// Mode B (a faceless article). Rendered verbatim — these are the CEO's words.
+export function renderStories(v: BrandVoiceData): string {
+  return v.stories.length
+    ? bullets(v.stories)
+    : "- (empty — no real moments on file, so posts must use explicit POV framing instead of invented anecdotes)";
+}
+
+export function renderPillars(v: BrandVoiceData): string {
+  return v.pillars.length ? v.pillars.join(" · ") : "(none set)";
+}
+
+// Called when the CEO marks a published post as one worth learning from.
+export async function appendSample(sample: WritingSample): Promise<void> {
+  const v = await getVoiceData();
+  v.samples = [
+    ...v.samples,
+    { ...sample, addedAt: new Date().toISOString().slice(0, 10) },
+  ].slice(-12); // a dozen is plenty of calibration; more just costs tokens
+  await saveMemoryData("brandVoice", v);
 }
 
 export function renderBanned(b: BannedTopicsData): string {
@@ -222,4 +292,21 @@ export async function memoryBlock(): Promise<string> {
     getLessonsData(),
   ]);
   return `### Brand voice\n${renderVoice(voice)}\n\n### Banned topics (hard rule)\n${renderBanned(banned)}\n\n### Lessons from past rejections\n${renderLessons(lessons)}`;
+}
+
+// The campaign's fuller context block: everything memoryBlock has, plus the
+// pillars and the story bank the content pipeline anchors posts to.
+export async function campaignMemoryBlock(): Promise<string> {
+  const [voice, banned, lessons] = await Promise.all([
+    getVoiceData(),
+    getBannedData(),
+    getLessonsData(),
+  ]);
+  return (
+    `### Content pillars\n${renderPillars(voice)}\n\n` +
+    `### Brand voice\n${renderVoice(voice)}\n\n` +
+    `### Story bank (real moments — anchor posts to these, never invent one)\n${renderStories(voice)}\n\n` +
+    `### Banned topics (hard rule)\n${renderBanned(banned)}\n\n` +
+    `### Lessons from past rejections\n${renderLessons(lessons)}`
+  );
 }

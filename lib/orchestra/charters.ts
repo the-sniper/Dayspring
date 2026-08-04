@@ -28,6 +28,16 @@ export const QUILL_CHARTER = load("quill.txt");
 export const SENTINEL_CONTENT_ADDENDUM = load("sentinel-content.txt");
 export const HERALD_CHARTER = load("herald.txt");
 export const SENTINEL_OUTREACH_ADDENDUM = load("sentinel-outreach.txt");
+// Studio campaign charters (the human-in-the-loop content pipeline).
+export const RADAR_TOPICS_CHARTER = load("radar-topics.txt");
+export const COMPASS_RANK_CHARTER = load("compass-rank.txt");
+export const DELVE_CHARTER = load("delve.txt");
+export const SPARK_CHARTER = load("spark.txt");
+// Appended to QUILL_CHARTER: campaign drafting keeps the daily-run rules and
+// adds the hook/format/length contract on top.
+export const QUILL_CAMPAIGN_ADDENDUM = load("quill-post.txt");
+export const HONE_CHARTER = load("hone.txt");
+export const PULSE_CHARTER = load("pulse.txt");
 export const FORGE_CHARTER = load("forge.txt");
 export const PROBE_CHARTER = load("probe.txt");
 export const ATLAS_RETRO_ADDENDUM = load("atlas-retro.txt");

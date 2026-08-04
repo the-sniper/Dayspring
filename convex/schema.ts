@@ -513,9 +513,118 @@ export default defineSchema({
     rejectReason: v.optional(v.string()),
     decidedAt: v.optional(v.string()),
     createdAt: v.string(),
+    // ---- Studio campaign provenance + the analytics loop -------------------
+    // Absent on posts from the autonomous daily run; set on Studio posts so
+    // Pulse can attribute performance to a pillar, a hook type, and a topic.
+    campaignId: v.optional(v.id("orchCampaigns")),
+    topicTitle: v.optional(v.string()),
+    pillar: v.optional(v.string()),
+    format: v.optional(v.string()), // standard | hot-topic | brand-case-study
+    hookType: v.optional(v.string()),
+    scheduledFor: v.optional(v.string()), // YYYY-MM-DD from the calendar
+    postedAt: v.optional(v.string()),
+    // What it actually did — typed in by the CEO after posting. This is the
+    // only outcome signal the company has; everything Pulse concludes is
+    // grounded in these rows.
+    metrics: v.optional(
+      v.object({
+        impressions: v.optional(v.number()),
+        reactions: v.optional(v.number()),
+        comments: v.optional(v.number()),
+        reposts: v.optional(v.number()),
+        note: v.optional(v.string()),
+        capturedAt: v.string(),
+      }),
+    ),
   })
     .index("by_user_status", ["userId", "status"])
-    .index("by_user_runDate", ["userId", "runDate"]),
+    .index("by_user_runDate", ["userId", "runDate"])
+    .index("by_user_campaign", ["userId", "campaignId"]),
+
+  // ---- Studio campaigns (the human-in-the-loop content pipeline) -----------
+  // One row per batch of posts. Unlike the autonomous daily run, a campaign
+  // PAUSES at checkpoints: the CEO picks topics, picks hooks, and approves
+  // drafts. The stage field is the state machine; the engine
+  // (lib/orchestra/campaign.ts) only ever advances from a stage the UI put it
+  // in, so a browser refresh mid-run never loses or duplicates work.
+  //
+  // stage: collecting | researching | topics_ready | deep_research |
+  //        hooks_ready | drafting | drafts_ready | scheduling | complete |
+  //        failed
+  orchCampaigns: defineTable({
+    userId: v.optional(v.id("users")),
+    runDate: v.string(),
+    title: v.string(),
+    stage: v.string(),
+    stageStartedAt: v.string(),
+    error: v.optional(v.string()),
+    // Inputs from the launcher
+    seedIdeas: v.array(v.string()), // the CEO's own ideas, verbatim
+    focus: v.optional(v.string()), // niche override; defaults to the pillars
+    targetPosts: v.number(),
+    platform: v.string(), // linkedin | x | both
+    // Stage outputs. Each is written once by the stage that produces it.
+    topics: v.array(
+      v.object({
+        id: v.string(),
+        rank: v.number(),
+        title: v.string(),
+        source: v.string(), // Research | Your idea | Your idea + trending
+        pillar: v.string(),
+        format: v.string(),
+        angle: v.string(),
+        whyNow: v.string(),
+      }),
+    ),
+    selectedTopicIds: v.array(v.string()),
+    briefs: v.array(
+      v.object({
+        topicId: v.string(),
+        keyStats: v.array(v.string()),
+        examples: v.array(v.string()),
+        angles: v.array(v.string()),
+        citations: v.array(v.object({ title: v.string(), url: v.string() })),
+        status: v.string(), // honest-status envelope value
+      }),
+    ),
+    hooks: v.array(
+      v.object({
+        topicId: v.string(),
+        options: v.array(v.object({ type: v.string(), text: v.string() })),
+        chosenIndex: v.optional(v.number()), // absent = "let the writer choose"
+      }),
+    ),
+    drafts: v.array(
+      v.object({
+        topicId: v.string(),
+        title: v.string(),
+        pillar: v.string(),
+        format: v.string(),
+        platform: v.string(),
+        hookType: v.string(),
+        text: v.string(),
+        aiText: v.string(), // frozen pre-edit original (human-edit floor)
+        wordCount: v.number(),
+        edits: v.array(v.string()), // what the style editor changed
+        verdict: v.string(), // confirmed | needs_work | refuted
+        issues: v.array(v.string()),
+        citations: v.array(v.object({ title: v.string(), url: v.string() })),
+        decision: v.optional(v.string()), // approved | skipped
+        revisions: v.number(),
+        scheduledFor: v.optional(v.string()),
+        postId: v.optional(v.id("orchPosts")),
+      }),
+    ),
+    // Survivable problems a stage hit but did not die from — a draft that
+    // failed while its siblings succeeded, a polish pass that threw. Without
+    // these the UI shows 1 draft where 2 were asked for and says nothing.
+    notes: v.optional(v.array(v.string())),
+    costUsd: v.number(),
+    createdAt: v.string(),
+    updatedAt: v.string(),
+  })
+    .index("by_user", ["userId"])
+    .index("by_user_stage", ["userId", "stage"]),
 
   // Spend ledger — one row per model call. Hard daily caps are enforced in
   // lib/orchestra/ledger.ts by summing today's rows BEFORE each call.

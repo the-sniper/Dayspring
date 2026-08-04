@@ -286,7 +286,7 @@ export default function MemoryEditor({
       <div className="lg:col-span-2">
         <CardShell
           title="Brand voice"
-          hint="Quill writes from this. The sample posts matter most — paste 3-5 fragments that sound like you."
+          hint={`${displayName("quill")} writes from this. Pillars bound what gets scouted, the story bank keeps posts anchored to something real, and the voice samples matter most — paste 3-5 posts that sound like you.`}
           dirty={vs.dirty}
           saving={vs.saving}
           onSave={() => vs.save(voice)}
@@ -316,6 +316,77 @@ export default function MemoryEditor({
               <AddInput
                 placeholder="Inject custom tone…"
                 onAdd={(v) => editVoice({ tones: [...voice.tones, v] })}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-6 sm:grid-cols-2">
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                Audience
+              </span>
+              <input
+                value={voice.audience}
+                onChange={(e) => editVoice({ audience: e.target.value })}
+                placeholder="Who you're writing for"
+                className="rounded-xl border border-border/80 bg-background/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/40 focus:border-brand-500/60 focus:outline-none"
+              />
+            </label>
+            <label className="flex flex-col gap-1.5">
+              <span className="text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+                Why you post
+              </span>
+              <input
+                value={voice.goal}
+                onChange={(e) => editVoice({ goal: e.target.value })}
+                placeholder="The honest goal — clients, authority, a job, distribution"
+                className="rounded-xl border border-border/80 bg-background/50 px-3 py-2 text-xs text-foreground placeholder:text-muted-foreground/40 focus:border-brand-500/60 focus:outline-none"
+              />
+            </label>
+          </div>
+
+          {/* The campaign's topic universe. The topic scout may not invent a
+              pillar, so this list bounds everything it brings back. */}
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+              Content pillars ({voice.pillars.length})
+            </p>
+            <div className="flex flex-wrap gap-2">
+              {voice.pillars.map((p, i) => (
+                <Chip
+                  key={`${p}-${i}`}
+                  text={p}
+                  active
+                  onRemove={() =>
+                    editVoice({ pillars: voice.pillars.filter((_, x) => x !== i) })
+                  }
+                />
+              ))}
+            </div>
+            <div className="mt-3">
+              <AddInput
+                placeholder="New pillar…"
+                onAdd={(v) => editVoice({ pillars: [...voice.pillars, v] })}
+              />
+            </div>
+          </div>
+
+          {/* The story bank keeps posts anchored to something that actually
+              happened — the difference between a post and an article. */}
+          <div>
+            <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
+              Story bank ({voice.stories.length}) — real moments, in your words
+            </p>
+            <ItemList
+              items={voice.stories}
+              onRemove={(i) =>
+                editVoice({ stories: voice.stories.filter((_, x) => x !== i) })
+              }
+            />
+            <div className="mt-3">
+              <AddInput
+                placeholder="A win, a failure, a turning point — one line…"
+                onAdd={(v) => editVoice({ stories: [...voice.stories, v] })}
               />
             </div>
           </div>
@@ -401,30 +472,58 @@ export default function MemoryEditor({
             </div>
           </div>
 
+          {/* Voice samples. The Studio adds to this list too — "this sounded
+              like me" on a shipped post lands here with its numbers. */}
           <div>
             <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground/40">
-              Neural Echoes ({voice.samplePosts.length} fragments)
+              Voice samples ({voice.samples.length}) — posts that sound like you
             </p>
             <div className="space-y-3">
-              {voice.samplePosts.map((sp, i) => (
+              {voice.samples.map((sp, i) => (
                 <div key={i} className="group relative">
                   <textarea
-                    value={sp}
+                    value={sp.text}
                     rows={4}
                     onChange={(e) =>
                       editVoice({
-                        samplePosts: voice.samplePosts.map((x, j) =>
-                          j === i ? e.target.value : x,
+                        samples: voice.samples.map((x, j) =>
+                          j === i ? { ...x, text: e.target.value } : x,
                         ),
                       })
                     }
                     className="min-w-0 w-full resize-none rounded-xl border border-border/60 bg-secondary/5 p-3 font-mono text-[11px] leading-relaxed text-foreground/80 focus:border-brand-500/40 focus:bg-background focus:outline-none transition-all"
                   />
+                  <div className="mt-1.5 grid gap-2 sm:grid-cols-2">
+                    <input
+                      value={sp.performance ?? ""}
+                      placeholder="performance (e.g. 2.4k impressions, 38 comments)"
+                      onChange={(e) =>
+                        editVoice({
+                          samples: voice.samples.map((x, j) =>
+                            j === i ? { ...x, performance: e.target.value } : x,
+                          ),
+                        })
+                      }
+                      className="rounded-lg border border-border/60 bg-background/50 px-2.5 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-brand-500/40 focus:outline-none"
+                    />
+                    <input
+                      value={sp.why ?? ""}
+                      placeholder="why it worked"
+                      onChange={(e) =>
+                        editVoice({
+                          samples: voice.samples.map((x, j) =>
+                            j === i ? { ...x, why: e.target.value } : x,
+                          ),
+                        })
+                      }
+                      className="rounded-lg border border-border/60 bg-background/50 px-2.5 py-1.5 text-[11px] text-foreground placeholder:text-muted-foreground/40 focus:border-brand-500/40 focus:outline-none"
+                    />
+                  </div>
                   <button
                     type="button"
                     onClick={() =>
                       editVoice({
-                        samplePosts: voice.samplePosts.filter((_, j) => j !== i),
+                        samples: voice.samples.filter((_, j) => j !== i),
                       })
                     }
                     className="absolute right-2 top-2 rounded-lg p-1.5 bg-background shadow-sm border border-border text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all hover:text-rose-500 hover:border-rose-500/20"
@@ -436,11 +535,13 @@ export default function MemoryEditor({
             </div>
             <button
               type="button"
-              onClick={() => editVoice({ samplePosts: [...voice.samplePosts, ""] })}
+              onClick={() =>
+                editVoice({ samples: [...voice.samples, { text: "" }] })
+              }
               className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-border/80 bg-secondary/5 px-4 py-3 text-[11px] font-bold uppercase tracking-widest text-muted-foreground transition-all hover:bg-secondary/20 hover:text-foreground hover:border-brand-500/40 active:scale-[0.98]"
             >
-              <Plus size={14} /> 
-              Sync new fragment
+              <Plus size={14} />
+              Paste a post you wrote
             </button>
           </div>
         </CardShell>

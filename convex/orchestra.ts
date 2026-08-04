@@ -409,6 +409,85 @@ export const decidePost = mutation({
   },
 });
 
+// ---- The analytics loop: what a post actually did ---------------------------
+// Typed in by the CEO after posting. Without these rows Pulse has nothing but
+// its own opinions to reason from, so the strategy review says so out loud
+// rather than inventing audience insight.
+export const recordPostMetrics = mutation({
+  args: {
+    postId: v.id("orchPosts"),
+    impressions: v.optional(v.number()),
+    reactions: v.optional(v.number()),
+    comments: v.optional(v.number()),
+    reposts: v.optional(v.number()),
+    note: v.optional(v.string()),
+  },
+  handler: async (ctx, { postId, ...m }) => {
+    const userId = await requireUser(ctx);
+    const post = owned(await ctx.db.get(postId), userId);
+    if (!post) throw new Error("Post not found.");
+    await ctx.db.patch(postId, {
+      metrics: { ...m, capturedAt: new Date().toISOString() },
+      ...(post.status === "approved"
+        ? { status: "posted", postedAt: new Date().toISOString() }
+        : {}),
+    });
+    return null;
+  },
+});
+
+// Everything published, newest first — the raw material for Pulse's review and
+// for the performance table in the Studio.
+export const postsForAnalysis = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const userId = await requireUser(ctx);
+    const posted = await ctx.db
+      .query("orchPosts")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", userId).eq("status", "posted"),
+      )
+      .order("desc")
+      .take(Math.min(limit ?? 40, 100));
+    return posted.map((p) => ({
+      id: String(p._id),
+      runDate: p.runDate,
+      platform: p.platform,
+      pillar: p.pillar ?? null,
+      format: p.format ?? null,
+      hookType: p.hookType ?? null,
+      topicTitle: p.topicTitle ?? null,
+      angle: p.angle,
+      text: p.text,
+      aiText: p.aiText,
+      postedAt: p.postedAt ?? p.decidedAt ?? p.createdAt,
+      metrics: p.metrics ?? null,
+    }));
+  },
+});
+
+// Rejections carry the reason the CEO gave — the other half of the signal.
+export const rejectedPosts = query({
+  args: { limit: v.optional(v.number()) },
+  handler: async (ctx, { limit }) => {
+    const userId = await requireUser(ctx);
+    const rows = await ctx.db
+      .query("orchPosts")
+      .withIndex("by_user_status", (q) =>
+        q.eq("userId", userId).eq("status", "rejected"),
+      )
+      .order("desc")
+      .take(Math.min(limit ?? 20, 50));
+    return rows.map((p) => ({
+      id: String(p._id),
+      pillar: p.pillar ?? null,
+      angle: p.angle,
+      reason: p.rejectReason ?? "",
+      decidedAt: p.decidedAt ?? p.createdAt,
+    }));
+  },
+});
+
 // ---- Phase 3: Herald's candidate pool ---------------------------------------
 // Contacts that are actually reachable TODAY without spending a credit:
 // email on file, never contacted, ranked by affiliation strength (the reply

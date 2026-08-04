@@ -13,6 +13,7 @@ import type * as applications from "../applications.js";
 import type * as applyAnswers from "../applyAnswers.js";
 import type * as applyQueue from "../applyQueue.js";
 import type * as auth from "../auth.js";
+import type * as campaigns from "../campaigns.js";
 import type * as catalog from "../catalog.js";
 import type * as companies from "../companies.js";
 import type * as contacts from "../contacts.js";
@@ -49,6 +50,7 @@ declare const fullApi: ApiFromModules<{
   applyAnswers: typeof applyAnswers;
   applyQueue: typeof applyQueue;
   auth: typeof auth;
+  campaigns: typeof campaigns;
   catalog: typeof catalog;
   companies: typeof companies;
   contacts: typeof contacts;

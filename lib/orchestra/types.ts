@@ -211,3 +211,124 @@ export type RetroReport = z.infer<typeof RetroReport>;
 export function todayDate(): string {
   return new Date().toISOString().slice(0, 10);
 }
+
+// ---- Studio campaign contracts ---------------------------------------------
+// The checkpoint pipeline: topics → (CEO picks) → briefs + hooks → (CEO picks)
+// → drafts → polish → audit → (CEO approves) → calendar. Each stage's output
+// is a typed envelope, so a malformed reply fails at the parser instead of
+// halfway through the UI.
+
+export const CONTENT_FORMATS = [
+  "standard",
+  "hot-topic",
+  "brand-case-study",
+] as const;
+
+// Scout pass: raw topic candidates off the web + the platform snapshot.
+export const TopicScan = Envelope.extend({
+  topics: z
+    .array(
+      z.object({
+        title: z.string().min(1),
+        whyTrending: z.string(),
+        angle: z.string(),
+        pillar: z.string(),
+        format: z.enum(CONTENT_FORMATS),
+        sourceUrls: z.array(z.string()),
+      }),
+    )
+    .max(16),
+});
+export type TopicScan = z.infer<typeof TopicScan>;
+
+// Rank pass: the CEO's own ideas merged in verbatim, then ranked.
+export const RankedTopics = Envelope.extend({
+  ranked: z
+    .array(
+      z.object({
+        rank: z.number(),
+        title: z.string().min(1),
+        source: z.string(), // Research | Your idea | Your idea + trending
+        pillar: z.string(),
+        format: z.enum(CONTENT_FORMATS),
+        angle: z.string(),
+        whyNow: z.string(),
+      }),
+    )
+    .max(12),
+});
+export type RankedTopics = z.infer<typeof RankedTopics>;
+
+export const TopicBrief = Envelope.extend({
+  keyStats: z.array(z.string()),
+  examples: z.array(z.string()),
+  angles: z.array(z.string()),
+  hookCandidates: z.array(z.string()),
+});
+export type TopicBrief = z.infer<typeof TopicBrief>;
+
+// One batched call covers every topic — five distinct hook types each.
+export const HookBatch = Envelope.extend({
+  sets: z.array(
+    z.object({
+      topicIndex: z.number(),
+      hooks: z
+        .array(z.object({ type: z.string(), text: z.string().min(1) }))
+        .min(1)
+        .max(6),
+    }),
+  ),
+});
+export type HookBatch = z.infer<typeof HookBatch>;
+
+export const PostDraft = Envelope.extend({
+  platform: z.enum(["x", "linkedin"]),
+  text: z.string().min(1),
+  hookType: z.string(),
+  wordCount: z.number(),
+});
+export type PostDraft = z.infer<typeof PostDraft>;
+
+// Style editor: one batched pass over every draft.
+export const PolishBatch = Envelope.extend({
+  polished: z.array(
+    z.object({
+      index: z.number(),
+      text: z.string().min(1),
+      wordCount: z.number(),
+      edits: z.array(z.string()),
+    }),
+  ),
+});
+export type PolishBatch = z.infer<typeof PolishBatch>;
+
+// Pulse's strategy review. `kbUpdates` are PROPOSALS — the CEO applies them
+// from the UI; no agent writes to the company's memory directly.
+export const StrategyReport = Envelope.extend({
+  pillarBalance: z.array(
+    z.object({ pillar: z.string(), published: z.number(), note: z.string() }),
+  ),
+  whatWorked: z.array(z.string()),
+  gaps: z.array(z.string()),
+  audienceSignals: z.string(),
+  recommendations: z
+    .array(
+      z.object({
+        title: z.string(),
+        what: z.string(),
+        why: z.string(),
+        how: z.string(),
+      }),
+    )
+    .max(5),
+  kbUpdates: z
+    .array(
+      z.object({
+        target: z.enum(["voiceDos", "voiceDonts", "bannedTopics", "lessons", "pillars"]),
+        change: z.string(),
+        evidence: z.string(),
+      }),
+    )
+    .max(8),
+});
+export type StrategyReport = z.infer<typeof StrategyReport>;

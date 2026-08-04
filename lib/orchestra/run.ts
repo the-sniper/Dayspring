@@ -3,8 +3,8 @@
 // Next-free core, shared by scripts/orchestra.ts, scripts/daily.ts, and (later)
 // a hosted cron route. All state lives in Convex — re-running the same day is
 // idempotent (an existing report short-circuits).
-import { getClient } from "@/lib/claude/client";
 import { api, convex } from "@/lib/convex/server";
+import { callWithEnvelope } from "@/lib/orchestra/callcore";
 import {
   ATLAS_CHARTER,
   buildSystem,
@@ -17,13 +17,7 @@ import {
   SENTINEL_OUTREACH_ADDENDUM,
 } from "@/lib/orchestra/charters";
 import { resolveTier } from "@/lib/orchestra/tiers";
-import {
-  BudgetExceededError,
-  dailyCapUsd,
-  guardBudget,
-  recordSpend,
-  type Usage,
-} from "@/lib/orchestra/ledger";
+import { BudgetExceededError, dailyCapUsd } from "@/lib/orchestra/ledger";
 import { memoryBlock } from "@/lib/orchestra/memory";
 import { fmtDate, fmtTime } from "@/lib/orchestra/format";
 import { displayName } from "@/lib/orchestra/registry";
@@ -33,156 +27,14 @@ import {
   type Citation,
   CompassPlan,
   Envelope,
-  extractEnvelope,
   HeraldDraft,
   QuillDraft,
   SentinelContentAudit,
   SentinelVerdict,
   todayDate,
 } from "@/lib/orchestra/types";
-import type { z } from "zod";
 
 const MAX_RADAR_ATTEMPTS = 2; // initial + one Sentinel-feedback retry
-
-type ContentBlock = {
-  type: string;
-  text?: string;
-  citations?: { url?: string; title?: string }[] | null;
-  content?: { type?: string; url?: string; title?: string }[] | null;
-};
-
-type CallResult = {
-  text: string;
-  citations: Citation[];
-  usage: Usage;
-  // "max_tokens" here means the reply was cut off — see callWithEnvelope.
-  stopReason: string | null;
-};
-
-// One metered model call. web_search is a server tool (two-step pattern, same
-// as lib/claude/research.ts): prose + citations are walked out of the blocks.
-async function meteredCall(args: {
-  runDate: string;
-  role: string;
-  taskId?: string;
-  model: string;
-  system: ReturnType<typeof buildSystem>;
-  user: string;
-  maxTokens: number;
-  webSearchUses?: number;
-}): Promise<CallResult> {
-  await guardBudget(args.runDate);
-  const client = await getClient();
-  const response = await client.messages.create({
-    model: args.model,
-    max_tokens: args.maxTokens,
-    thinking: { type: "adaptive" },
-    system: args.system as never,
-    ...(args.webSearchUses
-      ? {
-          tools: [
-            {
-              type: "web_search_20260209",
-              name: "web_search",
-              max_uses: args.webSearchUses,
-            },
-          ] as never,
-        }
-      : {}),
-    messages: [{ role: "user", content: args.user }],
-  });
-  const usage = response.usage as unknown as Usage;
-  // Why the model stopped. Without this, a reply cut off at max_tokens and a
-  // reply that simply ignored the format are indistinguishable — both surface
-  // as "No JSON envelope found", which is what made radar's failure opaque.
-  const stopReason = (response as unknown as { stop_reason?: string }).stop_reason ?? null;
-  await recordSpend({
-    runDate: args.runDate,
-    role: args.role,
-    taskId: args.taskId,
-    model: args.model,
-    usage,
-  });
-
-  const blocks = response.content as unknown as ContentBlock[];
-  const parts: string[] = [];
-  const sourceMap = new Map<string, string>();
-  for (const b of blocks) {
-    if (b.type === "text" && b.text) {
-      parts.push(b.text);
-      for (const c of b.citations ?? []) {
-        if (c.url) sourceMap.set(c.url, c.title || c.url);
-      }
-    } else if (b.type === "web_search_tool_result") {
-      for (const r of b.content ?? []) {
-        if (r.type === "web_search_result" && r.url) {
-          sourceMap.set(r.url, r.title || r.url);
-        }
-      }
-    }
-  }
-  return {
-    text: parts.join("").trim(),
-    citations: [...sourceMap].map(([url, title]) => ({ url, title })),
-    usage,
-    stopReason,
-  };
-}
-
-// Envelope-or-retry: one repair attempt with the parse error injected. A
-// second failure is an incident (kind: parse_failure) and throws.
-async function callWithEnvelope<T>(
-  callArgs: Parameters<typeof meteredCall>[0],
-  schema: z.ZodType<T>,
-): Promise<{ data: T; body: string; citations: Citation[]; usage: Usage }> {
-  const first = await meteredCall(callArgs);
-  let parsed = extractEnvelope<T>(first.text, schema);
-  if (parsed.ok) {
-    return { data: parsed.data, body: parsed.body, citations: first.citations, usage: first.usage };
-  }
-  // The envelope goes LAST, so a reply cut off at max_tokens loses exactly the
-  // envelope and nothing else. Asking such a reply to "re-emit the full
-  // deliverable" makes it longer and it truncates again — the old repair could
-  // not fix the one failure it was most likely to face. Ask only for the
-  // envelope instead, and give it room.
-  const truncated = first.stopReason === "max_tokens";
-  const repairUser = truncated
-    ? `${callArgs.user}\n\n[SYSTEM REPAIR] Your previous reply was cut off before its \`\`\`json envelope.\n` +
-      `Do NOT rewrite the deliverable. Reply with ONLY the \`\`\`json envelope summarising the work below.\n` +
-      `Your previous reply (for reference):\n${first.text.slice(0, 6000)}`
-    : `${callArgs.user}\n\n[SYSTEM REPAIR] Your previous reply failed envelope validation: ${parsed.error}\n` +
-      `Previous reply:\n${first.text.slice(0, 6000)}\n` +
-      `Re-emit the full deliverable with a valid \`\`\`json envelope.`;
-  const retry = await meteredCall({
-    ...callArgs,
-    user: repairUser,
-    // Envelope-only replies are short, but the cap has to clear adaptive
-    // thinking before any text is emitted at all.
-    maxTokens: truncated ? Math.max(callArgs.maxTokens, 6000) : callArgs.maxTokens,
-  });
-  parsed = extractEnvelope<T>(retry.text, schema);
-  if (!parsed.ok) {
-    // Name the stop reason: "ran out of tokens" and "ignored the format" need
-    // different fixes, and the old message covered both with one sentence.
-    const why =
-      retry.stopReason === "max_tokens"
-        ? ` (both replies hit the ${callArgs.maxTokens}-token cap before the envelope — raise this role's maxTokens)`
-        : retry.stopReason && retry.stopReason !== "end_turn"
-          ? ` (stop_reason: ${retry.stopReason})`
-          : "";
-    await convex().mutation(api.orchestra.insertIncident, {
-      runDate: callArgs.runDate,
-      role: callArgs.role,
-      ...(callArgs.taskId ? { taskId: callArgs.taskId as never } : {}),
-      kind: "parse_failure",
-      severity: "medium",
-      detail: `Envelope invalid after retry: ${parsed.error}${why}`,
-    });
-    throw new Error(`${callArgs.role}: envelope invalid after retry — ${parsed.error}${why}`);
-  }
-  const citations = [...retry.citations, ...first.citations];
-  return { data: parsed.data, body: parsed.body, citations, usage: retry.usage };
-}
 
 // Small, cheap data snapshot from the existing pipeline — Radar's exogenous
 // Dayspring-side input. Uses only queries the digest already relies on.

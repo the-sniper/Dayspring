@@ -18,6 +18,7 @@ import {
   Users2,
   UserCircle,
   Gauge,
+  PenSquare,
   Sunrise,
   Zap,
   Target,
@@ -33,6 +34,7 @@ const groups: { label: string; links: NavLink[] }[] = [
     links: [
       { href: "/", label: "Dashboard", icon: LayoutDashboard },
       { href: "/company", label: "Company", icon: Bot },
+      { href: "/company/studio", label: "Content Studio", icon: PenSquare },
     ],
   },
   {
@@ -76,6 +78,16 @@ export default function Nav() {
 
   const displayName = me?.name || me?.email?.split("@")[0] || "Account";
 
+  // Most-specific match wins. Without this, /company/studio would light up
+  // both "Company" and "Content Studio" — nested routes need the longer
+  // prefix to take the highlight.
+  const activeHref = groups
+    .flatMap((g) => g.links.map((l) => l.href))
+    .filter((href) =>
+      href === "/" ? pathname === "/" : pathname.startsWith(href),
+    )
+    .sort((a, b) => b.length - a.length)[0];
+
   return (
     <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-border/60 bg-surface/40 px-4 py-7 backdrop-blur-xl">
       <Link href="/" className="group mb-9 flex items-center gap-3 px-2">
@@ -97,8 +109,7 @@ export default function Nav() {
             </p>
             {group.links.map((l) => {
               const Icon = l.icon;
-              const isActive =
-                l.href === "/" ? pathname === "/" : pathname.startsWith(l.href);
+              const isActive = l.href === activeHref;
 
               return (
                 <Link

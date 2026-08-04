@@ -404,8 +404,96 @@ export const decidePost = mutation({
       ...(args.text ? { text: args.text } : {}),
       ...(args.rejectReason ? { rejectReason: args.rejectReason } : {}),
       decidedAt: new Date().toISOString(),
+      // Once it ships (or is rejected outright) the draft history has served
+      // its purpose — see updatePost.
+      ...(args.decision === "posted"
+        ? { postedAt: new Date().toISOString(), history: [] }
+        : args.decision === "rejected"
+          ? { history: [] }
+          : {}),
     });
     return { platform: post.platform, angle: post.angle };
+  },
+});
+
+// ---- Editing an approved post, with version history -------------------------
+// A post keeps its last 10 saved versions so an edit can be walked back. The
+// history is CLEARED the moment the post ships (recordPostMetrics /
+// decidePost→posted) — it supports the edit loop, it isn't an archive.
+
+const MAX_HISTORY = 10;
+
+function pushHistory(
+  history: { text: string; title?: string; at: string; by: string }[] | undefined,
+  entry: { text: string; title?: string; by: string },
+): { text: string; title?: string; at: string; by: string }[] {
+  const prev = history ?? [];
+  const last = prev[prev.length - 1];
+  if (last && last.text === entry.text && (last.title ?? "") === (entry.title ?? "")) {
+    return prev;
+  }
+  return [...prev, { ...entry, at: new Date().toISOString() }].slice(-MAX_HISTORY);
+}
+
+export const updatePost = mutation({
+  args: {
+    postId: v.id("orchPosts"),
+    text: v.string(),
+    title: v.optional(v.string()),
+  },
+  handler: async (ctx, { postId, text, title }) => {
+    const userId = await requireUser(ctx);
+    const post = owned(await ctx.db.get(postId), userId);
+    if (!post) throw new Error("Post not found.");
+    if (post.status === "posted") {
+      throw new Error("This one already shipped — editing it changes nothing.");
+    }
+    if (!text.trim()) throw new Error("A post can't be empty.");
+    await ctx.db.patch(postId, {
+      history: pushHistory(post.history, {
+        text: post.text,
+        ...(post.title ? { title: post.title } : {}),
+        by: "previous",
+      }),
+      text: text.trim(),
+      ...(title !== undefined ? { title: title.trim() } : {}),
+    });
+    return null;
+  },
+});
+
+// Walk back to a saved version. The version you're leaving is itself pushed
+// onto the stack first, so "restore" is never a one-way door.
+export const restorePostVersion = mutation({
+  args: { postId: v.id("orchPosts"), index: v.number() },
+  handler: async (ctx, { postId, index }) => {
+    const userId = await requireUser(ctx);
+    const post = owned(await ctx.db.get(postId), userId);
+    if (!post) throw new Error("Post not found.");
+    const history = post.history ?? [];
+    const target = history[index];
+    if (!target) throw new Error("That version is gone.");
+    await ctx.db.patch(postId, {
+      history: pushHistory(history, {
+        text: post.text,
+        ...(post.title ? { title: post.title } : {}),
+        by: "previous",
+      }),
+      text: target.text,
+      ...(target.title !== undefined ? { title: target.title } : {}),
+    });
+    return null;
+  },
+});
+
+export const clearPostHistory = mutation({
+  args: { postId: v.id("orchPosts") },
+  handler: async (ctx, { postId }) => {
+    const userId = await requireUser(ctx);
+    const post = owned(await ctx.db.get(postId), userId);
+    if (!post) throw new Error("Post not found.");
+    await ctx.db.patch(postId, { history: [] });
+    return null;
   },
 });
 
@@ -426,10 +514,13 @@ export const recordPostMetrics = mutation({
     const userId = await requireUser(ctx);
     const post = owned(await ctx.db.get(postId), userId);
     if (!post) throw new Error("Post not found.");
+    const shipping = post.status === "approved";
     await ctx.db.patch(postId, {
       metrics: { ...m, capturedAt: new Date().toISOString() },
-      ...(post.status === "approved"
-        ? { status: "posted", postedAt: new Date().toISOString() }
+      // Shipping is the event that ends the edit loop, so it's the event that
+      // clears the version history the edit loop existed for.
+      ...(shipping
+        ? { status: "posted", postedAt: new Date().toISOString(), history: [] }
         : {}),
     });
     return null;
@@ -485,6 +576,118 @@ export const rejectedPosts = query({
       reason: p.rejectReason ?? "",
       decidedAt: p.decidedAt ?? p.createdAt,
     }));
+  },
+});
+
+// ---- The calendar: everything with a date on it, across every platform -----
+// Three kinds of thing share the grid, and the distinction matters to whoever
+// is reading it:
+//   planned  — a slot the team scheduled; no words written yet
+//   draft    — written, waiting on the CEO's decision
+//   approved — decided, waiting to be posted on its day
+//   posted   — shipped (with metrics if they were logged)
+export const calendarItems = query({
+  args: { from: v.string(), to: v.string() },
+  handler: async (ctx, { from, to }) => {
+    const userId = await requireUser(ctx);
+    const posts = await ctx.db
+      .query("orchPosts")
+      .withIndex("by_user_status", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(300);
+
+    type Item = {
+      key: string;
+      date: string;
+      platform: string;
+      channel: string | null;
+      title: string;
+      state: "planned" | "draft" | "approved" | "posted" | "rejected";
+      pillar: string | null;
+      campaignId: string | null;
+      campaignTitle: string | null;
+      postId: string | null;
+      hasImage: boolean;
+      imageReady: boolean;
+      metrics: { impressions?: number; reactions?: number; comments?: number } | null;
+    };
+    const items: Item[] = [];
+    const claimedSlots = new Set<string>();
+
+    for (const p of posts) {
+      const date = p.scheduledFor ?? (p.postedAt ?? p.createdAt).slice(0, 10);
+      if (date < from || date > to) continue;
+      if (p.status === "queued_for_review") continue; // not yet a dated thing
+      items.push({
+        key: `post:${String(p._id)}`,
+        date,
+        platform: p.platform,
+        channel: p.channel ?? null,
+        title: p.title || p.topicTitle || p.angle,
+        state:
+          p.status === "posted"
+            ? "posted"
+            : p.status === "rejected"
+              ? "rejected"
+              : "approved",
+        pillar: p.pillar ?? null,
+        campaignId: p.campaignId ? String(p.campaignId) : null,
+        campaignTitle: null,
+        postId: String(p._id),
+        hasImage: !!p.image,
+        imageReady: !!p.image?.ready,
+        metrics: p.metrics
+          ? {
+              ...(p.metrics.impressions === undefined ? {} : { impressions: p.metrics.impressions }),
+              ...(p.metrics.reactions === undefined ? {} : { reactions: p.metrics.reactions }),
+              ...(p.metrics.comments === undefined ? {} : { comments: p.metrics.comments }),
+            }
+          : null,
+      });
+      if (p.campaignId) claimedSlots.add(`${String(p.campaignId)}:${p.topicTitle ?? ""}`);
+    }
+
+    // Live campaigns contribute their un-shipped slots: the plan is the part
+    // of the calendar that hasn't happened yet, and hiding it would make the
+    // month look empty right when it is most fully booked.
+    const campaigns = await ctx.db
+      .query("orchCampaigns")
+      .withIndex("by_user", (q) => q.eq("userId", userId))
+      .order("desc")
+      .take(25);
+    for (const c of campaigns) {
+      if (c.stage === "failed") continue;
+      const draftBySlot = new Map(
+        c.drafts.map((d) => [d.slotId ?? d.topicId, d]),
+      );
+      const topicById = new Map(c.topics.map((t) => [t.id, t]));
+      for (const slot of c.plan ?? []) {
+        if (!slot.enabled) continue;
+        const draft = draftBySlot.get(slot.slotId);
+        if (draft?.postId) continue; // already represented by its post
+        if (draft?.decision === "skipped") continue;
+        const date = draft?.scheduledFor ?? slot.date;
+        if (date < from || date > to) continue;
+        items.push({
+          key: `slot:${String(c._id)}:${slot.slotId}`,
+          date,
+          platform: slot.platform,
+          channel: slot.channel ?? null,
+          title: draft?.title ?? topicById.get(slot.topicId)?.title ?? "Untitled slot",
+          state: draft ? "draft" : "planned",
+          pillar: draft?.pillar ?? topicById.get(slot.topicId)?.pillar ?? null,
+          campaignId: String(c._id),
+          campaignTitle: c.title,
+          postId: null,
+          hasImage: draft ? !!draft.image : slot.wantsImage,
+          imageReady: !!draft?.image?.ready,
+          metrics: null,
+        });
+      }
+    }
+
+    items.sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform));
+    return items;
   },
 });
 

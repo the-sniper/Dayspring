@@ -523,6 +523,33 @@ export default defineSchema({
     hookType: v.optional(v.string()),
     scheduledFor: v.optional(v.string()), // YYYY-MM-DD from the calendar
     postedAt: v.optional(v.string()),
+    // Reddit posts are title-first and community-scoped.
+    title: v.optional(v.string()),
+    channel: v.optional(v.string()), // subreddit, e.g. "r/ExperiencedDevs"
+    // The image brief: the team writes the prompt, the CEO generates the image
+    // elsewhere and marks it ready. Nothing here ever calls an image model.
+    image: v.optional(
+      v.object({
+        prompt: v.string(),
+        altText: v.string(),
+        aspect: v.string(),
+        rationale: v.string(),
+        ready: v.boolean(),
+      }),
+    ),
+    // Every saved version of this post, newest last, capped at 10. Wiped when
+    // the post is marked posted — history exists to support the edit loop, not
+    // to accumulate forever.
+    history: v.optional(
+      v.array(
+        v.object({
+          text: v.string(),
+          title: v.optional(v.string()),
+          at: v.string(),
+          by: v.string(), // ai | editor | you
+        }),
+      ),
+    ),
     // What it actually did — typed in by the CEO after posting. This is the
     // only outcome signal the company has; everything Pulse concludes is
     // grounded in these rows.
@@ -542,15 +569,15 @@ export default defineSchema({
     .index("by_user_campaign", ["userId", "campaignId"]),
 
   // ---- Studio campaigns (the human-in-the-loop content pipeline) -----------
-  // One row per batch of posts. Unlike the autonomous daily run, a campaign
-  // PAUSES at checkpoints: the CEO picks topics, picks hooks, and approves
-  // drafts. The stage field is the state machine; the engine
-  // (lib/orchestra/campaign.ts) only ever advances from a stage the UI put it
-  // in, so a browser refresh mid-run never loses or duplicates work.
+  // One row per campaign: an objective, a date range, and the platforms it
+  // runs on. The team plans a slotted schedule across that range; the CEO
+  // edits the plan, picks hooks, and approves drafts. The stage field is the
+  // state machine; the engine (lib/orchestra/campaign.ts) only ever advances
+  // from a stage the UI put it in, so a refresh mid-run never loses or
+  // duplicates work. Several campaigns can be live at once.
   //
-  // stage: collecting | researching | topics_ready | deep_research |
-  //        hooks_ready | drafting | drafts_ready | scheduling | complete |
-  //        failed
+  // stage: researching | plan_ready | deep_research | hooks_ready |
+  //        drafting | drafts_ready | complete | failed
   orchCampaigns: defineTable({
     userId: v.optional(v.id("users")),
     runDate: v.string(),
@@ -561,8 +588,15 @@ export default defineSchema({
     // Inputs from the launcher
     seedIdeas: v.array(v.string()), // the CEO's own ideas, verbatim
     focus: v.optional(v.string()), // niche override; defaults to the pillars
+    // What this campaign is FOR — the line every planning decision answers to.
+    objective: v.optional(v.string()),
+    startDate: v.optional(v.string()), // YYYY-MM-DD
+    endDate: v.optional(v.string()),
+    platforms: v.optional(v.array(v.string())), // linkedin | x | reddit
+    // Legacy single-platform + fixed-count fields (pre-plan campaigns). Kept
+    // optional so rows written before the plan model still validate on read.
     targetPosts: v.number(),
-    platform: v.string(), // linkedin | x | both
+    platform: v.optional(v.string()),
     // Stage outputs. Each is written once by the stage that produces it.
     topics: v.array(
       v.object({
@@ -577,6 +611,23 @@ export default defineSchema({
       }),
     ),
     selectedTopicIds: v.array(v.string()),
+    // The schedule the team proposes and the CEO edits: one slot per post.
+    // A slot names WHEN, WHERE, and WHICH topic — drafts are keyed to slots,
+    // so one topic can legitimately run on two platforms with two treatments.
+    plan: v.optional(
+      v.array(
+        v.object({
+          slotId: v.string(),
+          date: v.string(), // YYYY-MM-DD
+          platform: v.string(),
+          channel: v.optional(v.string()), // subreddit for reddit slots
+          topicId: v.string(),
+          treatment: v.string(), // how THIS platform should handle the topic
+          wantsImage: v.boolean(),
+          enabled: v.boolean(), // CEO can switch a slot off without losing it
+        }),
+      ),
+    ),
     briefs: v.array(
       v.object({
         topicId: v.string(),
@@ -587,9 +638,12 @@ export default defineSchema({
         status: v.string(), // honest-status envelope value
       }),
     ),
+    // Hooks are per SLOT, not per topic — the hook that works on X is not the
+    // hook that works on a subreddit. `topicId` stays for legacy rows.
     hooks: v.array(
       v.object({
         topicId: v.string(),
+        slotId: v.optional(v.string()),
         options: v.array(v.object({ type: v.string(), text: v.string() })),
         chosenIndex: v.optional(v.number()), // absent = "let the writer choose"
       }),
@@ -597,7 +651,10 @@ export default defineSchema({
     drafts: v.array(
       v.object({
         topicId: v.string(),
-        title: v.string(),
+        slotId: v.optional(v.string()),
+        title: v.string(), // the topic title (working label)
+        postTitle: v.optional(v.string()), // the actual title Reddit needs
+        channel: v.optional(v.string()),
         pillar: v.string(),
         format: v.string(),
         platform: v.string(),
@@ -613,6 +670,26 @@ export default defineSchema({
         revisions: v.number(),
         scheduledFor: v.optional(v.string()),
         postId: v.optional(v.id("orchPosts")),
+        image: v.optional(
+          v.object({
+            prompt: v.string(),
+            altText: v.string(),
+            aspect: v.string(),
+            rationale: v.string(),
+            ready: v.boolean(),
+          }),
+        ),
+        // Last 10 saved versions, newest last. Cleared when the post ships.
+        history: v.optional(
+          v.array(
+            v.object({
+              text: v.string(),
+              title: v.optional(v.string()),
+              at: v.string(),
+              by: v.string(), // ai | editor | you
+            }),
+          ),
+        ),
       }),
     ),
     // Survivable problems a stage hit but did not die from — a draft that

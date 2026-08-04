@@ -259,6 +259,26 @@ export const RankedTopics = Envelope.extend({
 });
 export type RankedTopics = z.infer<typeof RankedTopics>;
 
+// The schedule: which topic runs where, on what day, and how that platform
+// should treat it. Compass produces this from the ranked shortlist; the CEO
+// edits it before anything gets researched.
+export const CampaignPlan = Envelope.extend({
+  slots: z
+    .array(
+      z.object({
+        date: z.string(),
+        platform: z.enum(["linkedin", "x", "reddit"]),
+        channel: z.string().optional(), // subreddit for reddit slots
+        topicRank: z.number(), // points into the ranked shortlist
+        treatment: z.string().min(1),
+        wantsImage: z.boolean(),
+      }),
+    )
+    .max(30),
+  rationale: z.string(),
+});
+export type CampaignPlan = z.infer<typeof CampaignPlan>;
+
 export const TopicBrief = Envelope.extend({
   keyStats: z.array(z.string()),
   examples: z.array(z.string()),
@@ -282,7 +302,9 @@ export const HookBatch = Envelope.extend({
 export type HookBatch = z.infer<typeof HookBatch>;
 
 export const PostDraft = Envelope.extend({
-  platform: z.enum(["x", "linkedin"]),
+  platform: z.enum(["x", "linkedin", "reddit"]),
+  // Reddit is title-first; the other two ignore this.
+  postTitle: z.string().optional(),
   text: z.string().min(1),
   hookType: z.string(),
   wordCount: z.number(),
@@ -295,12 +317,28 @@ export const PolishBatch = Envelope.extend({
     z.object({
       index: z.number(),
       text: z.string().min(1),
+      postTitle: z.string().optional(),
       wordCount: z.number(),
       edits: z.array(z.string()),
     }),
   ),
 });
 export type PolishBatch = z.infer<typeof PolishBatch>;
+
+// Image briefs. The team writes the prompt; the CEO generates the image
+// elsewhere and attaches it. Nothing in this system calls an image model.
+export const ImageBriefBatch = Envelope.extend({
+  briefs: z.array(
+    z.object({
+      index: z.number(),
+      prompt: z.string().min(1),
+      altText: z.string().min(1),
+      aspect: z.string(),
+      rationale: z.string(),
+    }),
+  ),
+});
+export type ImageBriefBatch = z.infer<typeof ImageBriefBatch>;
 
 // Pulse's strategy review. `kbUpdates` are PROPOSALS — the CEO applies them
 // from the UI; no agent writes to the company's memory directly.

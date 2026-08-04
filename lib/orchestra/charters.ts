@@ -31,6 +31,8 @@ export const SENTINEL_OUTREACH_ADDENDUM = load("sentinel-outreach.txt");
 // Studio campaign charters (the human-in-the-loop content pipeline).
 export const RADAR_TOPICS_CHARTER = load("radar-topics.txt");
 export const COMPASS_RANK_CHARTER = load("compass-rank.txt");
+export const COMPASS_PLAN_CHARTER = load("compass-plan.txt");
+export const EASEL_CHARTER = load("easel.txt");
 export const DELVE_CHARTER = load("delve.txt");
 export const SPARK_CHARTER = load("spark.txt");
 // Appended to QUILL_CHARTER: campaign drafting keeps the daily-run rules and

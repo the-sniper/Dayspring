@@ -6,12 +6,11 @@ import { useQuery } from "convex/react";
 import { AlertTriangle, Check, Loader2, RefreshCw, X } from "lucide-react";
 import { api } from "@/convex/_generated/api";
 import type { Id } from "@/convex/_generated/dataModel";
-import CampaignCalendar from "@/components/campaign-calendar";
 import CampaignDraftReview from "@/components/campaign-draft-review";
 import CampaignHookPicker from "@/components/campaign-hook-picker";
-import CampaignTopicPicker from "@/components/campaign-topic-picker";
+import CampaignPlanEditor from "@/components/campaign-plan-editor";
 import { finishCampaignAction } from "@/lib/actions/campaign";
-import { displayName } from "@/lib/orchestra/registry";
+import { platformSpec } from "@/shared/platforms";
 import { startCampaignStage } from "@/lib/studio/kick";
 import { cn } from "@/lib/utils";
 
@@ -20,13 +19,13 @@ import { cn } from "@/lib/utils";
 // polling — and a reload mid-stage lands exactly where the work actually is.
 
 const STAGES: { key: string; label: string; who: string }[] = [
-  { key: "researching", label: "Scouting topics", who: "radar" },
-  { key: "topics_ready", label: "You pick topics", who: "" },
+  { key: "researching", label: "Scout & plan", who: "radar" },
+  { key: "plan_ready", label: "You edit the plan", who: "" },
   { key: "deep_research", label: "Research & hooks", who: "delve" },
   { key: "hooks_ready", label: "You pick hooks", who: "" },
-  { key: "drafting", label: "Draft · edit · audit", who: "quill" },
+  { key: "drafting", label: "Draft · edit · image · audit", who: "quill" },
   { key: "drafts_ready", label: "You approve", who: "" },
-  { key: "complete", label: "Scheduled", who: "" },
+  { key: "complete", label: "Done", who: "" },
 ];
 
 const RUNNING = new Set(["researching", "deep_research", "drafting"]);
@@ -36,16 +35,16 @@ const STALE_MS = 12 * 60_000;
 // work rather than as a hang.
 const RUNNING_DETAIL: Record<string, string[]> = {
   researching: [
-    "searching the web for this week's candidates",
-    "merging your ideas in and ranking the shortlist",
+    "searching the web for candidates against your objective",
+    "ranking the shortlist, then planning the schedule",
   ],
   deep_research: [
-    "one researcher per topic, all at once",
-    "then five hooks per topic in a single pass",
+    "one researcher per topic, all at once (shared across platforms)",
+    "then five hooks per slot in a single pass",
   ],
   drafting: [
-    "one writer per post, all at once",
-    "then one editing pass, then the verifier",
+    "one writer per slot, all at once, to each platform's rules",
+    "then editing, image briefs, and the verifier",
   ],
 };
 
@@ -193,7 +192,12 @@ export default function CampaignWorkspace({
           </p>
           <div className="flex items-center gap-3">
             <span className="text-[11px] font-medium text-muted-foreground">
-              {campaign.runDate} · ${campaign.costUsd.toFixed(2)} spent
+              {campaign.startDate ?? campaign.runDate} →{" "}
+              {campaign.endDate ?? campaign.runDate} ·{" "}
+              {(campaign.platforms ?? [campaign.platform ?? "linkedin"])
+                .map((p) => platformSpec(p).label)
+                .join(", ")}{" "}
+              · ${campaign.costUsd.toFixed(2)}
             </span>
             {campaign.stage !== "complete" && (
               <button
@@ -240,19 +244,14 @@ export default function CampaignWorkspace({
         />
       )}
 
-      {campaign.stage === "topics_ready" && (
-        <CampaignTopicPicker campaign={campaign} />
+      {campaign.stage === "plan_ready" && (
+        <CampaignPlanEditor campaign={campaign} />
       )}
       {campaign.stage === "hooks_ready" && (
         <CampaignHookPicker campaign={campaign} />
       )}
       {(campaign.stage === "drafts_ready" || campaign.stage === "complete") &&
-        campaign.drafts.length > 0 && (
-          <>
-            <CampaignDraftReview campaign={campaign} />
-            <CampaignCalendar campaign={campaign} />
-          </>
-        )}
+        campaign.drafts.length > 0 && <CampaignDraftReview campaign={campaign} />}
 
       {campaign.stage === "complete" && campaign.drafts.length === 0 && (
         <div className="rounded-2xl border border-dashed border-border p-8 text-center text-sm text-muted-foreground">
@@ -260,38 +259,6 @@ export default function CampaignWorkspace({
         </div>
       )}
 
-      {campaign.topics.length > 0 && campaign.stage !== "topics_ready" && (
-        <details className="rounded-2xl border border-border/60 bg-card p-4">
-          <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
-            Shortlist from {displayName("compass")} ({campaign.topics.length}) —
-            the ones you didn't pick are still here
-          </summary>
-          <ul className="mt-3 flex flex-col gap-1.5">
-            {campaign.topics.map((t) => (
-              <li
-                key={t.id}
-                className={cn(
-                  "flex flex-wrap items-center gap-2 text-[13px]",
-                  campaign.selectedTopicIds.includes(t.id)
-                    ? "text-foreground"
-                    : "text-muted-foreground",
-                )}
-              >
-                <span className="text-[10px] font-bold text-muted-foreground/50">
-                  #{t.rank}
-                </span>
-                {campaign.selectedTopicIds.includes(t.id) && (
-                  <Check size={12} className="text-emerald-500" strokeWidth={3} />
-                )}
-                <span className="min-w-0 flex-1 truncate">{t.title}</span>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground/60">
-                  {t.pillar}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </details>
-      )}
     </div>
   );
 }

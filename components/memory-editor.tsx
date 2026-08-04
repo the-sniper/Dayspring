@@ -168,7 +168,7 @@ function ItemList({
             type="button"
             onClick={() => onRemove(i)}
             className={cn(
-              "mt-0.5 shrink-0 rounded-lg p-1 text-muted-foreground/20 transition-all opacity-0 group-hover:opacity-100 group-hover:text-muted-foreground/60",
+              "mt-0.5 shrink-0 rounded-lg p-1 text-muted-foreground/50 transition-all hover:text-foreground",
               danger ? "hover:bg-rose-500/10 hover:text-rose-500" : "hover:bg-secondary/80 hover:text-foreground",
             )}
           >
@@ -430,7 +430,7 @@ export default function MemoryEditor({
                           projects: voice.projects.filter((_, x) => x !== i),
                         })
                       }
-                      className="shrink-0 rounded-lg p-1 text-muted-foreground/20 transition-all opacity-0 group-hover:opacity-100 group-hover:bg-rose-500/10 group-hover:text-rose-500"
+                      className="shrink-0 rounded-lg p-1 text-muted-foreground/50 transition-all hover:bg-rose-500/10 hover:text-rose-500"
                     >
                       <X size={12} />
                     </button>
@@ -526,7 +526,7 @@ export default function MemoryEditor({
                         samples: voice.samples.filter((_, j) => j !== i),
                       })
                     }
-                    className="absolute right-2 top-2 rounded-lg p-1.5 bg-background shadow-sm border border-border text-muted-foreground/40 opacity-0 group-hover:opacity-100 transition-all hover:text-rose-500 hover:border-rose-500/20"
+                    className="absolute right-2 top-2 rounded-lg p-1.5 bg-background shadow-sm border border-border text-muted-foreground/60 transition-all hover:text-rose-500 hover:border-rose-500/20"
                   >
                     <X size={14} />
                   </button>
@@ -609,7 +609,7 @@ export default function MemoryEditor({
                       });
                       ls.setDirty(true);
                     }}
-                    className="rounded-lg p-1 text-muted-foreground/20 opacity-0 group-hover:opacity-100 transition-all hover:text-rose-500 hover:bg-rose-500/10"
+                    className="rounded-lg p-1 text-muted-foreground/50 transition-all hover:text-rose-500 hover:bg-rose-500/10"
                   >
                     <X size={12} />
                   </button>

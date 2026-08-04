@@ -18,6 +18,7 @@
 // Both keep the Playwright API, which means lib/apply/ats-forms.ts keeps
 // working unchanged — the fillSticky retype workaround, formScope iframe
 // resolution and tryComboSelect are all preserved.
+import fs from "node:fs";
 import path from "node:path";
 import type { BrowserContext, Page } from "playwright";
 
@@ -48,6 +49,18 @@ const ANTI_DETECTION = {
   ignoreDefaultArgs: ["--enable-automation"],
 };
 
+// Embedded (live-view) mode used to launch HEADLESS, and headless is the single
+// loudest tell a bot-detector has: from this machine, this profile and this IP,
+// Adzuna's land page answers a headless Chrome with 403 + "suspicious behaviour"
+// and a headed one with 200. So embedded launches a real window too.
+//
+// It is a REAL, VISIBLE window, and it has to be: CDP screencast only produces
+// frames while the window is composited. Minimizing it (or parking it
+// off-screen, which macOS clamps back anyway) stops the stream dead — measured
+// both ways. So the live view mirrors a window that is genuinely on screen;
+// the human can use either one.
+const WINDOW_SIZE = ["--window-size=1280,1400"];
+
 function contextOptions(embedded: boolean) {
   return {
     locale: "en-US",
@@ -74,39 +87,109 @@ async function attachOverCdp(url: string): Promise<ApplyBrowser> {
   return { context, page, attached: true, describe: `attached to Chrome at ${url}` };
 }
 
+function isProfileLocked(err: unknown): boolean {
+  const msg = err instanceof Error ? err.message : String(err);
+  return /ProcessSingleton|profile.*in use|SingletonLock|existing browser session/i.test(msg);
+}
+
+// Chrome processes started against OUR profile directory. Helper processes
+// carry the same --user-data-dir, so only the browser process (no --type=)
+// is reported — killing that one takes its helpers with it.
+async function profileHolders(dir: string): Promise<number[]> {
+  try {
+    const { execFile } = await import("node:child_process");
+    const { promisify } = await import("node:util");
+    const { stdout } = await promisify(execFile)("/bin/ps", ["-eo", "pid=,command="], {
+      maxBuffer: 8 * 1024 * 1024,
+    });
+    return stdout
+      .split("\n")
+      .filter((l) => l.includes(`--user-data-dir=${dir}`) && !l.includes("--type="))
+      .map((l) => Number(l.trim().split(/\s+/)[0]))
+      .filter((n) => Number.isInteger(n) && n > 0);
+  } catch {
+    return [];
+  }
+}
+
+// Free a profile that nothing is legitimately using.
+//
+// Two things strand it, both routinely: on macOS, closing Chrome's last WINDOW
+// does not quit Chrome — the process lives on holding the lock with nothing
+// visible to close — and a dev-server restart drops our handle to a browser
+// that is still running. By the time we get here the session layer has already
+// established that no live session owns a browser, so a holder is an orphan.
+// If nothing holds it, the lock files themselves are stale leftovers.
+async function reclaimProfile(dir: string): Promise<string> {
+  const holders = await profileHolders(dir);
+  for (const pid of holders) {
+    try {
+      process.kill(pid, "SIGTERM");
+    } catch {
+      // already gone
+    }
+  }
+  if (holders.length > 0) {
+    await new Promise((r) => setTimeout(r, 1500));
+    return `terminated orphaned Chrome (pid ${holders.join(", ")})`;
+  }
+  let removed = 0;
+  for (const name of ["SingletonLock", "SingletonCookie", "SingletonSocket"]) {
+    try {
+      fs.unlinkSync(path.join(dir, name));
+      removed++;
+    } catch {
+      // not there — fine
+    }
+  }
+  return removed > 0 ? "cleared stale profile lock files" : "";
+}
+
 async function launchPersistent(embedded: boolean): Promise<ApplyBrowser> {
   const { chromium } = await import("playwright");
   const dir = profileDir();
   const opts = {
-    headless: embedded,
+    headless: false,
     ...ANTI_DETECTION,
+    args: [...ANTI_DETECTION.args, ...(embedded ? WINDOW_SIZE : [])],
     ...contextOptions(embedded),
   };
+  // Real Chrome first (better fingerprint, real profile); bundled Chromium is
+  // the fallback when Chrome isn't installed. A locked profile is NOT a
+  // fallback case — it fails the same way on both.
+  const launch = async () => {
+    try {
+      return await chromium.launchPersistentContext(dir, { ...opts, channel: "chrome" });
+    } catch (err) {
+      if (isProfileLocked(err)) throw err;
+      return await chromium.launchPersistentContext(dir, opts);
+    }
+  };
+
   let context: BrowserContext;
+  let recovery = "";
   try {
-    context = await chromium.launchPersistentContext(dir, {
-      ...opts,
-      channel: "chrome",
-    });
+    context = await launch();
   } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    // A persistent profile is single-writer. The usual cause is a previous
-    // apply session (or a hand-opened window on this profile) still running.
-    if (/ProcessSingleton|profile.*in use|SingletonLock/i.test(msg)) {
+    if (!isProfileLocked(err)) throw err;
+    recovery = await reclaimProfile(dir);
+    try {
+      context = await launch();
+    } catch {
+      const holders = await profileHolders(dir);
       throw new Error(
-        "The Dayspring browser profile is already open in another window. Close it and retry.",
+        holders.length > 0
+          ? `Chrome is still holding the Dayspring browser profile (pid ${holders.join(", ")}) and wouldn't release it. Quit Chrome (⌘Q — note that closing its window is not enough on macOS) and retry.`
+          : "The Dayspring browser profile is locked and couldn't be reclaimed. Quit any Chrome running on it and retry.",
       );
     }
-    // No real Chrome installed — bundled Chromium still gets the persistence,
-    // which is the part that matters here.
-    context = await chromium.launchPersistentContext(dir, opts);
   }
   const page = context.pages()[0] ?? (await context.newPage());
   return {
     context,
     page,
     attached: false,
-    describe: `persistent profile at ${dir}`,
+    describe: `persistent profile at ${dir} (headed${embedded ? ", live view streams" : ""})${recovery ? ` — ${recovery}` : ""}`,
   };
 }
 

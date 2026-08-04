@@ -68,7 +68,25 @@ export function extractFields(profile: string): ApplicantFields {
   const firstName = parts[0] ?? null;
   const lastName = parts.length > 1 ? parts[parts.length - 1] : null;
 
-  const location = labeled(profile, ["location", "based in", "city"]);
+  // Résumés rarely label their location — it sits in the header block under
+  // the name ("Philadelphia, PA 19104"). Without this fallback the whole
+  // City/State/Postal group on an application form stays empty. Scoped to the
+  // first few lines and to a real 2-letter state so prose ("Interested in
+  // Fullstack, Frontend") can't match.
+  const location =
+    labeled(profile, ["location", "based in", "city"]) ??
+    profile
+      .split("\n")
+      .map((l) => l.trim())
+      .filter(Boolean)
+      .slice(0, 6)
+      .map((l) => l.match(/^([A-Z][A-Za-z.'\- ]{1,30}),\s*([A-Z]{2})(?:\s+(\d{5}))?\b/))
+      .find(Boolean)
+      ?.slice(1, 4)
+      .filter(Boolean)
+      .join(", ")
+      .replace(/, (\d{5})$/, " $1") ??
+    null;
 
   return {
     firstName,

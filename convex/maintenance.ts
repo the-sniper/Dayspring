@@ -181,3 +181,150 @@ export const wipeAllJobData = internalMutation({
     return { table: null, deleted: 0, done: true };
   },
 });
+
+// Move master résumés between two accounts. INTERNAL-ONLY: reassigning rows
+// across users is never something a UI button should do.
+//
+//   npx convex run maintenance:reassignMasterResumes '{"fromUserId":"...","toUserId":"..."}'
+//
+// Why this exists: signing in through a second auth provider with the same
+// email creates a SECOND users row, and every query is user-scoped — so the
+// résumés uploaded under the first account become invisible to the second.
+// Apply-assist then reports "no résumé PDF for this account" and leaves the
+// upload box empty, which is the whole point of the run.
+//
+// Nothing is deleted or overwritten: only the userId column moves. The PDFs
+// live in Convex storage, which is not user-scoped, so they follow the row.
+export const reassignMasterResumes = internalMutation({
+  args: {
+    fromUserId: v.string(),
+    toUserId: v.string(),
+    // Dry run by default — report what WOULD move before moving it.
+    apply: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { fromUserId, toUserId, apply }) => {
+    const to = await ctx.db.get(toUserId as Id<"users">);
+    if (!to) throw new Error(`Destination user ${toUserId} does not exist.`);
+    const rows = (await ctx.db.query("masterResumes").collect()).filter(
+      (r) => r.userId === (fromUserId as Id<"users">),
+    );
+    const moved = rows.map((r) => ({
+      id: r._id,
+      label: r.label,
+      isPrimary: !!r.isPrimary,
+      hasPdf: !!r.sourceFileId || !!r.sourceFile,
+    }));
+    if (!apply) return { dryRun: true, wouldMove: moved };
+    for (const r of rows) {
+      await ctx.db.patch(r._id, {
+        userId: toUserId as Id<"users">,
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return { dryRun: false, moved };
+  },
+});
+
+// Set one application-default field on a user's profile. INTERNAL-ONLY: the
+// Profile page owns this data, and its toggles are the normal way to change it
+// (components/profile-studio.tsx). This exists for setting a value on the
+// user's behalf when they've stated it explicitly, without a round trip
+// through the UI.
+//
+//   npx convex run maintenance:setApplicationDefault \
+//     '{"userId":"...","key":"workedForCompanyBefore","boolValue":false}'
+export const setApplicationDefault = internalMutation({
+  args: {
+    userId: v.string(),
+    key: v.string(),
+    boolValue: v.optional(v.boolean()),
+    stringValue: v.optional(v.string()),
+  },
+  handler: async (ctx, { userId, key, boolValue, stringValue }) => {
+    const profiles = (await ctx.db.query("profiles").collect()).filter(
+      (p) => p.userId === (userId as Id<"users">),
+    );
+    if (profiles.length === 0) throw new Error(`No profile rows for user ${userId}.`);
+    const value = boolValue !== undefined ? boolValue : (stringValue ?? null);
+    const touched: string[] = [];
+    for (const p of profiles) {
+      const defaults = { ...((p.defaults ?? {}) as Record<string, unknown>), [key]: value };
+      await ctx.db.patch(p._id, { defaults, updatedAt: new Date().toISOString() });
+      touched.push(p.name ?? p._id);
+    }
+    return { key, value, profiles: touched };
+  },
+});
+
+// Read-only snapshot of one orchestra run — which tasks are still ACTIVE (the
+// statuses that make /api/orchestra/run report "already running"), how long
+// they have been sitting there, and whether a report landed.
+//
+//   npx convex run maintenance:orchRunSummary '{"runDate":"2026-08-04"}'
+export const orchRunSummary = internalQuery({
+  args: { runDate: v.string() },
+  handler: async (ctx, { runDate }) => {
+    const tasks = (await ctx.db.query("orchTasks").collect()).filter(
+      (t) => t.runDate === runDate,
+    );
+    const reports = (await ctx.db.query("orchReports").collect()).filter(
+      (r) => r.runDate === runDate,
+    );
+    const ACTIVE = new Set(["queued", "in_progress", "delivered"]);
+    return {
+      runDate,
+      reportExists: reports.length > 0,
+      counts: tasks.reduce<Record<string, number>>((acc, t) => {
+        acc[t.status] = (acc[t.status] ?? 0) + 1;
+        return acc;
+      }, {}),
+      active: tasks
+        .filter((t) => ACTIVE.has(t.status))
+        .map((t) => ({
+          role: t.role,
+          status: t.status,
+          attempts: t.attempts,
+          updatedAt: t.updatedAt,
+          reason: (t.statusReason ?? "").slice(0, 120),
+        })),
+      recent: tasks
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(0, 8)
+        .map((t) => `${t.updatedAt} ${t.role} ${t.status} ${(t.statusReason ?? "").slice(0, 80)}`),
+    };
+  },
+});
+
+// Retire orchestra tasks left in an ACTIVE status by a run that died. Those
+// statuses are what /api/orchestra/run treats as "already running", so one
+// stranded task deadlocks the day: no new run may start, and the only thing
+// that retires stale tasks IS a new run.
+//
+//   npx convex run maintenance:failStaleOrchTasks '{"runDate":"2026-08-04","olderThanMinutes":10,"apply":true}'
+export const failStaleOrchTasks = internalMutation({
+  args: {
+    runDate: v.string(),
+    olderThanMinutes: v.optional(v.number()),
+    apply: v.optional(v.boolean()),
+  },
+  handler: async (ctx, { runDate, olderThanMinutes, apply }) => {
+    const ACTIVE = new Set(["queued", "in_progress", "delivered"]);
+    const cutoffMs = Date.now() - (olderThanMinutes ?? 10) * 60_000;
+    const stale = (await ctx.db.query("orchTasks").collect()).filter(
+      (t) =>
+        t.runDate === runDate &&
+        ACTIVE.has(t.status) &&
+        Date.parse(t.updatedAt) < cutoffMs,
+    );
+    const listed = stale.map((t) => `${t.role}/${t.status} last moved ${t.updatedAt}`);
+    if (!apply) return { dryRun: true, wouldRetire: listed };
+    for (const t of stale) {
+      await ctx.db.patch(t._id, {
+        status: "failed",
+        statusReason: "Abandoned — the run stopped making progress and was retired.",
+        updatedAt: new Date().toISOString(),
+      });
+    }
+    return { dryRun: false, retired: listed };
+  },
+});

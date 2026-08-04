@@ -20,6 +20,11 @@ import { getProfile } from "@/lib/jobs/score";
 const EEO_RX =
   /gender|race|ethnic|veteran|disab|sexual orientation|lgbt|pronoun|transgender|self[- ]?identif|demographic/i;
 
+// Second belt for the DOM-position filter inside serializeEmptyFields: some
+// boards render the site search outside any <header>/<nav> landmark.
+const CHROME_FIELD_RX =
+  /search|typeahead|typehead|keyword|save ?job|job ?alert|notified|newsletter|subscribe|ask anything|chat|cookie/i;
+
 const Mapping = z.object({
   fills: z.array(
     z.object({
@@ -51,13 +56,88 @@ export async function serializeEmptyFields(page: FormScope): Promise<SerializedF
       options?: string[];
       value: string;
     }[] = [];
+    // Site chrome is NOT the application. A career site's global "Search job
+    // title" box is a plain type=text input that a model will happily fill with
+    // the job title — and on typeahead-driven boards (Phenom) that navigates
+    // the browser to a DIFFERENT requisition mid-run. Nothing outside the
+    // application itself is fair game.
+    const CHROME_CONTAINER =
+      "header, nav, footer, [role=banner], [role=search], [role=navigation], [role=contentinfo]";
+    const CHROME_LABEL =
+      /search|typeahead|typehead|keyword|save ?job|job ?alert|notified|newsletter|subscribe|ask anything|chat|cookie|sign ?in|log ?in/i;
+    // NOTE: no named function consts inside this callback. It is serialized
+    // into the page, and a bundler that "keeps names" wraps them in a __name
+    // helper that does not exist there — the whole pass then throws.
+    const seenRadioGroups = new Set<string>();
     let i = 0;
     for (const el of Array.from(document.querySelectorAll("input, textarea, select"))) {
       const e = el as HTMLInputElement;
       const rect = el.getBoundingClientRect();
       if (rect.width === 0 || rect.height === 0) continue;
       const type = (e.type || el.tagName).toLowerCase();
-      if (["hidden", "submit", "button", "file", "checkbox", "radio", "password", "search"].includes(type)) continue;
+      // Checkboxes stay out on purpose: they are consent ("add me to the
+      // Talent Community"), and consent is never something to auto-tick.
+      if (["hidden", "submit", "button", "file", "checkbox", "password", "search"].includes(type)) continue;
+      if (el.closest(CHROME_CONTAINER)) continue;
+      // Radios were excluded outright, which meant a whole class of required
+      // questions ("Have you ever worked here before?") could never be
+      // answered by anything — not the answer bank, not the model, not saved
+      // defaults. Serialize each GROUP once, with its options.
+      if (type === "radio") {
+        const groupName = e.name || "";
+        if (!groupName || seenRadioGroups.has(groupName)) continue;
+        seenRadioGroups.add(groupName);
+        const group = Array.from(
+          document.querySelectorAll<HTMLInputElement>(
+            `input[type=radio][name="${CSS.escape(groupName)}"]`,
+          ),
+        );
+        const options: string[] = [];
+        for (const r of group) {
+          const viaFor = r.id
+            ? document.querySelector(`label[for="${CSS.escape(r.id)}"]`)?.textContent ?? ""
+            : "";
+          const text = (viaFor || r.closest("label")?.textContent || r.value || "").trim();
+          if (text) options.push(text.slice(0, 60));
+        }
+        // Finding the actual question is the hard part: Phenom's <legend> is a
+        // boilerplate "You are applying for -", and the real text sits in a
+        // sibling. So climb until an ancestor holds the whole group AND carries
+        // text beyond the option labels, then subtract the options.
+        let question = "";
+        let node: HTMLElement | null = el.parentElement;
+        for (let up = 0; up < 6 && node; up++, node = node.parentElement) {
+          if (!group.every((g) => node!.contains(g))) continue;
+          let text = (node.innerText || "").replace(/\s+/g, " ").trim();
+          for (const r of group) {
+            const viaFor = r.id
+              ? document.querySelector(`label[for="${CSS.escape(r.id)}"]`)?.textContent ?? ""
+              : "";
+            const t = (viaFor || r.closest("label")?.textContent || r.value || "").trim();
+            if (t) text = text.split(t).join(" ");
+          }
+          text = text.replace(/\s+/g, " ").trim();
+          if (text.length >= 15) {
+            question = text;
+            break;
+          }
+        }
+        if (!question) {
+          const legend = el.closest("fieldset")?.querySelector("legend")?.textContent ?? "";
+          question = (legend.trim().length >= 15 ? legend : groupName).trim();
+        }
+        const ref = `dsai-${i++}`;
+        for (const r of group) r.setAttribute("data-dsai-group", ref);
+        out.push({
+          ref,
+          tag: "radio",
+          type: "radio",
+          label: question.replace(/\s+/g, " ").slice(0, 140),
+          options: options.slice(0, 12),
+          value: group.some((r) => r.checked) ? "answered" : "",
+        });
+        continue;
+      }
       // Label discovery: <label for> beats aria/placeholder for boards like
       // Greenhouse's, whose comboboxes carry no aria-label.
       let label = "";
@@ -101,6 +181,7 @@ export async function serializeEmptyFields(page: FormScope): Promise<SerializedF
   return raw
     .filter((f) => !f.value) // deterministic pass (or the site) already filled it
     .filter((f) => f.label && !EEO_RX.test(f.label)) // EEO never reaches the model
+    .filter((f) => !CHROME_FIELD_RX.test(f.label)) // search boxes, alerts, chat
     .slice(0, 25);
 }
 
@@ -112,6 +193,31 @@ export async function writeField(
 ): Promise<boolean> {
   const el = scope.locator(`[data-dsai="${field.ref}"]`).first();
   try {
+    if (field.tag === "radio") {
+      // Pick the option in the group whose label matches; never guess when the
+      // answer isn't one of the offered choices.
+      const picked = await scope
+        .locator(`[data-dsai-group="${field.ref}"]`)
+        // No named helpers in here — see serializeEmptyFields.
+        .evaluateAll((nodes: Element[], want: string) => {
+          const target = want.trim().toLowerCase();
+          for (const n of nodes) {
+            const r = n as HTMLInputElement;
+            const label =
+              (r.id ? document.querySelector(`label[for="${CSS.escape(r.id)}"]`)?.textContent : "") ||
+              r.closest("label")?.textContent ||
+              r.value ||
+              "";
+            if (label.trim().toLowerCase() === target) {
+              r.click();
+              return true;
+            }
+          }
+          return false;
+        }, value)
+        .catch(() => false);
+      return picked;
+    }
     if (field.tag === "combobox") {
       return await tryComboSelect(scope, el, value);
     }
@@ -188,6 +294,9 @@ Rules (strict):
       `Applicant contact fields: ${JSON.stringify(ctx.fields)}`,
       ctx.defaults ? `Applicant's stated application defaults: ${JSON.stringify(ctx.defaults)}` : "",
       `Applicant profile:\n${profile}`,
+      // Education, employers, titles and dates live here and nowhere else —
+      // application forms ask about all four.
+      ctx.resumeText ? `Applicant résumé (verbatim):\n${ctx.resumeText.slice(0, 6000)}` : "",
       ctx.job.tailoredBullets?.length
         ? `Tailored talking points for this job:\n- ${ctx.job.tailoredBullets.join("\n- ")}`
         : "",

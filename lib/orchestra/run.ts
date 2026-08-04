@@ -55,6 +55,8 @@ type CallResult = {
   text: string;
   citations: Citation[];
   usage: Usage;
+  // "max_tokens" here means the reply was cut off — see callWithEnvelope.
+  stopReason: string | null;
 };
 
 // One metered model call. web_search is a server tool (two-step pattern, same
@@ -90,6 +92,10 @@ async function meteredCall(args: {
     messages: [{ role: "user", content: args.user }],
   });
   const usage = response.usage as unknown as Usage;
+  // Why the model stopped. Without this, a reply cut off at max_tokens and a
+  // reply that simply ignored the format are indistinguishable — both surface
+  // as "No JSON envelope found", which is what made radar's failure opaque.
+  const stopReason = (response as unknown as { stop_reason?: string }).stop_reason ?? null;
   await recordSpend({
     runDate: args.runDate,
     role: args.role,
@@ -119,6 +125,7 @@ async function meteredCall(args: {
     text: parts.join("").trim(),
     citations: [...sourceMap].map(([url, title]) => ({ url, title })),
     usage,
+    stopReason,
   };
 }
 
@@ -133,25 +140,45 @@ async function callWithEnvelope<T>(
   if (parsed.ok) {
     return { data: parsed.data, body: parsed.body, citations: first.citations, usage: first.usage };
   }
+  // The envelope goes LAST, so a reply cut off at max_tokens loses exactly the
+  // envelope and nothing else. Asking such a reply to "re-emit the full
+  // deliverable" makes it longer and it truncates again — the old repair could
+  // not fix the one failure it was most likely to face. Ask only for the
+  // envelope instead, and give it room.
+  const truncated = first.stopReason === "max_tokens";
+  const repairUser = truncated
+    ? `${callArgs.user}\n\n[SYSTEM REPAIR] Your previous reply was cut off before its \`\`\`json envelope.\n` +
+      `Do NOT rewrite the deliverable. Reply with ONLY the \`\`\`json envelope summarising the work below.\n` +
+      `Your previous reply (for reference):\n${first.text.slice(0, 6000)}`
+    : `${callArgs.user}\n\n[SYSTEM REPAIR] Your previous reply failed envelope validation: ${parsed.error}\n` +
+      `Previous reply:\n${first.text.slice(0, 6000)}\n` +
+      `Re-emit the full deliverable with a valid \`\`\`json envelope.`;
   const retry = await meteredCall({
     ...callArgs,
-    user:
-      callArgs.user +
-      `\n\n[SYSTEM REPAIR] Your previous reply failed envelope validation: ${parsed.error}\n` +
-      `Previous reply:\n${first.text.slice(0, 6000)}\n` +
-      `Re-emit the full deliverable with a valid \`\`\`json envelope.`,
+    user: repairUser,
+    // Envelope-only replies are short, but the cap has to clear adaptive
+    // thinking before any text is emitted at all.
+    maxTokens: truncated ? Math.max(callArgs.maxTokens, 6000) : callArgs.maxTokens,
   });
   parsed = extractEnvelope<T>(retry.text, schema);
   if (!parsed.ok) {
+    // Name the stop reason: "ran out of tokens" and "ignored the format" need
+    // different fixes, and the old message covered both with one sentence.
+    const why =
+      retry.stopReason === "max_tokens"
+        ? ` (both replies hit the ${callArgs.maxTokens}-token cap before the envelope — raise this role's maxTokens)`
+        : retry.stopReason && retry.stopReason !== "end_turn"
+          ? ` (stop_reason: ${retry.stopReason})`
+          : "";
     await convex().mutation(api.orchestra.insertIncident, {
       runDate: callArgs.runDate,
       role: callArgs.role,
       ...(callArgs.taskId ? { taskId: callArgs.taskId as never } : {}),
       kind: "parse_failure",
       severity: "medium",
-      detail: `Envelope invalid after retry: ${parsed.error}`,
+      detail: `Envelope invalid after retry: ${parsed.error}${why}`,
     });
-    throw new Error(`${callArgs.role}: envelope invalid after retry — ${parsed.error}`);
+    throw new Error(`${callArgs.role}: envelope invalid after retry — ${parsed.error}${why}`);
   }
   const citations = [...retry.citations, ...first.citations];
   return { data: parsed.data, body: parsed.body, citations, usage: retry.usage };
@@ -332,7 +359,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
     objective: atlas.data.radarObjective,
     definitionOfDone: atlas.data.definitionOfDone,
     boundaries: ["Research only — no drafting posts/emails, no contacting anyone"],
-    budgets: { maxOutputTokens: 4000, maxToolCalls: 6, maxUsd: 2 },
+    budgets: { maxOutputTokens: 8000, maxToolCalls: 6, maxUsd: 2 },
   });
 
   let verdict: SentinelVerdict | null = null;
@@ -363,7 +390,7 @@ export async function runOrchestra(): Promise<OrchestraRunResult> {
           `### Task contract\nObjective: ${atlas.data.radarObjective}\n` +
           `Definition of done:\n${atlas.data.definitionOfDone.map((d) => `- ${d}`).join("\n")}\n` +
           `Focus areas: ${atlas.data.focusAreas.join("; ")}\n\n${snapshot}${feedback}`,
-        maxTokens: 4000,
+        maxTokens: 8000,
         webSearchUses: 6,
       },
       Envelope,

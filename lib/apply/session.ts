@@ -210,6 +210,63 @@ export async function startSession(
   return { ok: true, state: session.state };
 }
 
+// One page of an application: selectors, then the answer bank + model for what
+// they missed, then whatever the board rejects. Used for step one and re-used
+// verbatim for every later step of a multi-step wizard.
+async function fillCurrentPage(s: ActiveSession): Promise<void> {
+  const { fillCommonForm, repairFieldErrors } = await import("@/lib/apply/ats-forms");
+  const res = await fillCommonForm(s.page!, s.ctx, { isAborted: () => !!s.fillAbort });
+  s.state.filled.push(...res.filled);
+  try {
+    const { aiFillRemaining } = await import("@/lib/apply/ai-fill");
+    const ai = await aiFillRemaining(s.page!, s.ctx, {
+      timeoutMs: 45_000,
+      isAborted: () => !!s.fillAbort,
+    });
+    s.state.filled.push(
+      ...ai.fromMemory.map((l) => `${l} (saved answer)`),
+      ...ai.filled.map((l) => `${l} (AI)`),
+    );
+  } catch (err) {
+    await appendApplyLog(
+      s.state.jobId,
+      `ai fill failed on step: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200),
+    );
+  }
+  const fixed = await repairFieldErrors(s.page!, s.ctx).catch(() => null);
+  if (fixed && fixed.fixed.length > 0) {
+    s.state.filled.push(...fixed.fixed.map((l) => `${l} (reformatted)`));
+  }
+  await applySafeDefaults(s);
+}
+
+// Last resort before the wizard stalls: answer what's left conservatively.
+// Tagged loudly, because these are guesses the human is being asked to check at
+// the review gate — not facts anyone gave us.
+async function applySafeDefaults(s: ActiveSession): Promise<void> {
+  const { answerRemainingSafely } = await import("@/lib/apply/ats-forms");
+  const safe = await answerRemainingSafely(s.page!, {
+    expectedSalary: s.ctx.defaults?.expectedSalary ?? null,
+  }).catch(() => []);
+  if (safe.length === 0) return;
+  s.state.filled.push(...safe.map((a) => `${a.question} → ${a.answer} (safe default — check this)`));
+  await appendApplyLog(
+    s.state.jobId,
+    `safe defaults: ${safe.map((a) => `${a.question}=${a.answer}`).join(" · ")}`.slice(0, 300),
+  );
+}
+
+// Tracking params churn on their own (Phenom rewrites _ccid on every load), so
+// drift is judged on origin + path.
+function stripQuery(url: string): string {
+  try {
+    const u = new URL(url);
+    return `${u.origin}${u.pathname}`;
+  } catch {
+    return url;
+  }
+}
+
 async function runToReview(s: ActiveSession): Promise<void> {
   const embedded = s.state.mode === "embedded";
   // The browser now arrives with a profile: a persistent Dayspring profile by
@@ -227,6 +284,46 @@ async function runToReview(s: ActiveSession): Promise<void> {
   await appendApplyLog(s.state.jobId, `browser: ${opened.describe}`);
   if (embedded) await startScreencast(s);
   await s.page.goto(s.ctx.job.url!, { waitUntil: "domcontentloaded", timeout: 60_000 });
+
+  // Aggregator links (Adzuna and friends) are tracking hops, not forms — walk
+  // them to the employer's site before anything else, then re-derive host + ATS
+  // from where we actually landed. Detecting the ATS off the stored URL is why
+  // these sessions ran as "unknown" and filled nothing.
+  const {
+    isAggregatorHost,
+    unwrapAggregator,
+    revealApplyForm,
+    hasFormFields,
+    checkPostingMatches,
+  } = await import("@/lib/apply/reach-form");
+  if (isAggregatorHost(s.state.host)) {
+    s.state.message = "Following the job-board link through to the employer's site…";
+    const unwrapped = await unwrapAggregator(s.page, {
+      onProgress: (m) => {
+        s.state.message = m;
+      },
+    });
+    if (!unwrapped.ok) {
+      throw new Error(
+        `${unwrapped.reason}. Open the posting yourself from the job page and apply there.`,
+      );
+    }
+    s.state.host = new URL(unwrapped.url).host;
+    s.state.ats = detectAts(unwrapped.url);
+    await appendApplyLog(
+      s.state.jobId,
+      `unwrapped aggregator in ${unwrapped.hops} hop(s) → ${s.state.host} (${s.state.ats})`,
+    );
+  }
+
+  // Applying to a job the human didn't pick is worse than not applying at all,
+  // so the posting is verified before a single field is typed.
+  const match = await checkPostingMatches(s.page, s.ctx.job);
+  if (!match.ok) {
+    throw new Error(
+      `The link didn't lead to the job you queued — ${match.detail}. Nothing was filled or submitted.`,
+    );
+  }
 
   // Workday is account-based, so historically it was always manual. With a
   // persistent profile we may already be signed into this tenant — in which
@@ -258,9 +355,36 @@ async function runToReview(s: ActiveSession): Promise<void> {
   if (!workdayManual) {
     s.state.phase = "filling";
     s.state.message = "Waiting for the application form to load…";
+    // The posting usually renders the description with the form behind an
+    // "Apply" click — and plenty of boards open the ATS in a new tab, so the
+    // form can end up on a different page than the one we navigated.
+    const formPage = await revealApplyForm(s.page, {
+      onProgress: (m) => {
+        s.state.message = m;
+      },
+    });
+    if (formPage !== s.page) {
+      s.page = formPage;
+      s.state.host = new URL(formPage.url()).host;
+      s.state.ats = detectAts(formPage.url());
+      await appendApplyLog(s.state.jobId, `form opened in a new tab → ${s.state.host}`);
+      // The screencast is bound to a page — re-point it at the one being driven.
+      if (embedded) await startScreencast(s);
+    }
     const { waitForFormReady } = await import("@/lib/apply/ats-forms");
     await waitForFormReady(s.page);
+    // Nothing to fill means nothing to review: fail with the reason instead of
+    // parking the human in front of a page that has no form on it.
+    if (!(await hasFormFields(s.page))) {
+      throw new Error(
+        `No application form found at ${s.page.url().slice(0, 120)} — that link is a listing page, not a form. Open it yourself and apply there.`,
+      );
+    }
     s.state.message = "Autofilling from your profile + tailored materials…";
+    // The form's own URL, frozen. A typeahead or stray widget can navigate the
+    // browser to another posting mid-fill; the check after the passes below
+    // catches that instead of letting it reach review as if nothing happened.
+    const formUrl = s.page.url();
     // Hard bounds: the selector pass gets 60s total, the AI mapping call 45s.
     // Whatever isn't filled by then is the human's at review — never wedge.
     const fillDeadline = Date.now() + 60_000;
@@ -292,8 +416,14 @@ async function runToReview(s: ActiveSession): Promise<void> {
           s.state.filled.push(...ai.filled.map((l) => `${l} (AI)`));
           await appendApplyLog(s.state.jobId, `ai-filled: ${ai.filled.join(", ")}`);
         }
-      } catch {
-        // best-effort — the review gate catches anything missed
+      } catch (err) {
+        // Best-effort — the review gate catches anything missed. But a silent
+        // catch here reads as "the AI had nothing to add", which is not the
+        // same as "the AI call failed"; the log has to tell them apart.
+        await appendApplyLog(
+          s.state.jobId,
+          `ai fill failed: ${err instanceof Error ? err.message : String(err)}`.slice(0, 200),
+        );
       }
     }
     if (s.fillAbort) {
@@ -301,9 +431,86 @@ async function runToReview(s: ActiveSession): Promise<void> {
     } else if (Date.now() > fillDeadline) {
       await appendApplyLog(s.state.jobId, "autofill hit its time budget — went to review");
     }
+    // Did the page move while we were filling it? One recovery attempt: go back
+    // to the form and re-run the deterministic pass. Anything filled on the
+    // page we drifted TO is not this application and must not reach review.
+    if (stripQuery(s.page.url()) !== stripQuery(formUrl)) {
+      await appendApplyLog(
+        s.state.jobId,
+        `page navigated away mid-fill (${s.page.url().slice(0, 90)}) — returning to the form`,
+      );
+      await s.page.goto(formUrl, { waitUntil: "domcontentloaded", timeout: 45_000 });
+      await waitForFormReady(s.page);
+      const back = await checkPostingMatches(s.page, s.ctx.job);
+      if (!back.ok || !(await hasFormFields(s.page))) {
+        throw new Error(
+          `The site navigated away from the application form while it was being filled and the form couldn't be restored. Nothing was submitted — open the posting yourself to apply.`,
+        );
+      }
+      const redo = await fillCommonForm(s.page, s.ctx, { isAborted: () => !!s.fillAbort });
+      s.state.filled = redo.filled;
+      s.state.skipped = redo.skipped;
+      await appendApplyLog(s.state.jobId, `refilled after drift: ${redo.filled.join(", ") || "(nothing)"}`);
+    }
+    // The form's own validation gets the last word: re-fill what it rejected in
+    // a format it accepts, then name whatever is still red so the human isn't
+    // hunting for it.
+    s.state.message = "Checking the form's validation…";
+    const { repairFieldErrors } = await import("@/lib/apply/ats-forms");
+    const repair = await repairFieldErrors(s.page, s.ctx).catch(() => ({
+      fixed: [] as string[],
+      remaining: [] as { label: string; message: string }[],
+    }));
+    if (repair.fixed.length > 0) {
+      s.state.filled.push(...repair.fixed.map((l) => `${l} (reformatted)`));
+      await appendApplyLog(s.state.jobId, `fixed rejected values: ${repair.fixed.join(", ")}`);
+    }
+
+    // Page one goes through the same last-resort pass the later steps get.
+    await applySafeDefaults(s);
+
+    // Multi-step wizards: a filled page one with a "Next" under it is not a
+    // finished application. Walk the steps, filling each, and stop at the last
+    // page — or at the first page whose required answers we don't have.
+    const { advanceSteps } = await import("@/lib/apply/ats-forms");
+    const stepped = await advanceSteps(s.page, () => fillCurrentPage(s), {
+      onProgress: (m) => {
+        s.state.message = m;
+      },
+    });
+    if (stepped.steps > 0) {
+      await appendApplyLog(
+        s.state.jobId,
+        `advanced ${stepped.steps} step(s) of a multi-step application`,
+      );
+    }
+
     s.state.message = embedded
       ? "Review the live view below — click any field to fix it, solve any CAPTCHA, answer EEO questions yourself — then approve."
       : "Review the browser window: solve any CAPTCHA, answer EEO questions yourself, fix anything missed — then approve here.";
+    if (stepped.steps > 0) {
+      s.state.message = `Filled ${stepped.steps + 1} steps of this application. ${s.state.message}`;
+    }
+    if (repair.remaining.length > 0) {
+      const list = repair.remaining
+        .slice(0, 6)
+        .map((p) => `${p.label || "a field"}: ${p.message}`)
+        .join(" · ");
+      s.state.message += ` The form is still flagging ${repair.remaining.length} field(s) — ${list}.`;
+      await appendApplyLog(s.state.jobId, `form still invalid: ${list}`.slice(0, 300));
+    }
+    // Required-but-empty is the difference between "looks filled" and
+    // "submittable". Name them, rather than letting the human find them by
+    // pressing submit and watching the page turn red.
+    const { requiredStillEmpty } = await import("@/lib/apply/ats-forms");
+    const stillNeeded = await requiredStillEmpty(s.page).catch(() => [] as string[]);
+    if (stillNeeded.length > 0) {
+      s.state.message += ` Still needs you: ${stillNeeded.slice(0, 6).join(" · ")}.`;
+      await appendApplyLog(
+        s.state.jobId,
+        `required + empty: ${stillNeeded.join(" · ")}`.slice(0, 300),
+      );
+    }
     const missing = [
       !s.ctx.fields.fullName && "name",
       !s.ctx.fields.email && "email",
@@ -311,6 +518,15 @@ async function runToReview(s: ActiveSession): Promise<void> {
     ].filter(Boolean);
     if (missing.length > 0) {
       s.state.message += ` Heads-up: no ${missing.join(", ")} found in your profile — add them on the Profile page for fuller autofill.`;
+    }
+    // A silent "no résumé" is the worst kind of half-filled application: the
+    // upload box just looks untouched, and on résumé-parsing boards (Phenom,
+    // Workday) it also costs the address/experience fields they backfill from
+    // the file. Say it out loud instead.
+    if (!s.ctx.resumePath) {
+      s.state.message +=
+        " No résumé was attached — this account has no résumé PDF, so the upload box was left empty. Add one under Resumes (a master résumé with a PDF), then retry.";
+      await appendApplyLog(s.state.jobId, "no résumé PDF for this account — upload field left empty");
     }
     // Tsenta-style review summary — what's actually on the form right now.
     const { captureFormAnswers } = await import("@/lib/apply/ats-forms");
@@ -417,7 +633,23 @@ const SUBMIT_SELECTORS = [
 ];
 
 async function clickSubmit(page: Page): Promise<{ ok: boolean; how: string }> {
-  const { formScope } = await import("@/lib/apply/ats-forms");
+  const { formScope, finalSubmitButton, nextStepButton } = await import("@/lib/apply/ats-forms");
+  // A wizard's "Next" is often button[type=submit] too. Clicking it and
+  // reporting "submitted" would record an application that was never sent, so
+  // a real submit button wins, and a page that only offers "Next" is not a
+  // submit at all.
+  const final = await finalSubmitButton(page);
+  if (final) {
+    try {
+      await final.click({ timeout: 5000 });
+      return { ok: true, how: "submit button" };
+    } catch {
+      // fall through to the selector list
+    }
+  }
+  if (await nextStepButton(page)) {
+    return { ok: false, how: "this page is a step, not the end — more of the form remains" };
+  }
   const scope = await formScope(page); // the form may live inside an iframe
   for (const sel of SUBMIT_SELECTORS) {
     try {
@@ -507,12 +739,28 @@ export async function approveAndSubmit(): Promise<DecisionResult> {
 
   await bankAnswersOnApproval(s);
   s.state.phase = "submitting";
+  // The human may have just answered what the stepper was blocked on, so try
+  // the remaining steps again before looking for a Submit.
+  const { advanceSteps } = await import("@/lib/apply/ats-forms");
+  const stepped = await advanceSteps(s.page!, () => fillCurrentPage(s), {
+    onProgress: (m) => {
+      s.state.message = m;
+    },
+  });
+  if (stepped.steps > 0) {
+    await appendApplyLog(s.state.jobId, `advanced ${stepped.steps} more step(s) on approval`);
+  }
+  if (stepped.blockedBy.length > 0) {
+    s.state.phase = "awaiting_review";
+    s.state.message = `This form still needs answers before it can go: ${stepped.blockedBy.slice(0, 5).join(" · ")}. Fill them in the live view, then approve again.`;
+    return { ok: true, state: s.state };
+  }
+
   s.state.message = "Clicking Submit and watching for confirmation…";
   const clicked = await clickSubmit(s.page!);
   if (!clicked.ok) {
     s.state.phase = "awaiting_review";
-    s.state.message =
-      "Couldn't find a Submit button — click it yourself in the browser, then use “I clicked Submit”.";
+    s.state.message = `Couldn't submit — ${clicked.how}. Finish it in the browser, then use “I clicked Submit”.`;
     return { ok: true, state: s.state };
   }
   await appendApplyLog(s.state.jobId, `tool clicked submit (${clicked.how}) after in-app approval`);

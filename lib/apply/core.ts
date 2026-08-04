@@ -17,6 +17,10 @@ export type ApplyContext = {
     source: string;
     companyId: string;
     companyName: string;
+    // Carried so the apply session can verify the page it lands on is still
+    // the posting that was queued — see checkPostingMatches.
+    location: string | null;
+    isUs: boolean | null;
     tailoredBullets: string[] | null;
     coverLetter: string | null;
   };
@@ -27,6 +31,12 @@ export type ApplyContext = {
   resumePath: string | null;
   // Which resume got attached: per-job tailored > primary master PDF > setting.
   resumeSource: "tailored" | "master" | "settings" | null;
+  // The résumé's TEXT. The autofill model used to see only the profile blob,
+  // which on a fresh account is onboarding boilerplate — so education, work
+  // history and dates were unknown to it and every question about them went
+  // unanswered ("Degree" blocking a Phenom wizard, for one). The résumé is
+  // where those facts actually live.
+  resumeText: string | null;
   briefSummary: string | null;
 };
 
@@ -92,6 +102,8 @@ export async function loadApplyContext(
         source: job.source,
         companyId: job.companyId,
         companyName: job.companyName,
+        location: job.location ?? null,
+        isUs: job.isUs ?? null,
         tailoredBullets: job.tailoredBullets ?? null,
         coverLetter: job.coverLetter ?? null,
       },
@@ -99,6 +111,11 @@ export async function loadApplyContext(
       defaults: p?.defaults ?? null,
       resumePath: resume?.path ?? null,
       resumeSource: resume?.source ?? null,
+      resumeText:
+        (opts.masterResumeId
+          ? masters.find((m) => m.id === opts.masterResumeId)?.content
+          : primaryMaster?.content
+        )?.slice(0, 8000) ?? null,
       briefSummary: brief,
     },
   };

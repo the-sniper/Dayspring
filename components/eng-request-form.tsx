@@ -34,7 +34,7 @@ export default function EngRequestForm() {
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={2}
-        placeholder="Describe a Dayspring feature or fix (owner-only — this is your dev team). File it, then hit 'Run Forge' in Operations to get a spec."
+        placeholder="Describe a Dayspring feature or fix (owner-only - this is your dev team). File it, then hit 'Run Forge' in Operations to get a spec."
         className="mt-2 w-full resize-y rounded-xl border border-border bg-background p-2.5 text-[13px] text-foreground focus:border-brand-500/50 focus:outline-none"
       />
       <div className="mt-2 flex items-center gap-3">
@@ -42,7 +42,7 @@ export default function EngRequestForm() {
           type="button"
           disabled={pending || text.trim().length < 10}
           onClick={submit}
-          className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105 disabled:opacity-50"
+          className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-brand-950 transition-all hover:bg-brand-400 disabled:opacity-50"
         >
           {pending ? <Loader2 size={13} className="animate-spin" /> : <Hammer size={13} />}
           File request

@@ -31,7 +31,7 @@ function ProposalRow({ proposal }: { proposal: StrategyProposal }) {
   return (
     <li className="rounded-xl border border-border/70 bg-background p-3.5">
       <div className="flex flex-wrap items-center gap-2">
-        <span className="rounded-full bg-purple-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-purple-600 dark:text-purple-400">
+        <span className="rounded-full bg-brand-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-brand-600 dark:text-brand-400">
           {TARGET_LABEL[proposal.target] ?? proposal.target}
         </span>
         <p className="min-w-0 flex-1 text-[13px] font-semibold text-foreground">
@@ -94,19 +94,23 @@ export default function StrategyReviewPanel({
   const [pending, startTransition] = useTransition();
   const router = useRouter();
 
+  // The page owns the heading; this owns the run control and the output.
   return (
-    <section className="rounded-[2rem] border border-border/60 bg-card p-6 shadow-sm">
-      <div className="flex flex-wrap items-end justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight text-foreground">
-            <LineChart size={18} className="text-brand-500" /> Strategy review
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {analystName} reads what shipped, what it did, and what you rejected
-            — then proposes memory edits you apply yourself.
-            {runDate ? ` Last review: ${runDate}.` : " No review yet."}
-          </p>
-        </div>
+    <section>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <p className="text-[12px] font-medium text-muted-foreground">
+          {runDate ? (
+            <>
+              Last review <span className="font-bold text-foreground">{runDate}</span>.
+              Re-run it after a few posts have numbers.
+            </>
+          ) : (
+            <>
+              No review yet. {analystName} needs at least one shipped post or
+              one rejection to have anything to read.
+            </>
+          )}
+        </p>
         <button
           type="button"
           disabled={pending}

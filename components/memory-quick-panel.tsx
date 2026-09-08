@@ -2,8 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Brain, Loader2, X } from "lucide-react";
-import Link from "next/link";
+import { Loader2, X } from "lucide-react";
 import { removeMemoryItemAction, type MemoryList } from "@/lib/actions/campaign";
 import { fmtDate } from "@/lib/orchestra/format";
 import { cn } from "@/lib/utils";
@@ -97,31 +96,12 @@ export default function MemoryQuickPanel({
   lessons: { date: string; text: string }[];
   samples: { text: string; performance: string | null }[];
 }) {
+  // The page owns the heading; this owns the two removable lists.
   return (
-    <section className="rounded-[2rem] border border-border/60 bg-card p-6 shadow-sm">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight text-foreground">
-            <Brain size={18} className="text-brand-500" /> What the team
-            remembers
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            Everything the Studio can add, it can also take back out. Anything
-            you remove here stops influencing the next campaign.
-          </p>
-        </div>
-        <Link
-          href="/company/team"
-          className="rounded-xl border border-border px-3 py-1.5 text-[11px] font-bold text-muted-foreground transition-colors hover:bg-muted"
-        >
-          Full memory editor
-        </Link>
-      </div>
-
-      <div className="mt-4 grid gap-6 md:grid-cols-2">
+    <div className="grid gap-6 md:grid-cols-2">
         <List
           title="Lessons"
-          empty="No lessons yet — skipping a draft with a reason files one."
+          empty="No lessons yet - skipping a draft with a reason files one."
           list="lessons"
           rows={lessons.map((l, i) => ({
             key: `${l.date}-${i}`,
@@ -131,7 +111,7 @@ export default function MemoryQuickPanel({
         />
         <List
           title="Voice samples"
-          empty="No samples yet — mark a shipped post as sounding like you."
+          empty="No samples yet - mark a shipped post as sounding like you."
           list="samples"
           rows={samples.map((s, i) => ({
             key: `sample-${i}`,
@@ -139,7 +119,6 @@ export default function MemoryQuickPanel({
             meta: s.performance,
           }))}
         />
-      </div>
-    </section>
+    </div>
   );
 }

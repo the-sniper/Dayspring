@@ -115,7 +115,7 @@ export default function CampaignPlanEditor({
             type="button"
             disabled={pending || live.length === 0}
             onClick={() => save(true)}
-            className="flex h-10 items-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
+            className="flex h-10 items-center gap-2 rounded-xl bg-brand-500 px-4 text-sm font-bold text-brand-950 transition-all hover:bg-brand-400 active:scale-[0.98] disabled:opacity-50"
           >
             {pending ? <Loader2 size={15} className="animate-spin" /> : <Check size={15} strokeWidth={3} />}
             Research {live.length} slot{live.length === 1 ? "" : "s"}
@@ -240,7 +240,7 @@ export default function CampaignPlanEditor({
       <details className="mt-4 rounded-2xl border border-border/60 bg-card p-4">
         <summary className="cursor-pointer text-[11px] font-bold uppercase tracking-[0.18em] text-muted-foreground">
           <CalendarDays size={12} className="mr-1.5 inline" />
-          The full shortlist ({campaign.topics.length}) — everything the scout
+          The full shortlist ({campaign.topics.length}) - everything the scout
           found, including what didn't get a slot
         </summary>
         <ul className="mt-3 flex flex-col gap-1.5">

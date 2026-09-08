@@ -1,11 +1,9 @@
 @import "tailwindcss";
 @import "@heroui/styles";
 
-/* Enable class-based dark mode (works alongside HeroUI's [data-theme]) */
 @custom-variant dark (&:where(.dark, .dark *));
 
 @theme {
-  /* Brand palette (Dayspring dawn / amber-gold) — kept for `brand-*` utilities */
   --color-brand-50: #fffbeb;
   --color-brand-100: #fef3c7;
   --color-brand-200: #fde68a;
@@ -18,13 +16,14 @@
   --color-brand-900: #78350f;
   --color-brand-950: #451a03;
 
-  /* Typography — distinctive editorial pairing */
+  --color-ink: #0e0d0c;
+  --color-ink-soft: #171513;
+  --color-ink-line: #2a2622;
+
   --font-display: var(--font-fraunces), ui-serif, Georgia, "Times New Roman", serif;
   --font-sans: var(--font-hanken), ui-sans-serif, system-ui, -apple-system, sans-serif;
   --font-mono: var(--font-jetbrains), ui-monospace, "SFMono-Regular", monospace;
 
-  /* Bridge legacy semantic utilities onto HeroUI's runtime variables so the
-     existing components stay visually consistent during the migration. */
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--surface);
@@ -45,26 +44,38 @@
   --color-input: var(--border);
   --color-ring: var(--focus);
 
-  --radius-xl: 0.75rem;
+  --radius-xl: 1rem;
 }
 
-/* Inject the amber-gold brand as HeroUI's accent + refine radius */
+/* Cold luxury canvas. Amber is the only accent. */
 :root,
 [data-theme="light"] {
-  --accent: oklch(0.77 0.163 70);
-  --accent-foreground: oklch(0.24 0.02 68);
-  --radius: 0.625rem;
+  --accent: oklch(0.78 0.155 72);
+  --accent-foreground: oklch(0.22 0.02 68);
+  --radius: 1rem;
+  --background: #eceae6;
+  --surface: #f7f6f3;
+  --surface-secondary: #e4e1db;
+  --border: #d5d1c9;
+  --muted: #6b6760;
+  --foreground: #141210;
+  --surface-foreground: #141210;
 }
 
 [data-theme="dark"],
 .dark {
-  --accent: oklch(0.84 0.16 82);
-  --accent-foreground: oklch(0.22 0.02 68);
-  --radius: 0.625rem;
+  --accent: oklch(0.84 0.15 82);
+  --accent-foreground: oklch(0.2 0.02 68);
+  --radius: 1rem;
+  --background: #090908;
+  --surface: #131210;
+  --surface-secondary: #1c1a17;
+  --border: #2c2924;
+  --muted: #9a958c;
+  --foreground: #f3f0ea;
+  --surface-foreground: #f3f0ea;
 }
 
-/* Amber accent uses dark foreground text, but a switch knob should stay a
-   crisp light disc on the amber track (not a dark, low-contrast blob). */
 .switch[data-selected="true"] .switch__thumb,
 .switch[aria-checked="true"] .switch__thumb {
   background-color: var(--white);
@@ -90,65 +101,103 @@
   }
 }
 
-/* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 ::-webkit-scrollbar-track {
   @apply bg-transparent;
 }
 ::-webkit-scrollbar-thumb {
-  @apply bg-stone-300 dark:bg-stone-700 rounded-full border-4 border-solid border-background;
+  @apply rounded-full bg-stone-400/50 dark:bg-stone-600/50;
 }
 ::-webkit-scrollbar-thumb:hover {
-  @apply bg-stone-400 dark:bg-stone-600;
+  @apply bg-stone-500/70 dark:bg-stone-500/70;
 }
 
-/* Frosted glass surface */
 .glass {
-  @apply bg-white/70 dark:bg-stone-900/60 backdrop-blur-xl border border-white/40 dark:border-white/10;
+  @apply border border-white/40 bg-white/70 backdrop-blur-xl dark:border-white/10 dark:bg-stone-900/60;
 }
 
-/* Atmospheric background layer (gradient mesh + grain) */
+/* Stage backdrop behind floating chrome */
 .atmosphere {
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
   background:
-    radial-gradient(60rem 40rem at 12% -8%, color-mix(in oklab, var(--accent) 20%, transparent), transparent 70%),
-    radial-gradient(48rem 36rem at 108% 8%, color-mix(in oklab, var(--accent) 12%, transparent), transparent 70%),
-    radial-gradient(70rem 50rem at 50% 120%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 75%);
+    radial-gradient(58rem 42rem at 8% -12%, color-mix(in oklab, var(--accent) 22%, transparent), transparent 58%),
+    radial-gradient(48rem 36rem at 100% 0%, color-mix(in oklab, var(--accent) 10%, transparent), transparent 55%),
+    radial-gradient(70rem 50rem at 50% 110%, color-mix(in oklab, var(--accent) 8%, transparent), transparent 68%),
+    var(--background);
 }
 .atmosphere::after {
   content: "";
   position: absolute;
   inset: 0;
-  opacity: 0.12;
+  opacity: 0.14;
   mix-blend-mode: soft-light;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 :where(.dark) .atmosphere::after {
-  opacity: 0.05;
+  opacity: 0.07;
 }
 
-/* Page-load reveal */
+/* Machined double-bezel shell */
+.bezel {
+  border-radius: 1.75rem;
+  padding: 0.3rem;
+  background: color-mix(in oklab, var(--foreground) 4.5%, transparent);
+  border: 1px solid color-mix(in oklab, var(--foreground) 7%, transparent);
+}
+.bezel-core {
+  border-radius: calc(1.75rem - 0.3rem);
+  background: var(--surface);
+  border: 1px solid color-mix(in oklab, var(--foreground) 6%, transparent);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 55%, transparent),
+    0 18px 50px -30px color-mix(in oklab, black 35%, transparent);
+}
+:where(.dark) .bezel-core {
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 8%, transparent),
+    0 22px 56px -32px color-mix(in oklab, black 75%, transparent);
+}
+
+.surface-lift {
+  background:
+    linear-gradient(180deg, color-mix(in oklab, white 48%, transparent), transparent 38%),
+    var(--surface);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 50%, transparent),
+    0 14px 40px -28px color-mix(in oklab, black 30%, transparent);
+}
+:where(.dark) .surface-lift {
+  background:
+    linear-gradient(180deg, color-mix(in oklab, white 7%, transparent), transparent 40%),
+    var(--surface);
+  box-shadow:
+    inset 0 1px 0 color-mix(in oklab, white 9%, transparent),
+    0 18px 48px -30px color-mix(in oklab, black 70%, transparent);
+}
+
 .stagger-load > * {
   opacity: 0;
-  animation: fade-in-up 0.4s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+  animation: fade-in-up 0.65s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
-.stagger-load > *:nth-child(1) { animation-delay: 0.02s; }
-.stagger-load > *:nth-child(2) { animation-delay: 0.06s; }
-.stagger-load > *:nth-child(3) { animation-delay: 0.1s; }
-.stagger-load > *:nth-child(4) { animation-delay: 0.14s; }
-.stagger-load > *:nth-child(5) { animation-delay: 0.18s; }
-.stagger-load > *:nth-child(6) { animation-delay: 0.22s; }
+.stagger-load > *:nth-child(1) { animation-delay: 0.05s; }
+.stagger-load > *:nth-child(2) { animation-delay: 0.11s; }
+.stagger-load > *:nth-child(3) { animation-delay: 0.17s; }
+.stagger-load > *:nth-child(4) { animation-delay: 0.23s; }
+.stagger-load > *:nth-child(5) { animation-delay: 0.29s; }
+.stagger-load > *:nth-child(6) { animation-delay: 0.35s; }
+.stagger-load > *:nth-child(7) { animation-delay: 0.41s; }
+.stagger-load > *:nth-child(8) { animation-delay: 0.47s; }
 
 @keyframes fade-in-up {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(22px);
   }
   to {
     opacity: 1;

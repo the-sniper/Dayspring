@@ -234,7 +234,7 @@ function PostRow({ post }: { post: PerfPost }) {
                 setCopied(true);
                 setTimeout(() => setCopied(false), 1500);
               }}
-              className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1 text-[11px] font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105"
+              className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-2.5 py-1 text-[11px] font-bold text-brand-950 transition-all hover:bg-brand-400"
             >
               {copied ? <Check size={11} strokeWidth={3} /> : <Copy size={11} />}
               {copied ? "Copied" : "Copy post"}
@@ -244,7 +244,7 @@ function PostRow({ post }: { post: PerfPost }) {
           {showHistory && (
             <div className="mt-2 flex flex-col gap-2 rounded-lg border border-border/60 bg-secondary/20 p-2.5">
               <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-                Version history — cleared when you log the numbers below
+                Version history - cleared when you log the numbers below
               </p>
               {post.history.map((h, i) => (
                 <details key={`${h.at}-${i}`} className="rounded-lg bg-background/60 p-2">
@@ -336,7 +336,7 @@ function PostRow({ post }: { post: PerfPost }) {
                   }),
                 )
               }
-              className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105 disabled:opacity-50"
+              className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-brand-950 transition-all hover:bg-brand-400 disabled:opacity-50"
             >
               {pending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={3} />}
               {shipped ? "Update numbers" : "Log & mark posted"}
@@ -345,7 +345,7 @@ function PostRow({ post }: { post: PerfPost }) {
               type="button"
               disabled={pending}
               onClick={keep}
-              title="Add this post to your voice samples — future drafts calibrate to it"
+              title="Add this post to your voice samples - future drafts calibrate to it"
               className="flex items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-50"
             >
               <BookmarkPlus size={13} /> This sounded like me
@@ -379,34 +379,44 @@ function PostRow({ post }: { post: PerfPost }) {
   );
 }
 
+// The page supplies the heading (one voice per screen); this owns the list and
+// a single line of state so the counts sit next to the rows they describe.
 export default function PostPerformancePanel({ posts }: { posts: PerfPost[] }) {
   const logged = posts.filter((p) => p.metrics).length;
-  return (
-    <section className="rounded-[2rem] border border-border/60 bg-card p-6 shadow-sm">
-      <div className="flex flex-wrap items-end justify-between gap-2">
-        <div>
-          <h2 className="flex items-center gap-2 font-display text-xl font-bold tracking-tight text-foreground">
-            <BarChart3 size={18} className="text-brand-500" /> Posts &amp;
-            performance
-          </h2>
-          <p className="text-sm text-muted-foreground">
-            {posts.length} approved or shipped · {logged} with numbers. What you
-            log here is the only evidence the strategy review may reason from.
-          </p>
-        </div>
-      </div>
-      {posts.length === 0 ? (
-        <p className="mt-4 rounded-xl border border-dashed border-border p-6 text-center text-sm text-muted-foreground">
-          Nothing approved yet. Approve a draft, post it on its day, then log
-          what it did.
+  const ready = posts.filter((p) => p.status !== "posted").length;
+  if (posts.length === 0) {
+    return (
+      <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border/70 px-6 py-10 text-center">
+        <BarChart3 size={26} className="text-muted-foreground/40" />
+        <p className="font-display text-base font-bold text-foreground">
+          Nothing approved yet
         </p>
-      ) : (
-        <ul className="mt-4 flex flex-col gap-2">
-          {posts.map((p) => (
-            <PostRow key={p.id} post={p} />
-          ))}
-        </ul>
-      )}
-    </section>
+        <p className="max-w-md text-[13px] leading-relaxed text-muted-foreground">
+          Approve a draft in a campaign, post it on its day, then log what it
+          did here.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div>
+      <div className="mb-2.5 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-medium text-muted-foreground">
+        <span>
+          <span className="font-bold text-foreground">{ready}</span> ready to post
+        </span>
+        <span>
+          <span className="font-bold text-foreground">{posts.length - ready}</span>{" "}
+          shipped
+        </span>
+        <span>
+          <span className="font-bold text-foreground">{logged}</span> with numbers
+        </span>
+      </div>
+      <ul className="flex flex-col gap-2">
+        {posts.map((p) => (
+          <PostRow key={p.id} post={p} />
+        ))}
+      </ul>
+    </div>
   );
 }

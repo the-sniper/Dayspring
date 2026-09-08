@@ -135,7 +135,7 @@ export default function PostApprovalCard({ post }: { post: QueuedPost }) {
               autoFocus
               value={reason}
               onChange={(e) => setReason(e.target.value)}
-              placeholder="Why? (this teaches the team — be specific)"
+              placeholder="Why? (this teaches the team - be specific)"
               className="min-w-0 flex-1 rounded-lg border border-border bg-background px-3 py-1.5 text-xs text-foreground focus:border-rose-500/50 focus:outline-none"
             />
             <button
@@ -160,7 +160,7 @@ export default function PostApprovalCard({ post }: { post: QueuedPost }) {
             <button
               type="button"
               onClick={() => void copy()}
-              className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-3 py-1.5 text-xs font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105"
+              className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-xs font-bold text-brand-950 transition-colors hover:bg-brand-400 active:scale-[0.98]"
             >
               {copied ? <Check size={13} strokeWidth={3} /> : <Copy size={13} />}
               {copied ? "Copied" : "Copy post"}

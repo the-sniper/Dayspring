@@ -19,6 +19,56 @@ export function dailyCapUsd(): number {
   return Number.isFinite(raw) && raw > 0 ? raw : 5;
 }
 
+// ---- Today-only cap override ------------------------------------------------
+// Raising the standing cap in env is a permanent decision made in a moment of
+// impatience; nine times out of ten what you actually want is "more room, just
+// for today". The override is stamped with the date it applies to, so it
+// expires on its own at the next UTC rollover — the same boundary the ledger
+// already uses. No cleanup job, no forgotten $50 ceiling.
+const CAP_OVERRIDE_KEY = "orchCapOverrideToday";
+
+const MAX_OVERRIDE_USD = 100;
+
+type CapOverride = { date: string; usd: number };
+
+export async function getCapOverride(): Promise<CapOverride | null> {
+  const { getSetting } = await import("@/lib/settings/store");
+  const raw = await getSetting(CAP_OVERRIDE_KEY);
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw) as CapOverride;
+    if (!parsed?.date || !Number.isFinite(parsed.usd)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/** The cap actually in force for `runDate` — override if it's for that day. */
+export async function resolveDailyCap(runDate: string): Promise<number> {
+  const override = await getCapOverride();
+  if (override && override.date === runDate && override.usd > 0) {
+    return Math.min(override.usd, MAX_OVERRIDE_USD);
+  }
+  return dailyCapUsd();
+}
+
+/** Raise (or lower) the ceiling for one day only. */
+export async function setCapForDate(runDate: string, usd: number): Promise<number> {
+  const { setSetting } = await import("@/lib/settings/store");
+  const capped = Math.max(0.5, Math.min(usd, MAX_OVERRIDE_USD));
+  await setSetting(
+    CAP_OVERRIDE_KEY,
+    JSON.stringify({ date: runDate, usd: capped } satisfies CapOverride),
+  );
+  return capped;
+}
+
+export async function clearCapOverride(): Promise<void> {
+  const { deleteSetting } = await import("@/lib/settings/store");
+  await deleteSetting(CAP_OVERRIDE_KEY);
+}
+
 export class BudgetExceededError extends Error {
   constructor(spent: number, cap: number) {
     super(
@@ -35,7 +85,7 @@ export async function guardBudget(runDate: string): Promise<number> {
   const { costUsd } = await convex().query(api.orchestra.spendForDate, {
     runDate,
   });
-  const cap = dailyCapUsd();
+  const cap = await resolveDailyCap(runDate);
   if (costUsd >= cap) throw new BudgetExceededError(costUsd, cap);
   return costUsd;
 }

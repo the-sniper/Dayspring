@@ -59,6 +59,41 @@ export async function setTierAction(
   };
 }
 
+// Raise or clear TODAY's spending ceiling. Deliberately not an env change: the
+// override carries the date it applies to and lapses at the next UTC rollover,
+// so an urgent "just for today" can't quietly become the permanent setting.
+export async function setTodayCapAction(
+  usd: number | null,
+): Promise<OrchestraActionResult> {
+  const { clearCapOverride, dailyCapUsd, setCapForDate } = await import(
+    "@/lib/orchestra/ledger"
+  );
+  const { todayDate } = await import("@/lib/orchestra/types");
+  try {
+    if (usd === null) {
+      await clearCapOverride();
+      revalidatePath("/company");
+      revalidatePath("/company/studio");
+      return {
+        ok: true,
+        message: `Back to the standing $${dailyCapUsd().toFixed(2)} cap.`,
+      };
+    }
+    if (!Number.isFinite(usd) || usd <= 0) {
+      return { ok: false, message: "Give it a number above zero." };
+    }
+    const applied = await setCapForDate(todayDate(), usd);
+    revalidatePath("/company");
+    revalidatePath("/company/studio");
+    return {
+      ok: true,
+      message: `Today's ceiling is $${applied.toFixed(2)} — it resets on its own.`,
+    };
+  } catch (err) {
+    return { ok: false, message: err instanceof Error ? err.message : String(err) };
+  }
+}
+
 // ---- Phase 2: the human gate ------------------------------------------------
 
 export async function approvePostAction(

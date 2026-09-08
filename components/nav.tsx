@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuthActions } from "@convex-dev/auth/react";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import {
   LayoutDashboard,
   Bot,
@@ -70,6 +70,7 @@ export default function Nav() {
   const router = useRouter();
   const { signOut } = useAuthActions();
   const me = useQuery(api.users.me);
+  const reduce = useReducedMotion();
 
   async function handleSignOut() {
     await signOut();
@@ -78,9 +79,6 @@ export default function Nav() {
 
   const displayName = me?.name || me?.email?.split("@")[0] || "Account";
 
-  // Most-specific match wins. Without this, /company/studio would light up
-  // both "Company" and "Content Studio" — nested routes need the longer
-  // prefix to take the highlight.
   const activeHref = groups
     .flatMap((g) => g.links.map((l) => l.href))
     .filter((href) =>
@@ -89,87 +87,84 @@ export default function Nav() {
     .sort((a, b) => b.length - a.length)[0];
 
   return (
-    <aside className="sticky top-0 flex h-screen w-64 shrink-0 flex-col border-r border-border/60 bg-surface/40 px-4 py-7 backdrop-blur-xl">
-      <Link href="/" className="group mb-9 flex items-center gap-3 px-2">
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-brand-400 to-brand-600 text-white shadow-lg shadow-brand-500/25 transition-transform duration-300 group-hover:scale-105 group-hover:rotate-3">
-          <Sunrise size={22} strokeWidth={2.4} />
-        </div>
-        <div className="flex flex-col leading-none">
-          <span className="font-display text-[1.35rem] font-semibold tracking-tight text-foreground">
-            Dayspring
-          </span>
-        </div>
-      </Link>
-
-      <nav className="flex flex-1 flex-col gap-6 overflow-y-auto">
-        {groups.map((group) => (
-          <div key={group.label} className="flex flex-col gap-1">
-            <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.18em] text-muted-foreground/50">
-              {group.label}
+    <aside className="sticky top-2.5 flex h-[calc(100dvh-1.25rem)] w-[4.75rem] shrink-0 flex-col overflow-hidden rounded-[1.75rem] bg-ink text-[#f4f0ea] shadow-[0_24px_60px_-28px_rgba(0,0,0,0.55)] sm:top-3 sm:h-[calc(100dvh-1.5rem)] sm:w-[15rem] lg:top-4 lg:h-[calc(100dvh-2rem)] lg:w-[16.25rem]">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(80%_50%_at_20%_0%,rgba(245,158,11,0.18),transparent_55%)]" />
+      <div className="relative flex h-full flex-col px-3.5 py-5">
+        <Link href="/" className="group mb-7 flex items-center gap-3 px-2">
+          <div className="relative flex h-11 w-11 items-center justify-center rounded-[1rem] bg-gradient-to-br from-brand-400 to-brand-700 text-white transition-transform duration-500 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:scale-[1.04] group-hover:rotate-2">
+            <Sunrise size={20} strokeWidth={2.2} />
+            <span className="pointer-events-none absolute inset-px rounded-[0.9rem] ring-1 ring-inset ring-white/30" />
+          </div>
+          <div className="min-w-0 leading-none max-sm:hidden">
+            <span className="font-display text-[1.4rem] font-semibold tracking-tight text-[#f7f3ec]">
+              Dayspring
+            </span>
+            <p className="mt-1.5 text-[10px] font-semibold uppercase tracking-[0.2em] text-[#f7f3ec]/55">
+              warmer, not more.
             </p>
-            {group.links.map((l) => {
-              const Icon = l.icon;
-              const isActive = l.href === activeHref;
+          </div>
+        </Link>
 
-              return (
-                <Link
-                  key={l.href}
-                  href={l.href}
-                  aria-current={isActive ? "page" : undefined}
-                  className={cn(
-                    "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors duration-200",
-                    isActive
-                      ? "text-foreground"
-                      : "text-muted-foreground hover:text-foreground",
-                  )}
-                >
-                  {isActive && (
-                    <motion.span
-                      layoutId="nav-active"
-                      className="absolute inset-0 rounded-xl bg-accent ring-1 ring-inset ring-brand-500/20"
-                      transition={{ type: "spring", stiffness: 500, damping: 36 }}
-                    />
-                  )}
-                  {!isActive && (
-                    <span className="absolute inset-0 rounded-xl bg-transparent transition-colors duration-200 group-hover:bg-secondary/70" />
-                  )}
-                  <Icon
-                    size={18}
+        <nav className="flex flex-1 flex-col gap-6 overflow-y-auto pr-0.5">
+          {groups.map((group) => (
+            <div key={group.label} className="flex flex-col gap-0.5">
+              <p className="px-3 pb-1.5 text-[10px] font-bold uppercase tracking-[0.22em] text-[#f7f3ec]/35 max-sm:hidden">
+                {group.label}
+              </p>
+              {group.links.map((l) => {
+                const Icon = l.icon;
+                const isActive = l.href === activeHref;
+                return (
+                  <Link
+                    key={l.href}
+                    href={l.href}
+                    aria-current={isActive ? "page" : undefined}
                     className={cn(
-                      "relative z-10 transition-colors",
-                      isActive
-                        ? "text-brand-600 dark:text-brand-400"
-                        : "text-muted-foreground group-hover:text-foreground",
+                      "group relative flex items-center gap-3 rounded-xl px-3 py-2.5 text-[13px] font-semibold transition-colors duration-200 max-sm:justify-center max-sm:px-0",
+                      isActive ? "text-ink" : "text-[#f7f3ec]/62 hover:text-[#f7f3ec]",
                     )}
-                  />
-                  <span className="relative z-10">{l.label}</span>
-                </Link>
-              );
-            })}
-          </div>
-        ))}
-      </nav>
+                  >
+                    {isActive && (
+                      <motion.span
+                        layoutId={reduce ? undefined : "nav-active"}
+                        className="absolute inset-0 rounded-xl bg-brand-500"
+                        transition={{ type: "spring", stiffness: 480, damping: 34 }}
+                      />
+                    )}
+                    {!isActive && (
+                      <span className="absolute inset-0 rounded-xl transition-colors duration-200 group-hover:bg-white/[0.06]" />
+                    )}
+                    <Icon
+                      size={16}
+                      strokeWidth={isActive ? 2.25 : 1.75}
+                      className="relative z-10"
+                    />
+                    <span className="relative z-10 max-sm:hidden">{l.label}</span>
+                  </Link>
+                );
+              })}
+            </div>
+          ))}
+        </nav>
 
-      <div className="mt-6 flex flex-col gap-3 border-t border-border/60 pt-4">
-        {me && (
-          <div className="px-2">
-            <p className="truncate text-sm font-bold text-foreground">{displayName}</p>
-            {me.email && (
-              <p className="truncate text-[11px] font-medium text-muted-foreground">{me.email}</p>
-            )}
-            <button
-              type="button"
-              onClick={() => void handleSignOut()}
-              className="mt-2 text-[11px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:text-foreground"
-            >
-              Sign out
-            </button>
-          </div>
-        )}
-        <ThemeToggle />
-        <p className="px-2 text-[10px] font-medium uppercase tracking-[0.2em] text-muted-foreground/40">
-          warmer, not more.
-        </p>
+        <div className="mt-4 flex flex-col gap-3 border-t border-white/10 pt-4">
+          {me && (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-3 py-3 max-sm:hidden">
+              <p className="truncate text-sm font-bold text-[#f7f3ec]">{displayName}</p>
+              {me.email && (
+                <p className="truncate text-[11px] font-medium text-[#f7f3ec]/45">{me.email}</p>
+              )}
+              <button
+                type="button"
+                onClick={() => void handleSignOut()}
+                className="mt-2 text-[11px] font-bold uppercase tracking-wider text-[#f7f3ec]/45 transition-colors hover:text-[#f7f3ec]"
+              >
+                Sign out
+              </button>
+            </div>
+          )}
+          <ThemeToggle inverse />
+        </div>
       </div>
     </aside>
   );

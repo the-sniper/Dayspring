@@ -67,7 +67,7 @@ function StageRail({ stage }: { stage: string }) {
               className={cn(
                 "flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider transition-colors",
                 now
-                  ? "bg-[var(--accent)] text-[var(--accent-foreground)]"
+                  ? "bg-brand-500 text-brand-950"
                   : done
                     ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400"
                     : "bg-secondary text-muted-foreground/60",
@@ -110,11 +110,11 @@ function RunningPanel({
 
   return (
     <div className="rounded-[2rem] border border-border/60 bg-card p-8 text-center shadow-sm">
-      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-[var(--accent)]/10">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-500/10">
         {stalled ? (
           <AlertTriangle size={22} className="text-rose-500" />
         ) : (
-          <Loader2 size={22} className="animate-spin text-[var(--accent)]" />
+          <Loader2 size={22} className="animate-spin text-brand-500" />
         )}
       </div>
       <p className="mt-4 font-display text-lg font-bold text-foreground">
@@ -229,7 +229,7 @@ export default function CampaignWorkspace({
           <button
             type="button"
             onClick={() => void resume(true)}
-            className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-[var(--accent)] px-3.5 py-2 text-xs font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105"
+            className="mt-3 inline-flex items-center gap-1.5 rounded-xl bg-brand-500 px-3.5 py-2 text-xs font-bold text-brand-950 transition-all hover:bg-brand-400"
           >
             <RefreshCw size={13} /> Retry that stage
           </button>

@@ -100,7 +100,7 @@ export default function OrchestraRunProgress({ runDate }: { runDate: string }) {
         <div
           className={cn(
             "h-full rounded-full transition-all duration-700",
-            stalled ? "bg-rose-500" : "bg-[var(--accent)]",
+            stalled ? "bg-rose-500" : "bg-brand-500",
           )}
           style={{ width: `${Math.max(pct, 4)}%` }}
         />
@@ -126,7 +126,7 @@ export default function OrchestraRunProgress({ runDate }: { runDate: string }) {
                 {state === "done" && <Check size={13} className="text-emerald-500" strokeWidth={3} />}
                 {state === "handed off" && <Check size={13} className="text-muted-foreground" strokeWidth={3} />}
                 {state === "dead" && <X size={13} className="text-rose-500" strokeWidth={3} />}
-                {state === "running" && <Loader2 size={13} className="animate-spin text-[var(--accent)]" />}
+                {state === "running" && <Loader2 size={13} className="animate-spin text-brand-500" />}
                 {state === "queued" && <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60" />}
                 {state === "pending" && <span className="h-1.5 w-1.5 rounded-full bg-border" />}
               </span>
@@ -163,7 +163,7 @@ export default function OrchestraRunProgress({ runDate }: { runDate: string }) {
 
       {stalled && (
         <p className="mt-3 text-[11px] font-medium text-rose-500">
-          Nothing has moved in over 10 minutes — this run is dead. Click “Run
+          Nothing has moved in over 10 minutes - this run is dead. Click “Run
           today” to retire it and start a fresh one.
         </p>
       )}

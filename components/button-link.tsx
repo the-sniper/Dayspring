@@ -6,11 +6,11 @@ type Variant = "primary" | "secondary" | "ghost" | "danger";
 type Size = "sm" | "md";
 
 const base =
-  "inline-flex items-center justify-center gap-2 rounded-[var(--radius)] font-medium whitespace-nowrap transition-all duration-200 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
+  "inline-flex items-center justify-center gap-2 rounded-full font-semibold whitespace-nowrap transition-[transform,background-color,color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--focus)] active:scale-[0.98] disabled:pointer-events-none disabled:opacity-50";
 
 const variants: Record<Variant, string> = {
   primary:
-    "bg-[var(--accent)] text-[var(--accent-foreground)] shadow-sm shadow-brand-500/20 hover:brightness-105",
+    "bg-brand-500 text-brand-950 shadow-[0_14px_36px_-16px_rgba(245,158,11,0.8)] hover:bg-brand-400",
   secondary:
     "border border-border bg-surface text-foreground hover:bg-secondary/70",
   ghost: "text-muted-foreground hover:bg-secondary/70 hover:text-foreground",
@@ -19,8 +19,8 @@ const variants: Record<Variant, string> = {
 };
 
 const sizes: Record<Size, string> = {
-  sm: "h-8 px-3 text-[13px]",
-  md: "h-10 px-4 text-sm",
+  sm: "h-9 px-4 text-[13px]",
+  md: "h-12 px-5 text-sm",
 };
 
 export default function ButtonLink({

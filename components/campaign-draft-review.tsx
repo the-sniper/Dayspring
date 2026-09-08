@@ -76,7 +76,7 @@ function ImageBrief({
             setCopied(true);
             setTimeout(() => setCopied(false), 1500);
           }}
-          className="flex items-center gap-1.5 rounded-lg bg-[var(--accent)] px-2.5 py-1 text-[11px] font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105"
+          className="flex items-center gap-1.5 rounded-lg bg-brand-500 px-2.5 py-1 text-[11px] font-bold text-brand-950 transition-all hover:bg-brand-400"
         >
           {copied ? <Check size={11} strokeWidth={3} /> : <Copy size={11} />}
           {copied ? "Copied" : "Copy prompt"}
@@ -216,7 +216,7 @@ function DraftCard({ campaignId, draft }: { campaignId: string; draft: Draft }) 
             </span>
             {draft.revisions > 0 && (
               <span className="ml-1.5 font-medium opacity-80">
-                (from the original audit — not re-run after your{" "}
+                (from the original audit - not re-run after your{" "}
                 {draft.revisions} revision{draft.revisions === 1 ? "" : "s"})
               </span>
             )}
@@ -316,7 +316,7 @@ function DraftCard({ campaignId, draft }: { campaignId: string; draft: Draft }) 
       {showHistory && history.length > 0 && (
         <div className="mt-2 flex flex-col gap-2 rounded-xl border border-border/60 bg-secondary/20 p-3">
           <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">
-            Version history — oldest first, last {history.length} of 10 kept.
+            Version history - oldest first, last {history.length} of 10 kept.
             Cleared when the post ships.
           </p>
           {history.map((h, i) => (
@@ -378,7 +378,7 @@ function DraftCard({ campaignId, draft }: { campaignId: string; draft: Draft }) 
                     saveDraftEditAction(campaignId, slotId, text, postTitle),
                   )
                 }
-                title="Bank this version — you can walk it back from history"
+                title="Bank this version - you can walk it back from history"
                 className="flex items-center gap-1.5 rounded-lg border border-border px-3.5 py-2 text-xs font-bold text-muted-foreground transition-colors hover:bg-muted disabled:opacity-40"
               >
                 {pending ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
@@ -415,7 +415,7 @@ function DraftCard({ campaignId, draft }: { campaignId: string; draft: Draft }) 
               </button>
               {tooLong && (
                 <span className="text-[11px] font-semibold text-rose-500">
-                  Over the {spec.label} limit — trim before approving.
+                  Over the {spec.label} limit - trim before approving.
                 </span>
               )}
             </>
@@ -441,7 +441,7 @@ function DraftCard({ campaignId, draft }: { campaignId: string; draft: Draft }) 
                       return r;
                     })
                   }
-                  className="rounded-lg bg-[var(--accent)] px-3.5 py-2 text-xs font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105 disabled:opacity-50"
+                  className="rounded-lg bg-brand-500 px-3.5 py-2 text-xs font-bold text-brand-950 transition-all hover:bg-brand-400 disabled:opacity-50"
                 >
                   {pending ? (
                     <span className="flex items-center gap-1.5">
@@ -527,7 +527,7 @@ export default function CampaignDraftReview({
         </h2>
         <p className="text-sm text-muted-foreground">
           {campaign.drafts.length} draft{campaign.drafts.length === 1 ? "" : "s"} ·{" "}
-          {pendingCount} still waiting on you. Edit in place — &ldquo;Save
+          {pendingCount} still waiting on you. Edit in place - &ldquo;Save
           edit&rdquo; banks a version you can walk back.
         </p>
       </div>
@@ -582,7 +582,7 @@ function CloseCampaign({ campaignId }: { campaignId: string }) {
             router.refresh();
           })
         }
-        className="flex h-9 items-center gap-1.5 rounded-xl bg-[var(--accent)] px-3.5 text-xs font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105 disabled:opacity-50"
+        className="flex h-9 items-center gap-1.5 rounded-xl bg-brand-500 px-3.5 text-xs font-bold text-brand-950 transition-all hover:bg-brand-400 disabled:opacity-50"
       >
         {pending ? <Loader2 size={13} className="animate-spin" /> : <Check size={13} strokeWidth={3} />}
         Close campaign

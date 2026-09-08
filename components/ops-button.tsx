@@ -56,8 +56,8 @@ export default function OpsButton({
         className={cn(
           "flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-xs font-bold transition-all active:scale-[0.98]",
           primary
-            ? "bg-brand-500 text-white shadow-sm shadow-brand-500/20 hover:bg-brand-600 dark:bg-brand-600 dark:hover:bg-brand-500"
-            : "border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
+            ? "rounded-full bg-brand-500 text-brand-950 shadow-[0_14px_36px_-16px_rgba(245,158,11,0.75)] hover:bg-brand-400"
+            : "rounded-full border border-border bg-card text-muted-foreground hover:bg-muted hover:text-foreground",
           pending && "cursor-wait opacity-70",
         )}
       >

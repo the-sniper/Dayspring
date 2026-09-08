@@ -86,7 +86,7 @@ export default function CampaignLauncher({
         </h2>
         <p className="text-sm text-muted-foreground">
           Set the objective and the dates. The team scouts, plans a schedule
-          across your platforms, writes, and edits — you decide three times.
+          across your platforms, writes, and edits. You decide three times.
         </p>
       </div>
 
@@ -122,7 +122,7 @@ export default function CampaignLauncher({
             value={seedIdeas}
             onChange={(e) => setSeedIdeas(e.target.value)}
             rows={3}
-            placeholder={"One per line — kept verbatim, ranked, never dropped.\nLeave blank and the team suggests everything itself."}
+            placeholder={"One per line - kept verbatim, ranked, never dropped.\nLeave blank and the team suggests everything itself."}
             className="resize-y rounded-xl border border-border bg-background px-3 py-2.5 text-sm leading-relaxed text-foreground placeholder:text-muted-foreground/50 focus:border-brand-500/50 focus:outline-none"
           />
         </label>
@@ -152,7 +152,7 @@ export default function CampaignLauncher({
             })}
           </div>
           <span className="text-[11px] text-muted-foreground">
-            A topic can run on several — the team writes a different treatment
+            A topic can run on several. The team writes a different treatment
             for each, never the same post three times.
           </span>
         </div>

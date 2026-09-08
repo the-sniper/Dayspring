@@ -79,7 +79,7 @@ export default function CampaignHookPicker({
           type="button"
           onClick={confirm}
           disabled={pending}
-          className="flex h-10 items-center gap-2 rounded-xl bg-[var(--accent)] px-4 text-sm font-bold text-[var(--accent-foreground)] transition-all hover:brightness-105 active:scale-[0.98] disabled:opacity-50"
+          className="flex h-10 items-center gap-2 rounded-xl bg-brand-500 px-4 text-sm font-bold text-brand-950 transition-all hover:bg-brand-400 active:scale-[0.98] disabled:opacity-50"
         >
           {pending ? <Loader2 size={15} className="animate-spin" /> : <PenLine size={15} />}
           Write the drafts
@@ -124,7 +124,7 @@ export default function CampaignHookPicker({
                 </p>
                 {thin && (
                   <span className="rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
-                    thin research — no outside claims
+                    thin research - no outside claims
                   </span>
                 )}
               </div>
@@ -181,7 +181,7 @@ export default function CampaignHookPicker({
                         : "border-border text-muted-foreground hover:bg-muted",
                     )}
                   >
-                    None of these — let the writer choose
+                    None of these - let the writer choose
                   </button>
                 </li>
               </ul>

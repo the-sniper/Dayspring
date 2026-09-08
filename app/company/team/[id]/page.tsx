@@ -154,8 +154,8 @@ export default async function EmployeePage({
             {e.status === "planned"
               ? `Not hired yet (Phase ${e.phase}).`
               : e.modelRole === "code"
-                ? "Always on — runs as code inside every cycle, no discrete tasks."
-                : "On bench — nothing in flight. Normal between runs."}
+                ? "Always on - runs as code inside every cycle, no discrete tasks."
+                : "On bench - nothing in flight. Normal between runs."}
           </div>
         )}
       </section>

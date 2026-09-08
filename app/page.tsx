@@ -1,14 +1,12 @@
 import Link from "next/link";
-import { 
-  ArrowRight, 
-  Calendar, 
-  Clock, 
-  Inbox, 
-  LayoutDashboard, 
-  MessageSquare, 
-  Plus, 
-  Sparkles,
-  TrendingUp,
+import {
+  ArrowRight,
+  Calendar,
+  Clock,
+  Inbox,
+  LayoutDashboard,
+  MessageSquare,
+  Plus,
   Building2,
   Zap,
 } from "lucide-react";
@@ -24,12 +22,15 @@ import { hasGmail } from "@/lib/integrations/gmail/client";
 import { api, convex } from "@/lib/convex/server";
 import { getSetting } from "@/lib/settings/store";
 import { outreachDue, staleApplications } from "@/lib/outreach/due";
-import { KANBAN_STATUSES, type JobStatus, type RoleType } from "@/lib/types";
+import { type JobStatus, type RoleType } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { StatTile } from "@/components/orchestra-ui";
 
 export const dynamic = "force-dynamic";
 
 const ACTIVE_STATUSES = ["applied", "screen", "interview", "offer"];
+const PIPELINE_FOCUS: JobStatus[] = ["applied", "screen", "interview", "offer"];
+const PIPELINE_EDGE: JobStatus[] = ["wishlist", "rejected"];
 
 export default async function DashboardPage() {
   const [countsRaw, needsDecisionRaw, activeJobs, apps, activityRaw] =
@@ -91,7 +92,7 @@ export default async function DashboardPage() {
   return (
     <div className="mx-auto max-w-6xl stagger-load">
       <PageHeader
-        eyebrow="Command Center"
+        eyebrow="Overview"
         icon={<LayoutDashboard size={14} />}
         title="Overview"
         description={
@@ -115,80 +116,96 @@ export default async function DashboardPage() {
         }
       />
 
-      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6 mb-10">
-        {KANBAN_STATUSES.map((s) => (
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {PIPELINE_FOCUS.map((s) => (
+          <Link key={s} href="/board" className="block transition-opacity hover:opacity-90">
+            <StatTile label={s} value={String(statusCounts.get(s) ?? 0)} />
+          </Link>
+        ))}
+      </div>
+      <div className="mb-10 grid grid-cols-2 gap-3">
+        {PIPELINE_EDGE.map((s) => (
           <Link
             key={s}
             href="/board"
-            className="group relative overflow-hidden rounded-2xl border border-border bg-card p-5 transition-all hover:border-brand-500/50 hover:shadow-xl hover:shadow-brand-500/5"
+            className="bezel block transition-opacity hover:opacity-95"
           >
-            <div className="relative z-10">
-              <p className="text-3xl font-black tracking-tight text-foreground tabular-nums">
-                {statusCounts.get(s) ?? 0}
-              </p>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground mt-1 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">{s}</p>
-            </div>
-            <div className="absolute -right-2 -top-2 text-muted-foreground/5 group-hover:text-brand-500/10 transition-colors">
-              <TrendingUp size={64} />
+            <div className="bezel-core flex items-center justify-between px-5 py-4">
+            <span className="font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground">
+              {s}
+            </span>
+            <span className="font-display text-2xl font-semibold tabular-nums tracking-tight text-foreground">
+              {statusCounts.get(s) ?? 0}
+            </span>
             </div>
           </Link>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-        {/* Main Column */}
-        <div className="lg:col-span-8 space-y-8">
+      <div className="grid grid-cols-1 gap-8 lg:grid-cols-12">
+        <div className="space-y-8 lg:col-span-8">
           <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
-                <Sparkles size={18} className="text-brand-500" />
-                Top Matches Today
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-lg font-bold text-foreground">
+                Top matches today
               </h2>
               <div className="flex items-center gap-4">
-                <Link href="/apply" className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400">
+                <Link
+                  href="/apply"
+                  className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                >
                   <Zap size={12} /> Auto-Apply queue
                 </Link>
-                <Link href="/feed" className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400">
-                  View Feed <ArrowRight size={12} className="group-hover:translate-x-0.5 transition-transform" />
+                <Link
+                  href="/feed"
+                  className="group flex items-center gap-1 text-xs font-bold text-brand-600 hover:text-brand-700 dark:text-brand-400"
+                >
+                  View Feed{" "}
+                  <ArrowRight
+                    size={12}
+                    className="transition-transform group-hover:translate-x-0.5"
+                  />
                 </Link>
               </div>
             </div>
-            
+
             <div className="space-y-3">
               {needsDecision.map((j) => (
-                <div
-                  key={j.id}
-                  className="group flex items-center justify-between gap-4 rounded-2xl border border-border bg-card p-4 transition-all hover:border-brand-500/30 hover:shadow-md"
-                >
-                  <div className="min-w-0 flex-1">
-                    <Tip label={j.title}>
-                      <Link
-                        href={`/jobs/${j.id}`}
-                        className="block truncate font-bold text-foreground hover:text-brand-600 transition-colors"
-                      >
-                        {j.title}
-                      </Link>
-                    </Tip>
-                    <div className="mt-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
-                      <Building2 size={12} />
-                      <span>{j.companyName}</span>
+                <div key={j.id} className="group bezel block transition-opacity hover:opacity-95">
+                  <div className="bezel-core flex items-center justify-between gap-4 p-4">
+                    <div className="min-w-0 flex-1">
+                      <Tip label={j.title}>
+                        <Link
+                          href={`/jobs/${j.id}`}
+                          className="block truncate font-bold text-foreground transition-colors hover:text-brand-600"
+                        >
+                          {j.title}
+                        </Link>
+                      </Tip>
+                      <div className="mt-1 flex items-center gap-2 text-xs font-medium text-muted-foreground">
+                        <Building2 size={12} />
+                        <span>{j.companyName}</span>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex shrink-0 items-center gap-3">
-                    <RoleChip role={j.roleType} />
-                    <ScoreBadge score={j.matchScore} />
-                    <JobQuickActions jobId={j.id} />
+                    <div className="flex shrink-0 items-center gap-3">
+                      <RoleChip role={j.roleType} />
+                      <ScoreBadge score={j.matchScore} />
+                      <JobQuickActions jobId={j.id} />
+                    </div>
                   </div>
                 </div>
               ))}
               {needsDecision.length === 0 && (
-                <div className="rounded-2xl border-2 border-dashed border-border p-10 text-center">
-                  <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-muted-foreground mb-4">
+                <div className="rounded-2xl border border-dashed border-border/70 px-6 py-10 text-center">
+                  <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
                     <Inbox size={20} />
                   </div>
-                  <p className="text-sm font-bold text-foreground">Nothing waiting</p>
-                  <p className="mt-1 text-xs text-muted-foreground">
-                    Your 10 best-scoring new roles appear here daily — run scoring from the feed to fill it.
+                  <p className="font-display text-base font-bold text-foreground">
+                    Nothing waiting
+                  </p>
+                  <p className="mt-1 text-[13px] text-muted-foreground">
+                    Your 10 best-scoring new roles appear here daily. Run scoring
+                    from the feed to fill it.
                   </p>
                 </div>
               )}
@@ -196,29 +213,33 @@ export default async function DashboardPage() {
           </section>
 
           <section>
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="flex items-center gap-2 text-lg font-bold text-foreground">
-                <Clock size={18} className="text-brand-500" />
-                Recent Activity
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="font-display text-lg font-bold text-foreground">
+                Recent activity
               </h2>
             </div>
-            <div className="rounded-2xl border border-border bg-card overflow-hidden">
-              <div className="divide-y divide-border">
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+              <div className="divide-y divide-border/60">
                 {activity.map((e) => (
-                  <div key={e.id} className="flex items-center gap-4 p-4 text-sm transition-colors hover:bg-secondary/20">
+                  <div
+                    key={e.id}
+                    className="flex items-center gap-4 p-4 text-sm transition-colors hover:bg-secondary/20"
+                  >
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-secondary text-[10px] font-bold tabular-nums text-muted-foreground">
                       {e.at.slice(5, 10)}
                     </div>
                     <div className="min-w-0 flex-1">
                       <Link
                         href={`/jobs/${e.jobId}`}
-                        className="font-bold text-foreground hover:text-brand-600 transition-colors"
+                        className="font-bold text-foreground transition-colors hover:text-brand-600"
                       >
                         {e.title}
                       </Link>
-                      <p className="text-xs font-medium text-muted-foreground truncate">{e.companyName}</p>
+                      <p className="truncate text-xs font-medium text-muted-foreground">
+                        {e.companyName}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-tighter">
+                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider">
                       {e.fromStatus && (
                         <>
                           <span className="text-muted-foreground/50">{e.fromStatus}</span>
@@ -230,7 +251,7 @@ export default async function DashboardPage() {
                   </div>
                 ))}
                 {activity.length === 0 && (
-                  <div className="p-10 text-center text-sm text-muted-foreground font-medium">
+                  <div className="p-10 text-center text-sm font-medium text-muted-foreground">
                     No activity recorded yet.
                   </div>
                 )}
@@ -239,43 +260,58 @@ export default async function DashboardPage() {
           </section>
         </div>
 
-        {/* Sidebar Column */}
-        <div className="lg:col-span-4 space-y-8">
+        <div className="space-y-8 lg:col-span-4">
           <ApiUsagePanel />
 
           <VerificationCodes hasGmail={gmailConnected} />
 
           {(dueOutreach.length > 0 || staleApps.length > 0) && (
-            <section className="rounded-2xl bg-brand-500 p-5 text-white shadow-xl shadow-brand-500/20">
-              <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest mb-4">
-                <MessageSquare size={16} strokeWidth={3} />
-                Follow-ups Due
+            <section className="rounded-2xl border border-brand-500/30 bg-brand-500/[0.06] p-5 shadow-sm">
+              <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-foreground">
+                <MessageSquare size={16} />
+                Follow-ups due
               </h2>
               <div className="space-y-3">
                 {dueOutreach.map((o) => (
-                  <div key={`o${o.id}`} className="rounded-xl bg-white/10 p-3 backdrop-blur-sm">
-                    <p className="text-xs font-bold text-white/90">
-                      <span className="mr-1.5 rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase tracking-wider">Outreach</span>
+                  <div
+                    key={`o${o.id}`}
+                    className="rounded-xl border border-border/50 bg-card p-3"
+                  >
+                    <p className="text-xs font-bold text-foreground">
+                      <span className="mr-1.5 rounded bg-secondary px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Outreach
+                      </span>
                       {o.contactName}
                     </p>
-                    <p className="mt-1 text-[11px] text-white/70 line-clamp-1">
-                      {o.companyName} — quiet since {o.sentAt?.slice(0, 10)}
+                    <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
+                      {o.companyName} - quiet since {o.sentAt?.slice(0, 10)}
                     </p>
-                    <Link href="/outreach" className="mt-2 block text-center rounded-lg bg-white py-1.5 text-[10px] font-black uppercase tracking-widest text-brand-600 transition-transform hover:scale-[1.02] active:scale-95">
+                    <Link
+                      href="/outreach"
+                      className="mt-2 block rounded-lg bg-brand-500 py-1.5 text-center text-[10px] font-bold uppercase tracking-widest text-brand-950 transition-colors hover:bg-brand-400 active:scale-[0.98]"
+                    >
                       Nudge Now
                     </Link>
                   </div>
                 ))}
                 {staleApps.map((a) => (
-                  <div key={`a${a.jobId}`} className="rounded-xl bg-white/10 p-3 backdrop-blur-sm">
-                    <p className="text-xs font-bold text-white/90">
-                      <span className="mr-1.5 rounded bg-white/20 px-1.5 py-0.5 text-[9px] uppercase tracking-wider">Application</span>
+                  <div
+                    key={`a${a.jobId}`}
+                    className="rounded-xl border border-border/50 bg-card p-3"
+                  >
+                    <p className="text-xs font-bold text-foreground">
+                      <span className="mr-1.5 rounded bg-secondary px-1.5 py-0.5 text-[9px] uppercase tracking-wider text-muted-foreground">
+                        Application
+                      </span>
                       {a.title}
                     </p>
-                    <p className="mt-1 text-[11px] text-white/70 line-clamp-1">
-                      {a.companyName} — quiet since {a.updatedAt.slice(0, 10)}
+                    <p className="mt-1 line-clamp-1 text-[11px] text-muted-foreground">
+                      {a.companyName} - quiet since {a.updatedAt.slice(0, 10)}
                     </p>
-                    <Link href={`/jobs/${a.jobId}`} className="mt-2 block text-center rounded-lg bg-white/20 py-1.5 text-[10px] font-black uppercase tracking-widest text-white transition-transform hover:bg-white/30 active:scale-95">
+                    <Link
+                      href={`/jobs/${a.jobId}`}
+                      className="mt-2 block rounded-lg border border-border py-1.5 text-center text-[10px] font-bold uppercase tracking-wider text-muted-foreground transition-colors hover:bg-muted hover:text-foreground active:scale-[0.98]"
+                    >
                       Check Status
                     </Link>
                   </div>
@@ -285,35 +321,41 @@ export default async function DashboardPage() {
           )}
 
           <section>
-            <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-widest text-muted-foreground mb-4">
-              <Calendar size={16} strokeWidth={3} />
-              Upcoming Tasks
+            <h2 className="mb-4 flex items-center gap-2 text-sm font-bold text-muted-foreground">
+              <Calendar size={16} />
+              Upcoming tasks
             </h2>
-            <div className="rounded-2xl border border-border bg-card overflow-hidden">
-              <div className="divide-y divide-border">
+            <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+              <div className="divide-y divide-border/60">
                 {nextActions.map((a) => (
                   <div key={a.jobId} className="p-4 transition-colors hover:bg-secondary/20">
-                    <div className="flex items-start justify-between gap-2 mb-1">
-                      <span className={cn(
-                        "text-[10px] font-black tabular-nums tracking-tighter",
-                        a.nextActionDue && a.nextActionDue < today ? "text-destructive" : "text-muted-foreground"
-                      )}>
+                    <div className="mb-1 flex items-start justify-between gap-2">
+                      <span
+                        className={cn(
+                          "text-[10px] font-bold uppercase tracking-wider",
+                          a.nextActionDue && a.nextActionDue < today
+                            ? "text-rose-500"
+                            : "text-muted-foreground",
+                        )}
+                      >
                         {a.nextActionDue}
                       </span>
-                      <span className="text-[10px] font-bold text-muted-foreground/50 truncate uppercase tracking-widest">{a.companyName}</span>
                     </div>
                     <Link
                       href={`/jobs/${a.jobId}`}
-                      className="text-sm font-bold text-foreground hover:text-brand-600 transition-colors line-clamp-1"
+                      className="font-bold text-foreground transition-colors hover:text-brand-600"
                     >
-                      {a.nextAction ?? "Follow up"}
+                      {a.title}
                     </Link>
-                    <p className="mt-0.5 text-xs font-medium text-muted-foreground line-clamp-1">{a.title}</p>
+                    <p className="mt-0.5 text-xs text-muted-foreground">{a.companyName}</p>
+                    {a.nextAction && (
+                      <p className="mt-1 text-[11px] text-muted-foreground">{a.nextAction}</p>
+                    )}
                   </div>
                 ))}
                 {nextActions.length === 0 && (
-                  <div className="p-10 text-center">
-                    <p className="text-xs font-bold text-muted-foreground uppercase tracking-widest">All Clear</p>
+                  <div className="p-8 text-center text-sm text-muted-foreground">
+                    No upcoming tasks.
                   </div>
                 )}
               </div>

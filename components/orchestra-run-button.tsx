@@ -49,7 +49,7 @@ export default function OrchestraRunButton({
       };
       setResult({
         ok: true,
-        message: `Run complete — verified ${stats.verified ?? 0}, escalated ${stats.escalated ?? 0}, $${Number(stats.costUsd ?? 0).toFixed(2)} spent.`,
+        message: `Run complete - verified ${stats.verified ?? 0}, escalated ${stats.escalated ?? 0}, $${Number(stats.costUsd ?? 0).toFixed(2)} spent.`,
       });
       setWaiting(false);
       startedAt.current = null;
@@ -84,8 +84,8 @@ export default function OrchestraRunButton({
         message:
           failed[0]?.statusReason?.slice(0, 200) ||
           (stalled.length > 0
-            ? `Run stalled — ${stalled[0].role} stopped responding. Click again to start a fresh one.`
-            : "Run stopped without a report — check the board for task errors."),
+            ? `Run stalled - ${stalled[0].role} stopped responding. Click again to start a fresh one.`
+            : "Run stopped without a report - check the board for task errors."),
       });
       setWaiting(false);
       startedAt.current = null;
@@ -97,7 +97,7 @@ export default function OrchestraRunButton({
       setResult({
         ok: false,
         message:
-          "Still running after 12 minutes — refresh the page; if today's report is there, it finished.",
+          "Still running after 12 minutes - refresh the page; if today's report is there, it finished.",
       });
       setWaiting(false);
       startedAt.current = null;
@@ -129,7 +129,7 @@ export default function OrchestraRunButton({
       if (data.alreadyRan) {
         setResult({
           ok: true,
-          message: "Already ran today — showing the existing report.",
+          message: "Already ran today - showing the existing report.",
         });
         setWaiting(false);
         startedAt.current = null;
@@ -139,8 +139,8 @@ export default function OrchestraRunButton({
       setResult({
         ok: true,
         message: data.alreadyRunning
-          ? "A run is already in progress — waiting for today's report…"
-          : "Run started — agents are working (a few minutes)…",
+          ? "A run is already in progress - waiting for today's report…"
+          : "Run started - agents are working (a few minutes)…",
       });
     } catch (err) {
       setResult({
@@ -162,10 +162,10 @@ export default function OrchestraRunButton({
         onClick={() => void run()}
         disabled={waiting}
         className={cn(
-          "flex h-10 items-center gap-2 rounded-[var(--radius)] px-4 text-sm font-medium shadow-sm transition-all active:scale-[0.98]",
+          "group flex h-12 items-center gap-2.5 rounded-full pl-5 pr-2 text-sm font-bold transition-[transform,background-color] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] active:scale-[0.98]",
           waiting
-            ? "cursor-wait bg-secondary text-muted-foreground"
-            : "bg-[var(--accent)] text-[var(--accent-foreground)] shadow-brand-500/20 hover:brightness-105",
+            ? "cursor-wait bg-secondary pr-5 text-muted-foreground"
+            : "bg-brand-500 text-brand-950 shadow-[0_14px_36px_-16px_rgba(245,158,11,0.85)] hover:bg-brand-400",
         )}
       >
         {waiting ? (
@@ -175,8 +175,10 @@ export default function OrchestraRunButton({
           </>
         ) : (
           <>
-            <Play size={16} strokeWidth={2.75} />
-            {alreadyRan ? "Re-check today" : "Run today"}
+            <span>{alreadyRan ? "Re-check today" : "Run today"}</span>
+            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-950/10 transition-transform duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] group-hover:translate-x-0.5 group-hover:scale-105">
+              <Play size={14} strokeWidth={2.75} className="ml-0.5" />
+            </span>
           </>
         )}
       </button>
